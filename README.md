@@ -33,6 +33,8 @@ PAC is a powerful, cross-platform desktop GUI for text manipulation. It features
 * **Export Options**: Save your output directly to TXT, PDF, or DOCX files.
 * **Persistent State**: The application saves all tab content, settings, and window size on exit.
 
+![PAC Screenshot](./PAC.jpg)
+
 ## 🚀 Getting Started
 
 To run the application from the source code, follow these steps.

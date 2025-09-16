@@ -1844,7 +1844,7 @@ class PromeraAIApp(tk.Tk):
         self.destroy()
 
     def on_tab_content_changed(self, event=None):
-        """Handles changes in tab content to update labels and sync diff edits."""
+        """Handles changes in tab content to update labels and sync diff edits"""
         if hasattr(self, '_tab_label_after_id'): self.after_cancel(self._tab_label_after_id)
         self._tab_label_after_id = self.after(500, self.update_tab_labels)
 
