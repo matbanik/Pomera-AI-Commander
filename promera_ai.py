@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, scrolledtext, messagebox
+from tkinter import ttk, filedialog, scrolledtext, messagebox, font
 import re
 import json
 import os
@@ -16,6 +16,7 @@ import string
 import random
 import difflib
 import urllib.parse
+import webbrowser
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from docx import Document
@@ -253,6 +254,15 @@ class PromeraAIApp(tk.Tk):
         self._after_id = None 
         self._regex_cache = {}
         self.ai_widgets = {}
+        self.ai_provider_urls = {
+            "Google AI": "https://aistudio.google.com/apikey",
+            "Cohere AI": "https://dashboard.cohere.com/api-keys",
+            "HuggingFace AI": "https://huggingface.co/settings/tokens",
+            "Groq AI": "https://console.groq.com/keys",
+            "OpenRouterAI": "https://openrouter.ai/settings/keys",
+            "Anthropic AI": "https://console.anthropic.com/settings/keys",
+            "OpenAI": "https://platform.openai.com/settings/organization/api-keys"
+        }
 
         self.manual_process_tools = [
             "Case Tool", "Find & Replace Text", "Google AI", "Anthropic AI", 
@@ -879,6 +889,13 @@ class PromeraAIApp(tk.Tk):
         entry = ttk.Entry(parent, textvariable=api_key_var, width=30, show="*")
         entry.pack(side=tk.LEFT)
         api_key_var.trace_add("write", self.on_tool_setting_change)
+        
+        if provider_name in self.ai_provider_urls:
+            url = self.ai_provider_urls[provider_name]
+            link_font = font.Font(family="Helvetica", size=9, underline=True)
+            link_label = ttk.Label(parent, text="Get API Key", foreground="blue", cursor="hand2", font=link_font)
+            link_label.pack(side=tk.LEFT, padx=(5, 0))
+            link_label.bind("<Button-1>", lambda e, link=url: webbrowser.open_new(link))
         
         ttk.Label(parent, text="Model:").pack(side=tk.LEFT, padx=(10, 2))
         model_var = tk.StringVar(value=settings.get("MODEL", model_list[0] if model_list else ""))

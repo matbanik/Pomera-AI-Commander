@@ -107,6 +107,5 @@ chmod +x build.sh
 7.  To use AI tools, enter your API key in the designated field.
 
 ## 📄 License
-
-This project is licensed under the "default"
-"""
+"
+This project is licensed under the MIT License
