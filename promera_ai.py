@@ -56,9 +56,12 @@ class TextProcessor:
 
     @staticmethod
     def sentence_case(text):
-        """Converts text to sentence case, capitalizing the first letter of each sentence."""
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        return ' '.join(s.capitalize() for s in sentences)
+        """Converts text to sentence case, capitalizing the first letter of each sentence and each new line."""
+        def capitalize_match(match):
+            return match.group(1) + match.group(2).upper()
+        
+        # Capitalize the first letter of the string, and any letter following a newline or sentence-ending punctuation.
+        return re.sub(r'([.!?\n]\s*|^)([a-z])', capitalize_match, text)
 
     @staticmethod
     def title_case(text, exclusions):
@@ -244,6 +247,33 @@ class PromeraAIApp(tk.Tk):
     """
     A comprehensive Text Processing GUI application built with Tkinter.
     """
+    class Tooltip:
+        """Creates a tooltip for a given widget."""
+        def __init__(self, widget, text):
+            self.widget = widget
+            self.text = text
+            self.tooltip_window = None
+            self.widget.bind("<Enter>", self.show_tip)
+            self.widget.bind("<Leave>", self.hide_tip)
+
+        def show_tip(self, event=None):
+            x, y, _, _ = self.widget.bbox("insert")
+            x += self.widget.winfo_rootx() + 25
+            y += self.widget.winfo_rooty() + 25
+
+            self.tooltip_window = tk.Toplevel(self.widget)
+            self.tooltip_window.wm_overrideredirect(True)
+            self.tooltip_window.wm_geometry(f"+{x}+{y}")
+
+            label = tk.Label(self.tooltip_window, text=self.text, justify='left',
+                             background="#ffffe0", relief='solid', borderwidth=1,
+                             wraplength=250, font=("sans-serif", 8))
+            label.pack(ipadx=1)
+
+        def hide_tip(self, event=None):
+            if self.tooltip_window:
+                self.tooltip_window.destroy()
+            self.tooltip_window = None
 
     def __init__(self):
         """Initializes the main application window and its components."""
@@ -345,17 +375,43 @@ class PromeraAIApp(tk.Tk):
                 "Alphabetical Sorter": {"order": "ascending", "unique_only": False, "trim": False},
                 "Strong Password Generator": {"length": 20, "numbers": "", "symbols": ""},
                 "URL Parser": {"ascii_decode": True},
-                "Google AI": {"API_KEY": "putinyourkey", "MODEL": "gemini-1.5-pro-latest", "MODELS_LIST": ["gemini-1.5-pro-latest", "gemini-1.5-flash-latest", "gemini-1.0-pro"]},
-                "Anthropic AI": {"API_KEY": "putinyourkey", "MODEL": "claude-3-5-sonnet-20240620", "MODELS_LIST": ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307", "claude-2.1", "claude-2.0", "claude-instant-1.2"]},
-                "OpenAI": {"API_KEY": "putinyourkey", "MODEL": "gpt-4o", "MODELS_LIST": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o-mini"]},
-                "Cohere AI": {"API_KEY": "putinyourkey", "MODEL": "command-r-plus", "MODELS_LIST": ["command-r-plus", "command-r", "command", "command-light"]},
-                "HuggingFace AI": {"API_KEY": "putinyourkey", "MODEL": "meta-llama/Meta-Llama-3-8B-Instruct", "MODELS_LIST": ["meta-llama/Meta-Llama-3-8B-Instruct", "mistralai/Mistral-7B-Instruct-v0.2", "google/gemma-7b-it", "meta-llama/Llama-2-7b-chat-hf"]},
-                "Groq AI": {"API_KEY": "putinyourkey", "MODEL": "llama3-70b-8192", "MODELS_LIST": ["llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma-7b-it"]},
-                "OpenRouterAI": {"API_KEY": "putinyourkey", "MODEL": "deepseek/deepseek-chat-v3.1:free", "MODELS_LIST": ["deepseek/deepseek-chat-v3.1:free", "google/gemini-flash-1.5:free", "mistralai/mistral-7b-instruct:free", "meta-llama/llama-3-8b-instruct:free", "anthropic/claude-3-haiku:free", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"]},
+                "Google AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "gemini-1.5-pro-latest", "MODELS_LIST": ["gemini-1.5-pro-latest", "gemini-1.5-flash-latest", "gemini-1.0-pro"],
+                    "system_prompt": "You are a helpful assistant.",
+                    "temperature": 0.7, "topK": 40, "topP": 0.95, "candidateCount": 1, "maxOutputTokens": 8192, "stopSequences": ""
+                },
+                "Anthropic AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "claude-3-5-sonnet-20240620", "MODELS_LIST": ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
+                    "system": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.9, "top_k": 40, "stop_sequences": ""
+                },
+                "OpenAI": {
+                    "API_KEY": "putinyourkey", "MODEL": "gpt-4o", "MODELS_LIST": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o-mini"],
+                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "seed": "", "response_format": "text", "stop": ""
+                },
+                "Cohere AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "command-r-plus", "MODELS_LIST": ["command-r-plus", "command-r", "command", "command-light"],
+                    "preamble": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4000, "k": 50, "p": 0.75, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "stop_sequences": "", "citation_quality": "accurate"
+                },
+                "HuggingFace AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "meta-llama/Meta-Llama-3-8B-Instruct", "MODELS_LIST": ["meta-llama/Meta-Llama-3-8B-Instruct", "mistralai/Mistral-7B-Instruct-v0.2", "google/gemma-7b-it"],
+                    "system_prompt": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.95, "stop_sequences": "", "seed": ""
+                },
+                "Groq AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "llama3-70b-8192", "MODELS_LIST": ["llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"],
+                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 8192, "top_p": 1.0, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "stop": "", "seed": "", "response_format": "text"
+                },
+                "OpenRouterAI": {
+                    "API_KEY": "putinyourkey", "MODEL": "anthropic/claude-3.5-sonnet", "MODELS_LIST": ["anthropic/claude-3.5-sonnet", "google/gemini-flash-1.5:free", "meta-llama/llama-3-8b-instruct:free", "openai/gpt-4o-mini"],
+                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "top_k": 0, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "repetition_penalty": 1.0, "seed": "", "stop": ""
+                },
                 "Diff Viewer": {"option": "ignore_case"}
             }
         }
-
+        
     def save_settings(self):
         """Saves the current settings to 'settings.json'."""
         self.settings["input_tabs"] = [tab.text.get("1.0", tk.END).strip() for tab in self.input_tabs]
@@ -770,7 +826,9 @@ class PromeraAIApp(tk.Tk):
         tool_name = self.tool_var.get()
         tool_settings = self.settings["tool_settings"].get(tool_name, {})
 
-        if tool_name == "Case Tool":
+        if tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI"]:
+            self.create_ai_provider_widgets(self.tool_settings_frame, tool_name)
+        elif tool_name == "Case Tool":
             self.create_case_tool_widgets(self.tool_settings_frame, tool_settings)
         elif tool_name == "Morse Code Translator":
             self.morse_mode = tk.StringVar(value=tool_settings.get("mode", "morse"))
@@ -830,8 +888,6 @@ class PromeraAIApp(tk.Tk):
             chk = ttk.Checkbutton(self.tool_settings_frame, text="ASCII Decoding", variable=self.url_parser_decode_var, command=self.on_tool_setting_change)
             chk.pack(side=tk.LEFT, padx=5)
             ttk.Button(self.tool_settings_frame, text="Parse", command=self.apply_tool).pack(side=tk.LEFT, padx=10)
-        elif tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI"]:
-            self.create_ai_provider_widgets(self.tool_settings_frame, tool_name)
         elif tool_name == "Diff Viewer":
             dv_settings = self.settings["tool_settings"].get("Diff Viewer", {})
             default_option = dv_settings.get("option", "ignore_case")
@@ -846,7 +902,6 @@ class PromeraAIApp(tk.Tk):
             ttk.Button(self.tool_settings_frame, text="Count", command=self.apply_tool).pack(side=tk.LEFT, padx=10)
         elif tool_name == "Binary Code Translator":
             ttk.Button(self.tool_settings_frame, text="Process", command=self.apply_tool).pack(side=tk.LEFT, padx=10)
-
 
     def create_case_tool_widgets(self, parent, settings):
         """Creates the UI for the new consolidated Case Tool."""
@@ -880,33 +935,176 @@ class PromeraAIApp(tk.Tk):
 
     def create_ai_provider_widgets(self, parent, provider_name):
         """Creates a standardized set of widgets for an AI provider."""
+        self.ai_widgets = {} # Clear previous widgets
         settings = self.settings["tool_settings"].get(provider_name, {})
         model_list = settings.get("MODELS_LIST", [])
         
-        ttk.Label(parent, text="API Key:").pack(side=tk.LEFT, padx=(10, 2))
+        # --- Top Frame for essential controls ---
+        top_frame = ttk.Frame(parent)
+        top_frame.pack(fill=tk.X, expand=True, pady=(0, 5))
+
         api_key_var = tk.StringVar(value=settings.get("API_KEY", "putinyourkey"))
         self.ai_widgets[f"{provider_name}_api_key_var"] = api_key_var
-        entry = ttk.Entry(parent, textvariable=api_key_var, width=30, show="*")
-        entry.pack(side=tk.LEFT)
+        ttk.Label(top_frame, text="API Key:").pack(side=tk.LEFT)
+        entry = ttk.Entry(top_frame, textvariable=api_key_var, width=20, show="*")
+        entry.pack(side=tk.LEFT, padx=(2, 5))
         api_key_var.trace_add("write", self.on_tool_setting_change)
         
         if provider_name in self.ai_provider_urls:
             url = self.ai_provider_urls[provider_name]
             link_font = font.Font(family="Helvetica", size=9, underline=True)
-            link_label = ttk.Label(parent, text="Get API Key", foreground="blue", cursor="hand2", font=link_font)
-            link_label.pack(side=tk.LEFT, padx=(5, 0))
+            link_label = ttk.Label(top_frame, text="Get API Key", foreground="blue", cursor="hand2", font=link_font)
+            link_label.pack(side=tk.LEFT, padx=(0, 10))
             link_label.bind("<Button-1>", lambda e, link=url: webbrowser.open_new(link))
         
-        ttk.Label(parent, text="Model:").pack(side=tk.LEFT, padx=(10, 2))
         model_var = tk.StringVar(value=settings.get("MODEL", model_list[0] if model_list else ""))
         self.ai_widgets[f"{provider_name}_model_var"] = model_var
-        model_menu = ttk.Combobox(parent, textvariable=model_var, values=model_list, state="normal", width=35)
-        model_menu.pack(side=tk.LEFT)
+        ttk.Label(top_frame, text="Model:").pack(side=tk.LEFT)
+        model_menu = ttk.Combobox(top_frame, textvariable=model_var, values=model_list, state="normal", width=30)
+        model_menu.pack(side=tk.LEFT, padx=2)
         model_menu.bind("<<ComboboxSelected>>", self.on_tool_setting_change)
         model_menu.bind("<KeyRelease>", self.on_tool_setting_change)
 
-        ttk.Button(parent, text="\u270E", command=lambda: self.open_model_editor(provider_name), width=3).pack(side=tk.LEFT, padx=(2,10))
-        ttk.Button(parent, text="Process", command=self.run_ai_in_thread).pack(side=tk.LEFT, padx=10)
+        ttk.Button(top_frame, text="\u270E", command=lambda: self.open_model_editor(provider_name), width=3).pack(side=tk.LEFT, padx=(0,10))
+        ttk.Button(top_frame, text="Process", command=self.run_ai_in_thread).pack(side=tk.LEFT, padx=5)
+        
+        # --- System Prompt ---
+        system_prompt_key = "system_prompt"
+        if provider_name == "Anthropic AI": system_prompt_key = "system"
+        elif provider_name == "Cohere AI": system_prompt_key = "preamble"
+        
+        system_frame = ttk.Frame(parent)
+        system_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        ttk.Label(system_frame, text="System Message:").pack(side=tk.LEFT, anchor='n', padx=(0,5))
+        system_prompt_text = scrolledtext.ScrolledText(system_frame, height=3, width=50, wrap=tk.WORD)
+        system_prompt_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        system_prompt_text.insert("1.0", settings.get(system_prompt_key, "You are a helpful assistant."))
+        system_prompt_text.bind("<KeyRelease>", self.on_tool_setting_change)
+        self.ai_widgets[f"{provider_name}_system_prompt"] = system_prompt_text
+        self.ai_widgets[f"{provider_name}_system_prompt_key"] = system_prompt_key
+
+        # --- Parameters ---
+        params_config = self._get_ai_params_config(provider_name)
+        if not params_config: return
+        
+        params_notebook = ttk.Notebook(parent)
+        params_notebook.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        sampling_frame = ttk.Frame(params_notebook, padding=5)
+        params_notebook.add(sampling_frame, text="Sampling")
+        
+        content_frame = ttk.Frame(params_notebook, padding=5)
+        params_notebook.add(content_frame, text="Content Control")
+
+        self.ai_widgets[f"{provider_name}_params"] = {}
+        
+        s_row, c_row = 0, 0
+        for name, config in params_config.items():
+            frame = sampling_frame if config['tab'] == 'sampling' else content_frame
+            row = s_row if config['tab'] == 'sampling' else c_row
+            
+            var = self._create_parameter_widget(frame, name, config, settings.get(name), row)
+            var.trace_add("write", self.on_tool_setting_change)
+            self.ai_widgets[f"{provider_name}_params"][name] = var
+            
+            if config['tab'] == 'sampling': s_row += 1
+            else: c_row += 1
+    
+    def _get_ai_params_config(self, provider_name):
+        """Returns the parameter configuration for a given AI provider."""
+        configs = {
+            "Google AI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "topP": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Cumulative probability threshold for token selection."},
+                "topK": {"tab": "sampling", "type": "entry", "tip": "Number of top tokens to consider for sampling."},
+                "maxOutputTokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens in the response."},
+                "candidateCount": {"tab": "content", "type": "entry", "tip": "Number of response variations to generate (1-8)."},
+                "stopSequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+            },
+            "Anthropic AI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Cumulative probability threshold for token selection."},
+                "top_k": {"tab": "sampling", "type": "entry", "tip": "Number of top tokens to consider for sampling."},
+                "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens in the response."},
+                "stop_sequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+            },
+            "OpenAI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Nucleus sampling threshold."},
+                "seed": {"tab": "sampling", "type": "entry", "tip": "Integer for reproducible outputs (Beta)."},
+                "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens in the response."},
+                "frequency_penalty": {"tab": "content", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes repeating tokens."},
+                "presence_penalty": {"tab": "content", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes introducing new tokens."},
+                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},
+                "response_format": {"tab": "content", "type": "combo", "values": ["text", "json_object"], "tip": "Force JSON output."}
+            },
+            "Cohere AI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Top-p/nucleus sampling threshold."},
+                "k": {"tab": "sampling", "type": "entry", "tip": "Top-k sampling (0-500)."},
+                "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens in the response."},
+                "frequency_penalty": {"tab": "content", "type": "scale", "range": (0.0, 1.0), "res": 0.1, "tip": "Reduces repetition."},
+                "presence_penalty": {"tab": "content", "type": "scale", "range": (0.0, 1.0), "res": 0.1, "tip": "Encourages new topics."},
+                "stop_sequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},
+                "citation_quality": {"tab": "content", "type": "combo", "values": ["accurate", "fast"], "tip": "Citation quality vs. speed."}
+            },
+            "HuggingFace AI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Nucleus sampling threshold."},
+                "seed": {"tab": "sampling", "type": "entry", "tip": "Integer for reproducible outputs."},
+                "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens in the response."},
+                "stop_sequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+            },
+            "Groq AI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Nucleus sampling threshold."},
+                "seed": {"tab": "sampling", "type": "entry", "tip": "Integer for reproducible outputs."},
+                "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens in the response."},
+                "frequency_penalty": {"tab": "content", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes repeating tokens."},
+                "presence_penalty": {"tab": "content", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes introducing new tokens."},
+                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},
+                "response_format": {"tab": "content", "type": "combo", "values": ["text", "json_object"], "tip": "Force JSON output."}
+            },
+             "OpenRouterAI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Nucleus sampling threshold."},
+                "top_k": {"tab": "sampling", "type": "entry", "tip": "Top-k sampling (0=disabled)."},
+                "seed": {"tab": "sampling", "type": "entry", "tip": "Integer for reproducible outputs."},
+                "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens in the response."},
+                "frequency_penalty": {"tab": "content", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes repeating tokens."},
+                "presence_penalty": {"tab": "content", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes introducing new tokens."},
+                "repetition_penalty": {"tab": "content", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Penalizes repeating tokens (1.0 = none)."},
+                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+            }
+        }
+        return configs.get(provider_name, {})
+
+    def _create_parameter_widget(self, parent, name, config, current_value, row):
+        """Creates a label and an appropriate widget for a given AI parameter."""
+        var = tk.StringVar(value=str(current_value))
+        
+        lbl = ttk.Label(parent, text=f"{name}:")
+        lbl.grid(row=row, column=0, sticky='w', padx=5, pady=2)
+        self.Tooltip(lbl, config['tip'])
+        
+        widget_type = config['type']
+        if widget_type == 'scale':
+            start, end = config['range']
+            widget = ttk.Scale(parent, from_=start, to=end, orient='horizontal', variable=var,
+                               command=lambda v, v_var=var: v_var.set(f"{float(v):.2f}"))
+            # Display value next to scale
+            val_lbl = ttk.Label(parent, textvariable=var, width=5)
+            val_lbl.grid(row=row, column=2, sticky='w', padx=5)
+        elif widget_type == 'entry':
+            widget = ttk.Entry(parent, textvariable=var)
+        elif widget_type == 'combo':
+            widget = ttk.Combobox(parent, textvariable=var, values=config['values'], state='readonly')
+            if current_value not in config['values']: # Set a default if saved value is invalid
+                var.set(config['values'][0])
+
+        widget.grid(row=row, column=1, sticky='ew', padx=5, pady=2)
+        parent.grid_columnconfigure(1, weight=1)
+        return var
 
     def open_model_editor(self, provider_name):
         """Opens a Toplevel window to edit the model list for an AI provider."""
@@ -1010,7 +1208,23 @@ class PromeraAIApp(tk.Tk):
         if tool_name not in self.settings["tool_settings"]:
             self.settings["tool_settings"][tool_name] = {}
 
-        if tool_name == "Case Tool":
+        if tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI"]:
+            settings = self.settings["tool_settings"][tool_name]
+            if f"{tool_name}_api_key_var" in self.ai_widgets:
+                settings["API_KEY"] = self.ai_widgets[f"{tool_name}_api_key_var"].get()
+            if f"{tool_name}_model_var" in self.ai_widgets:
+                settings["MODEL"] = self.ai_widgets[f"{tool_name}_model_var"].get()
+            
+            system_prompt_widget = self.ai_widgets.get(f"{tool_name}_system_prompt")
+            system_prompt_key = self.ai_widgets.get(f"{tool_name}_system_prompt_key")
+            if system_prompt_widget and system_prompt_key:
+                settings[system_prompt_key] = system_prompt_widget.get("1.0", tk.END).strip()
+            
+            param_vars = self.ai_widgets.get(f"{tool_name}_params", {})
+            for key, var in param_vars.items():
+                settings[key] = var.get()
+
+        elif tool_name == "Case Tool":
             self.settings["tool_settings"][tool_name]["mode"] = self.case_mode_var.get()
             if hasattr(self, 'title_case_exclusions'):
                 self.settings["tool_settings"][tool_name]["exclusions"] = self.title_case_exclusions.get("1.0", tk.END).strip()
@@ -1043,12 +1257,6 @@ class PromeraAIApp(tk.Tk):
             self.settings["tool_settings"][tool_name]["symbols"] = self.pw_sym_var.get()
         elif tool_name == "URL Parser":
             self.settings["tool_settings"][tool_name]["ascii_decode"] = self.url_parser_decode_var.get()
-        elif tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI"]:
-            api_key_var = self.ai_widgets.get(f"{tool_name}_api_key_var")
-            model_var = self.ai_widgets.get(f"{tool_name}_model_var")
-            if api_key_var and model_var:
-                self.settings["tool_settings"][tool_name]["API_KEY"] = api_key_var.get()
-                self.settings["tool_settings"][tool_name]["MODEL"] = model_var.get()
         elif tool_name == "Diff Viewer":
             if "Diff Viewer" not in self.settings["tool_settings"]:
                 self.settings["tool_settings"]["Diff Viewer"] = {}
@@ -1059,7 +1267,7 @@ class PromeraAIApp(tk.Tk):
         
         self.save_settings()
         self.after(10, self.update_all_stats)
-
+        
     def browse_export_path(self):
         """Opens a dialog to choose an export directory."""
         path = filedialog.askdirectory(initialdir=self.export_path_var.get())
@@ -1552,7 +1760,6 @@ class PromeraAIApp(tk.Tk):
         tool_name = self.tool_var.get()
         settings = self.settings["tool_settings"].get(tool_name, {})
         api_key = settings.get("API_KEY")
-        model = settings.get("MODEL")
         
         active_input_tab = self.input_tabs[self.input_notebook.index(self.input_notebook.select())]
         prompt = active_input_tab.text.get("1.0", tk.END).strip()
@@ -1564,59 +1771,169 @@ class PromeraAIApp(tk.Tk):
             self.after(0, self.update_output_text, "Error: Input text cannot be empty.")
             return
         
-        self.logger.info(f"Submitting prompt to {tool_name} with model {model}")
+        self.logger.info(f"Submitting prompt to {tool_name} with model {settings.get('MODEL')}")
 
+        # --- HuggingFace (uses its own client) ---
         if tool_name == "HuggingFace AI":
             if not HUGGINGFACE_AVAILABLE:
                 self.after(0, self.update_output_text, "Error: huggingface_hub library not found. Please install it.")
                 return
             try:
                 client = InferenceClient(token=api_key)
-                messages = [{"role": "user", "content": prompt}]
-                response_obj = client.chat_completion(messages=messages, model=model, max_tokens=4096)
+                messages = []
+                system_prompt = settings.get("system_prompt", "").strip()
+                if system_prompt: messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                params = {"messages": messages, "model": settings.get("MODEL")}
+                
+                # Helper function to safely add params
+                def add_param_hf(key, p_type):
+                    val_str = str(settings.get(key, '')).strip()
+                    if val_str:
+                        try:
+                            converted_val = p_type(val_str)
+                            if converted_val:  # Excludes empty strings, 0, and 0.0
+                                params[key] = converted_val
+                        except (ValueError, TypeError):
+                            self.logger.warning(f"Could not convert {key} value '{val_str}' to {p_type}")
+
+                # FIX: Only add parameters that are explicitly supported by chat_completion
+                add_param_hf("max_tokens", int)
+                add_param_hf("seed", int)
+                add_param_hf("temperature", float)
+                add_param_hf("top_p", float)
+                
+                # The parameters 'top_k' and 'repetition_penalty' are not direct arguments
+                # for the chat_completion method and were causing TypeErrors.
+                # They are removed from this call. For some models, these might be
+                # available under a nested 'parameters' dictionary, but for now,
+                # removing them ensures compatibility with the client's method signature.
+                
+                # The following lines were removed as they caused the error:
+                # add_param_hf("top_k", int)
+                # add_param_hf("repetition_penalty", float)
+
+                stop_seq_str = str(settings.get("stop_sequences", '')).strip()
+                if stop_seq_str:
+                    # Note: The parameter is often 'stop', but we'll keep 'stop_sequences'
+                    # if the client is expected to handle it. Given the other errors,
+                    # sticking to a minimal set of confirmed parameters is safer.
+                    params["stop"] = [s.strip() for s in stop_seq_str.split(',')]
+
+                self.logger.debug(f"HuggingFace payload: {json.dumps(params, indent=2, default=str)}")
+                response_obj = client.chat_completion(**params)
                 self.after(0, self.update_output_text, response_obj.choices[0].message.content)
             except HfHubHTTPError as e:
                 error_msg = f"HuggingFace API Error: {e.response.status_code} - {e.response.reason}\n\n{e.response.text}"
                 if e.response.status_code == 401: error_msg += "\n\nThis means your API token is invalid or expired."
-                elif e.response.status_code == 403: error_msg += f"\n\nThis is a 'gated model'. You MUST accept the terms on the model page:\nhttps://huggingface.co/{model}"
+                elif e.response.status_code == 403: error_msg += f"\n\nThis is a 'gated model'. You MUST accept the terms on the model page:\nhttps://huggingface.co/{settings.get('MODEL')}"
                 self.logger.error(error_msg, exc_info=True)
                 self.after(0, self.update_output_text, error_msg)
             except Exception as e:
                 self.logger.error(f"HuggingFace Client Error: {e}", exc_info=True)
                 self.after(0, self.update_output_text, f"HuggingFace Client Error: {e}")
             return
-
+            
+        # --- Other Providers (REST API) ---
         url, payload, headers = "", {}, {}
         try:
+            # --- Helper to safely add params ---
+            def add_param(p_dict, key, p_type):
+                val_str = str(settings.get(key, '')).strip()
+                if val_str:
+                    try:
+                        converted_val = p_type(val_str)
+                        if converted_val: # Excludes empty strings, 0, and 0.0
+                            p_dict[key] = converted_val
+                    except (ValueError, TypeError):
+                        self.logger.warning(f"Could not convert {key} value '{val_str}' to {p_type}")
+            
+            # --- Get URL and Headers ---
             if tool_name == "Google AI":
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.get('MODEL')}:generateContent?key={api_key}"
                 headers = {'Content-Type': 'application/json'}
             elif tool_name == "Anthropic AI":
                 url = "https://api.anthropic.com/v1/messages"
-                payload = {"model": model, "max_tokens": 4096, "messages": [{"role": "user", "content": prompt}]}
                 headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
             elif tool_name == "OpenAI":
                 url = "https://api.openai.com/v1/chat/completions"
-                payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             elif tool_name == "Groq AI":
                 url = "https://api.groq.com/openai/v1/chat/completions"
-                payload = {"model": model, "messages": [{"role": "user", "content": prompt}]}
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             elif tool_name == "OpenRouterAI":
                 url = "https://openrouter.ai/api/v1/chat/completions"
-                payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096}
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             elif tool_name == "Cohere AI":
                 url = "https://api.cohere.com/v1/chat"
-                payload = {"model": model, "message": prompt}
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        except Exception as e:
+            
+            # --- Build Payload ---
+            if tool_name == "Google AI":
+                system_prompt = settings.get("system_prompt", "").strip()
+                full_prompt = f"{system_prompt}\n\n{prompt}".strip() if system_prompt else prompt
+                payload = {"contents": [{"parts": [{"text": full_prompt}], "role": "user"}]}
+                gen_config = {}
+                add_param(gen_config, 'temperature', float)
+                add_param(gen_config, 'topP', float)
+                add_param(gen_config, 'topK', int)
+                add_param(gen_config, 'maxOutputTokens', int)
+                add_param(gen_config, 'candidateCount', int)
+                stop_seq_str = str(settings.get('stopSequences', '')).strip()
+                if stop_seq_str: gen_config['stopSequences'] = [s.strip() for s in stop_seq_str.split(',')]
+                if gen_config: payload['generationConfig'] = gen_config
+            
+            elif tool_name == "Anthropic AI":
+                payload = {"model": settings.get("MODEL"), "messages": [{"role": "user", "content": prompt}]}
+                if settings.get("system"): payload["system"] = settings.get("system")
+                add_param(payload, 'max_tokens', int)
+                add_param(payload, 'temperature', float)
+                add_param(payload, 'top_p', float)
+                add_param(payload, 'top_k', int)
+                stop_seq_str = str(settings.get('stop_sequences', '')).strip()
+                if stop_seq_str: payload['stop_sequences'] = [s.strip() for s in stop_seq_str.split(',')]
+
+            elif tool_name == "Cohere AI":
+                payload = {"model": settings.get("MODEL"), "message": prompt}
+                if settings.get("preamble"): payload["preamble"] = settings.get("preamble")
+                add_param(payload, 'temperature', float)
+                add_param(payload, 'p', float)
+                add_param(payload, 'k', int)
+                add_param(payload, 'max_tokens', int)
+                add_param(payload, 'frequency_penalty', float)
+                add_param(payload, 'presence_penalty', float)
+                if settings.get('citation_quality'): payload['citation_quality'] = settings['citation_quality']
+                stop_seq_str = str(settings.get('stop_sequences', '')).strip()
+                if stop_seq_str: payload['stop_sequences'] = [s.strip() for s in stop_seq_str.split(',')]
+
+            elif tool_name in ["OpenAI", "Groq AI", "OpenRouterAI"]:
+                payload = {"model": settings.get("MODEL"), "messages": []}
+                system_prompt = settings.get("system_prompt", "").strip()
+                if system_prompt: payload["messages"].append({"role": "system", "content": system_prompt})
+                payload["messages"].append({"role": "user", "content": prompt})
+
+                add_param(payload, 'temperature', float)
+                add_param(payload, 'top_p', float)
+                add_param(payload, 'max_tokens', int)
+                add_param(payload, 'frequency_penalty', float)
+                add_param(payload, 'presence_penalty', float)
+                add_param(payload, 'seed', int)
+                
+                stop_str = str(settings.get('stop', '')).strip()
+                if stop_str: payload['stop'] = [s.strip() for s in stop_str.split(',')]
+                
+                if settings.get("response_format") == "json_object": payload["response_format"] = {"type": "json_object"}
+                # OpenRouter specific
+                add_param(payload, 'top_k', int)
+                add_param(payload, 'repetition_penalty', float)
+
+        except Exception as e: # Catch any potential errors during payload creation
             self.logger.error(f"Error configuring API for {tool_name}: {e}")
             self.after(0, self.update_output_text, f"Error configuring API request: {e}")
             return
-            
+        
+        self.logger.debug(f"{tool_name} payload: {json.dumps(payload, indent=2)}")
         for i in range(AppConfig.MAX_RETRIES):
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=60)
@@ -1647,12 +1964,12 @@ class PromeraAIApp(tk.Tk):
                 self.after(0, self.update_output_text, f"Network Error: {e}")
                 return
             except (KeyError, IndexError, json.JSONDecodeError) as e:
-                self.logger.error(f"Error parsing AI response: {e}\n\nResponse:\n{response.text}")
-                self.after(0, self.update_output_text, f"Error parsing AI response: {e}\n\nResponse:\n{response.text}")
+                self.logger.error(f"Error parsing AI response: {e}\n\nResponse:\n{response.text if 'response' in locals() else 'N/A'}")
+                self.after(0, self.update_output_text, f"Error parsing AI response: {e}\n\nResponse:\n{response.text if 'response' in locals() else 'N/A'}")
                 return
 
         self.after(0, self.update_output_text, "Error: Max retries exceeded. The API is still busy.")
-
+        
     def load_diff_viewer_content(self):
         """Copies content from the main input/output tabs to the diff viewer tabs."""
         self.logger.info("Loading content into Diff Viewer.")
@@ -1897,3 +2214,5 @@ if __name__ == "__main__":
         print("Please install them using: pip install pyaudio numpy")
     app = PromeraAIApp()
     app.mainloop()
+
+
