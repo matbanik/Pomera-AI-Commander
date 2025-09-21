@@ -35,10 +35,10 @@ OPTIONS = {
         'CFBundleName': APP_NAME,
         'CFBundleDisplayName': APP_NAME,
         'CFBundleGetInfoString': "A comprehensive Text Processing GUI application.",
-        'CFBundleIdentifier': "com.yourdomain.promeraai",
+        'CFBundleIdentifier': "info.matbanik.promeraai",
         'CFBundleVersion': VERSION,
         'CFBundleShortVersionString': VERSION,
-        'NSHumanReadableCopyright': u"Copyright © 2025, Your Name Here. All Rights Reserved."
+        'NSHumanReadableCopyright': u"Copyright © 2025, Mat banik. All Rights Reserved."
     },
 }
 

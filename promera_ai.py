@@ -750,27 +750,24 @@ class PromeraAIApp(tk.Tk):
         except (tk.TclError, IndexError):
             return
 
-        active_input_tab.text.vbar.config(command=self._sync_diff_scroll_from_input)
-        active_output_tab.text.vbar.config(command=self._sync_diff_scroll_from_output)
+        active_input_tab.text.vbar.config(command=self._sync_diff_scroll)
+        active_output_tab.text.vbar.config(command=self._sync_diff_scroll)
 
         for tab in [active_input_tab, active_output_tab]:
             tab.text.bind("<MouseWheel>", self._on_diff_mousewheel)
             tab.text.bind("<Button-4>", self._on_diff_mousewheel)
             tab.text.bind("<Button-5>", self._on_diff_mousewheel)
 
-    def _sync_diff_scroll_from_input(self, *args):
-        """Syncs output scroll from input scroll."""
-        active_output_tab = self.diff_output_tabs[self.diff_output_notebook.index("current")]
-        active_output_tab.text.yview(*args)
-        active_output_tab._on_text_modified()
-        self.diff_input_tabs[self.diff_input_notebook.index("current")]._on_text_modified()
-
-    def _sync_diff_scroll_from_output(self, *args):
-        """Syncs input scroll from output scroll."""
+    def _sync_diff_scroll(self, *args):
+        """Syncs both diff viewer text widgets when one's scrollbar is used."""
         active_input_tab = self.diff_input_tabs[self.diff_input_notebook.index("current")]
+        active_output_tab = self.diff_output_tabs[self.diff_output_notebook.index("current")]
+        
         active_input_tab.text.yview(*args)
+        active_output_tab.text.yview(*args)
+        
         active_input_tab._on_text_modified()
-        self.diff_output_tabs[self.diff_output_notebook.index("current")]._on_text_modified()
+        active_output_tab._on_text_modified()
 
     def _on_diff_mousewheel(self, event):
         """Handles mouse wheel scrolling over either diff text widget."""
@@ -2214,5 +2211,3 @@ if __name__ == "__main__":
         print("Please install them using: pip install pyaudio numpy")
     app = PromeraAIApp()
     app.mainloop()
-
-
