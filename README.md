@@ -34,6 +34,9 @@ PAC is a powerful, cross-platform desktop GUI for text manipulation. It features
 * **Persistent State**: The application saves all tab content, settings, and window size on exit.
 
 ![PAC Screenshot](./PAC.jpg)
+![PAC Screenshot](./PACF.jpg)
+![PAC Screenshot](./PACL.jpg)
+![PAC Screenshot](./FILE.jpg)
 
 ## 🚀 Getting Started
 
@@ -48,7 +51,7 @@ To run the application from the source code, follow these steps.
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/your-username/promera_ai.git](https://github.com/your-username/promera_ai.git)
+    git clone [https://github.com/matbanik/Pomera-AI-Commander.git](https://github.com/matbanik/Pomera-AI-Commander.git)
     cd promera_ai
     ```
 

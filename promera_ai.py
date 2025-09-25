@@ -184,7 +184,7 @@ class TextWithLineNumbers(tk.Frame):
     """A custom widget that combines a Text widget with a line number sidebar."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.text = scrolledtext.ScrolledText(self, wrap=tk.WORD, height=15, width=50)
+        self.text = scrolledtext.ScrolledText(self, wrap=tk.WORD, height=15, width=50, undo=True)
         self.linenumbers = tk.Canvas(self, width=40, bg='#f0f0f0', highlightthickness=0)
         
         self.linenumbers.pack(side=tk.LEFT, fill=tk.Y)
@@ -314,12 +314,71 @@ class PromeraAIApp(tk.Tk):
             self.apply_tool()
         elif self.tool_var.get() == "Diff Viewer":
             self.central_frame.grid_remove()
-            self.diff_frame.grid(row=1, column=0, sticky="nsew", pady=5)
+            self.diff_frame.grid(row=0, column=0, sticky="nsew", pady=5)
             self.update_tool_settings_ui()
             self.load_diff_viewer_content()
             self.run_diff_viewer()
         
+        # Set up global undo/redo key bindings
+        self.bind_all("<Control-z>", self.global_undo)
+        self.bind_all("<Control-y>", self.global_redo)
+        self.bind_all("<Control-Shift-Z>", self.global_redo)  # Alternative redo shortcut
+        
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def global_undo(self, event=None):
+        """Global undo handler that works on the currently focused text widget."""
+        focused_widget = self.focus_get()
+        
+        # Check if the focused widget is a Text widget or ScrolledText widget
+        if isinstance(focused_widget, (tk.Text, scrolledtext.ScrolledText)):
+            try:
+                focused_widget.edit_undo()
+                return "break"  # Prevent default handling
+            except tk.TclError:
+                # No undo information available
+                pass
+        
+        # If not a direct text widget, check if it's part of a TextWithLineNumbers
+        parent = focused_widget
+        while parent and parent != self:
+            if hasattr(parent, 'text') and isinstance(parent.text, (tk.Text, scrolledtext.ScrolledText)):
+                try:
+                    parent.text.edit_undo()
+                    return "break"
+                except tk.TclError:
+                    pass
+                break
+            parent = parent.master if hasattr(parent, 'master') else None
+        
+        return None
+
+    def global_redo(self, event=None):
+        """Global redo handler that works on the currently focused text widget."""
+        focused_widget = self.focus_get()
+        
+        # Check if the focused widget is a Text widget or ScrolledText widget
+        if isinstance(focused_widget, (tk.Text, scrolledtext.ScrolledText)):
+            try:
+                focused_widget.edit_redo()
+                return "break"  # Prevent default handling
+            except tk.TclError:
+                # No redo information available
+                pass
+        
+        # If not a direct text widget, check if it's part of a TextWithLineNumbers
+        parent = focused_widget
+        while parent and parent != self:
+            if hasattr(parent, 'text') and isinstance(parent.text, (tk.Text, scrolledtext.ScrolledText)):
+                try:
+                    parent.text.edit_redo()
+                    return "break"
+                except tk.TclError:
+                    pass
+                break
+            parent = parent.master if hasattr(parent, 'master') else None
+        
+        return None
 
     def load_settings(self):
         """Loads settings from the 'settings.json' file."""
@@ -485,17 +544,16 @@ class PromeraAIApp(tk.Tk):
 
     def create_widgets(self):
         """Creates and arranges all the GUI widgets in the main window."""
+        # Create menu bar
+        self.create_menu_bar()
+        
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
-        main_frame.rowconfigure(1, weight=1)
+        main_frame.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
 
-        settings_frame = ttk.LabelFrame(main_frame, text="Settings", padding="10")
-        settings_frame.grid(row=0, column=0, sticky="ew", pady=5)
-        self.create_settings_widgets(settings_frame)
-
         self.central_frame = ttk.Frame(main_frame, padding="10")
-        self.central_frame.grid(row=1, column=0, sticky="nsew", pady=5)
+        self.central_frame.grid(row=0, column=0, sticky="nsew", pady=5)
         self.central_frame.grid_columnconfigure(0, weight=1)
         self.central_frame.grid_columnconfigure(1, weight=1)
         self.central_frame.grid_rowconfigure(1, weight=1)
@@ -505,31 +563,59 @@ class PromeraAIApp(tk.Tk):
 
         self.create_diff_viewer(main_frame)
 
-        tool_frame = ttk.LabelFrame(main_frame, text="Text Processing Tool", padding="10")
+        # Add separator
+        separator = ttk.Separator(main_frame, orient='horizontal')
+        separator.grid(row=1, column=0, sticky="ew", pady=10)
+
+        tool_frame = ttk.Frame(main_frame, padding="10")
         tool_frame.grid(row=2, column=0, sticky="ew", pady=5)
         self.create_tool_widgets(tool_frame)
+        
+        # Initialize console window as None (will be created when needed)
+        self.console_window = None
 
-        console_frame = ttk.LabelFrame(main_frame, text="Console Log", padding="10")
-        console_frame.grid(row=3, column=0, sticky="ew", pady=5)
-        self.create_console_widgets(console_frame)
-
-    def create_settings_widgets(self, parent):
-        """Creates widgets for the settings section."""
-        ttk.Label(parent, text="Export Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+    def create_menu_bar(self):
+        """Creates the menu bar with File, Settings, and Help menus."""
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+        
+        # Initialize export path variable
         self.export_path_var = tk.StringVar(value=self.settings.get("export_path", ""))
-        ttk.Entry(parent, textvariable=self.export_path_var, width=50).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        ttk.Button(parent, text="Browse...", command=self.browse_export_path).grid(row=0, column=2, padx=5, pady=5)
-
-        ttk.Button(parent, text="Export As PDF", command=lambda: self.export_file("pdf")).grid(row=0, column=3, padx=5, pady=5)
-        ttk.Button(parent, text="Export As TXT", command=lambda: self.export_file("txt")).grid(row=0, column=4, padx=5, pady=5)
-        ttk.Button(parent, text="Export As DOCX", command=lambda: self.export_file("docx")).grid(row=0, column=5, padx=5, pady=5)
-
-        ttk.Label(parent, text="Debug Level:").grid(row=0, column=6, padx=5, pady=5, sticky="w")
-        debug_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        self.log_level_combo = ttk.Combobox(parent, textvariable=self.log_level, values=debug_levels, state="readonly")
-        self.log_level_combo.grid(row=0, column=7, padx=5, pady=5)
-        self.log_level_combo.bind("<<ComboboxSelected>>", self.update_log_level)
-        parent.grid_columnconfigure(1, weight=1)
+        
+        # File Menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Export Location", command=self.browse_export_path)
+        file_menu.add_separator()
+        
+        # Export Selected Output submenu
+        export_output_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Export Selected Output as", menu=export_output_menu)
+        export_output_menu.add_command(label="CSV", command=lambda: self.export_file("csv"))
+        export_output_menu.add_command(label="PDF", command=lambda: self.export_file("pdf"))
+        export_output_menu.add_command(label="TXT", command=lambda: self.export_file("txt"))
+        export_output_menu.add_command(label="DOCX", command=lambda: self.export_file("docx"))
+        
+        # Export Selected Input submenu
+        export_input_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Export Selected Input as", menu=export_input_menu)
+        export_input_menu.add_command(label="CSV", command=lambda: self.export_input_file("csv"))
+        export_input_menu.add_command(label="PDF", command=lambda: self.export_input_file("pdf"))
+        export_input_menu.add_command(label="TXT", command=lambda: self.export_input_file("txt"))
+        export_input_menu.add_command(label="DOCX", command=lambda: self.export_input_file("docx"))
+        
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.on_closing)
+        
+        # Settings Menu
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        settings_menu.add_command(label="Console Log", command=self.show_console_log)
+        
+        # Help Menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="GitHub", command=lambda: webbrowser.open_new("https://github.com/matbanik/Pomera-AI-Commander"))
 
     def create_input_widgets(self, parent):
         """Creates widgets for the input text section."""
@@ -540,8 +626,8 @@ class PromeraAIApp(tk.Tk):
 
         title_row = ttk.Frame(input_frame)
         title_row.grid(row=0, column=0, sticky="w")
-        ttk.Label(title_row, text="Text Input", font=("Helvetica", 12, "bold")).pack(side=tk.LEFT)
-        ttk.Button(title_row, text="Clear All Input Tabs", command=self.clear_all_input_tabs).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Label(title_row, text="Input", font=("Helvetica", 12, "bold")).pack(side=tk.LEFT)
+        ttk.Button(title_row, text="🗑️", command=self.clear_all_input_tabs, width=3).pack(side=tk.LEFT, padx=(10, 0))
         
         self.input_notebook = ttk.Notebook(input_frame)
         self.input_notebook.grid(row=1, column=0, sticky="nsew")
@@ -567,9 +653,21 @@ class PromeraAIApp(tk.Tk):
 
         title_row = ttk.Frame(output_frame)
         title_row.grid(row=0, column=0, sticky="w")
-        ttk.Button(title_row, text="Copy to Input Tab ?", command=self.prompt_copy_to_input_tab).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(title_row, text="Copy to Clipboard", command=self.copy_to_clipboard).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(title_row, text="Clear All Output Tabs", command=self.clear_all_output_tabs).pack(side=tk.LEFT)
+        ttk.Label(title_row, text="Output", font=("Helvetica", 12, "bold")).pack(side=tk.LEFT)
+        
+        # Create dropdown for "Send to Input"
+        self.send_to_input_var = tk.StringVar(value="Send to Input")
+        send_to_input_menu = ttk.Menubutton(title_row, textvariable=self.send_to_input_var, direction="below")
+        send_to_input_menu.pack(side=tk.LEFT, padx=(10, 6))
+        
+        # Create the dropdown menu
+        dropdown_menu = tk.Menu(send_to_input_menu, tearoff=0)
+        send_to_input_menu.config(menu=dropdown_menu)
+        for i in range(AppConfig.TAB_COUNT):
+            dropdown_menu.add_command(label=f"Tab {i+1}", command=lambda tab=i: self.copy_to_specific_input_tab(tab, None))
+        
+        ttk.Button(title_row, text="📋", command=self.copy_to_clipboard, width=3).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(title_row, text="🗑️", command=self.clear_all_output_tabs, width=3).pack(side=tk.LEFT)
 
         self.output_notebook = ttk.Notebook(output_frame)
         self.output_notebook.grid(row=1, column=0, sticky="nsew")
@@ -626,53 +724,62 @@ class PromeraAIApp(tk.Tk):
         ]
         self.filtered_tool_options = self.tool_options.copy()
         
-        self.tool_menu = ttk.Combobox(parent, textvariable=self.tool_var, values=self.filtered_tool_options, state="normal", font=("Arial", 12))
+        # Create custom dropdown that opens upwards
+        self.tool_menu = ttk.Menubutton(parent, textvariable=self.tool_var, direction="above", width=25)
         self.tool_menu.pack(side=tk.LEFT, padx=5)
-        self.tool_menu.bind("<<ComboboxSelected>>", self.on_tool_selected)
-        self.tool_menu.bind("<KeyRelease>", self.on_tool_search)
-        self.tool_menu.bind("<FocusOut>", self.on_tool_focus_out)
+        
+        # Create the dropdown menu
+        self.tool_dropdown_menu = tk.Menu(self.tool_menu, tearoff=0)
+        self.tool_menu.config(menu=self.tool_dropdown_menu)
+        
+        # Populate the dropdown menu with all tools
+        self.update_tool_dropdown_menu()
 
         self.tool_settings_frame = ttk.Frame(parent)
         self.tool_settings_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
         self.update_tool_settings_ui()
 
-    def on_tool_search(self, event=None):
-        """Filters tool options based on typed text."""
-        current_text = self.tool_menu.get()
-        search_text = current_text.lower()
+    def update_tool_dropdown_menu(self):
+        """Updates the tool dropdown menu with all available tools."""
+        # Clear existing menu items
+        self.tool_dropdown_menu.delete(0, tk.END)
         
-        if not search_text:
-            self.filtered_tool_options = self.tool_options.copy()
-        else:
-            self.filtered_tool_options = [
-                tool for tool in self.tool_options
-                if any(search_text in word.lower() for word in tool.split())
-            ]
-        self.tool_menu['values'] = self.filtered_tool_options
+        # Add all tool options to the menu
+        for tool in self.tool_options:
+            self.tool_dropdown_menu.add_command(
+                label=tool, 
+                command=lambda t=tool: self.select_tool(t)
+            )
 
-    def on_tool_focus_out(self, event=None):
-        """Handles when the tool combobox loses focus."""
-        current_value = self.tool_menu.get()
-        if current_value and current_value not in self.tool_options:
-            for tool in self.tool_options:
-                if tool.lower() == current_value.lower():
-                    self.tool_var.set(tool)
-                    self.on_tool_selected()
-                    return
-            for tool in self.tool_options:
-                if current_value.lower() in tool.lower():
-                    self.tool_var.set(tool)
-                    self.on_tool_selected()
-                    return
-            self.tool_var.set(self.settings.get("selected_tool", "Case Tool"))
+    def select_tool(self, tool_name):
+        """Selects a tool from the dropdown menu."""
+        self.tool_var.set(tool_name)
+        self.on_tool_selected()
+
+    def show_console_log(self):
+        """Shows the console log in a separate window."""
+        if self.console_window is not None and self.console_window.winfo_exists():
+            self.console_window.lift()
+            return
+            
+        self.console_window = tk.Toplevel(self)
+        self.console_window.title("Console Log")
+        self.console_window.geometry("800x400")
         
-        self.filtered_tool_options = self.tool_options.copy()
-        self.tool_menu['values'] = self.filtered_tool_options
-
-    def create_console_widgets(self, parent):
-        """Creates the console log text widget."""
-        self.console_log = scrolledtext.ScrolledText(parent, wrap=tk.WORD, state="disabled", height=5)
-        self.console_log.pack(fill=tk.BOTH, expand=True)
+        # Create frame for controls
+        control_frame = ttk.Frame(self.console_window)
+        control_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Debug level dropdown
+        ttk.Label(control_frame, text="Log Level:").pack(side=tk.LEFT)
+        debug_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        self.log_level_combo = ttk.Combobox(control_frame, textvariable=self.log_level, values=debug_levels, state="readonly")
+        self.log_level_combo.pack(side=tk.LEFT, padx=(5, 0))
+        self.log_level_combo.bind("<<ComboboxSelected>>", self.update_log_level)
+        
+        # Console log text widget
+        self.console_log = scrolledtext.ScrolledText(self.console_window, wrap=tk.WORD, state="disabled", undo=True)
+        self.console_log.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         class TextHandler(logging.Handler):
             def __init__(self, text_widget):
@@ -682,15 +789,24 @@ class PromeraAIApp(tk.Tk):
             def emit(self, record):
                 msg = self.format(record)
                 def append():
-                    self.text_widget.configure(state='normal')
-                    self.text_widget.insert(tk.END, msg + '\n')
-                    self.text_widget.configure(state='disabled')
-                    self.text_widget.yview(tk.END)
+                    if self.text_widget.winfo_exists():
+                        self.text_widget.configure(state='normal')
+                        self.text_widget.insert(tk.END, msg + '\n')
+                        self.text_widget.configure(state='disabled')
+                        self.text_widget.yview(tk.END)
                 self.text_widget.after(0, append)
 
+        # Remove existing text handler if it exists
+        for handler in self.logger.handlers[:]:
+            if isinstance(handler, type(self).TextHandler if hasattr(type(self), 'TextHandler') else type(None)):
+                self.logger.removeHandler(handler)
+        
         text_handler = TextHandler(self.console_log)
         text_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(text_handler)
+        
+        # Store the handler class for future reference
+        type(self).TextHandler = TextHandler
 
     def create_diff_viewer(self, parent):
         """Creates the diff viewer widgets, initially hidden."""
@@ -702,13 +818,25 @@ class PromeraAIApp(tk.Tk):
         input_title_row = ttk.Frame(self.diff_frame)
         input_title_row.grid(row=0, column=0, sticky="w")
         ttk.Label(input_title_row, text="Input", font=("Helvetica", 12, "bold")).pack(side=tk.LEFT)
-        ttk.Button(input_title_row, text="Clear All Input Tabs", command=self.clear_all_input_tabs).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(input_title_row, text="🗑️", command=self.clear_all_input_tabs, width=3).pack(side=tk.LEFT, padx=(10, 0))
         
         output_title_row = ttk.Frame(self.diff_frame)
         output_title_row.grid(row=0, column=1, sticky="w")
-        ttk.Button(output_title_row, text="Copy to Input Tab ?", command=self.prompt_copy_to_input_tab).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(output_title_row, text="Copy to Clipboard", command=self.copy_to_clipboard).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(output_title_row, text="Clear All Output Tabs", command=self.clear_all_output_tabs).pack(side=tk.LEFT)
+        ttk.Label(output_title_row, text="Output", font=("Helvetica", 12, "bold")).pack(side=tk.LEFT)
+        
+        # Create dropdown for "Send to Input" in diff viewer
+        self.diff_send_to_input_var = tk.StringVar(value="Send to Input")
+        diff_send_to_input_menu = ttk.Menubutton(output_title_row, textvariable=self.diff_send_to_input_var, direction="below")
+        diff_send_to_input_menu.pack(side=tk.LEFT, padx=(10, 6))
+        
+        # Create the dropdown menu for diff viewer
+        diff_dropdown_menu = tk.Menu(diff_send_to_input_menu, tearoff=0)
+        diff_send_to_input_menu.config(menu=diff_dropdown_menu)
+        for i in range(AppConfig.TAB_COUNT):
+            diff_dropdown_menu.add_command(label=f"Tab {i+1}", command=lambda tab=i: self.copy_to_specific_input_tab(tab, None))
+        
+        ttk.Button(output_title_row, text="📋", command=self.copy_to_clipboard, width=3).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(output_title_row, text="🗑️", command=self.clear_all_output_tabs, width=3).pack(side=tk.LEFT)
 
         self.diff_input_notebook = ttk.Notebook(self.diff_frame)
         self.diff_input_notebook.grid(row=1, column=0, sticky="nsew", padx=(0, 5))
@@ -797,7 +925,7 @@ class PromeraAIApp(tk.Tk):
 
         if tool_name == "Diff Viewer":
             self.central_frame.grid_remove()
-            self.diff_frame.grid(row=1, column=0, sticky="nsew", pady=5)
+            self.diff_frame.grid(row=0, column=0, sticky="nsew", pady=5)
             self.update_tool_settings_ui()
             self.load_diff_viewer_content()
             self.run_diff_viewer()
@@ -914,7 +1042,7 @@ class PromeraAIApp(tk.Tk):
 
         self.title_case_frame = ttk.Frame(parent)
         ttk.Label(self.title_case_frame, text="Exclusions (one per line):").pack(anchor="w")
-        self.title_case_exclusions = tk.Text(self.title_case_frame, height=5, width=20)
+        self.title_case_exclusions = tk.Text(self.title_case_frame, height=5, width=20, undo=True)
         self.title_case_exclusions.insert(tk.END, settings.get("exclusions", ""))
         self.title_case_exclusions.pack(side=tk.LEFT, padx=5)
         self.title_case_exclusions.bind("<KeyRelease>", self.on_tool_setting_change)
@@ -973,7 +1101,7 @@ class PromeraAIApp(tk.Tk):
         system_frame = ttk.Frame(parent)
         system_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         ttk.Label(system_frame, text="System Message:").pack(side=tk.LEFT, anchor='n', padx=(0,5))
-        system_prompt_text = scrolledtext.ScrolledText(system_frame, height=3, width=50, wrap=tk.WORD)
+        system_prompt_text = scrolledtext.ScrolledText(system_frame, height=3, width=50, wrap=tk.WORD, undo=True)
         system_prompt_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         system_prompt_text.insert("1.0", settings.get(system_prompt_key, "You are a helpful assistant."))
         system_prompt_text.bind("<KeyRelease>", self.on_tool_setting_change)
@@ -1120,7 +1248,7 @@ class PromeraAIApp(tk.Tk):
 
         ttk.Label(dialog, text="One model per line. The first line is the default.").pack(pady=(10, 2))
         
-        text_area = tk.Text(dialog, height=7, width=45)
+        text_area = tk.Text(dialog, height=7, width=45, undo=True)
         text_area.pack(pady=5, padx=10)
         
         current_models = self.settings["tool_settings"].get(provider_name, {}).get("MODELS_LIST", [])
@@ -1158,7 +1286,7 @@ class PromeraAIApp(tk.Tk):
         find_frame = ttk.Frame(controls_frame)
         find_frame.pack(fill=tk.X, pady=2)
         ttk.Label(find_frame, text="Find:").pack(side=tk.LEFT)
-        self.find_text_area = tk.Text(find_frame, height=2, width=30)
+        self.find_text_area = tk.Text(find_frame, height=2, width=30, undo=True)
         self.find_text_area.insert("1.0", settings.get("find", ""))
         self.find_text_area.pack(side=tk.LEFT, expand=True, fill=tk.X)
         self.find_mode_var = tk.StringVar(value=settings.get("mode", "Text"))
@@ -1169,7 +1297,7 @@ class PromeraAIApp(tk.Tk):
         replace_frame = ttk.Frame(controls_frame)
         replace_frame.pack(fill=tk.X, pady=2)
         ttk.Label(replace_frame, text="Replace:").pack(side=tk.LEFT)
-        self.replace_text_area = tk.Text(replace_frame, height=2, width=30)
+        self.replace_text_area = tk.Text(replace_frame, height=2, width=30, undo=True)
         self.replace_text_area.insert("1.0", settings.get("replace", ""))
         self.replace_text_area.pack(side=tk.LEFT, expand=True, fill=tk.X)
         
@@ -1336,50 +1464,74 @@ class PromeraAIApp(tk.Tk):
         
         self._after_id = self.after(AppConfig.DEBOUNCE_DELAY, self.apply_tool)
 
-    def prompt_copy_to_input_tab(self):
-        """Opens a confirmation window to select which input tab to copy to."""
-        dialog = tk.Toplevel(self)
-        dialog.title("Select Destination Tab")
-        
-        self.update_idletasks()
-        dialog_width, dialog_height = 650, 100
-        main_x, main_y, main_width, main_height = self.winfo_x(), self.winfo_y(), self.winfo_width(), self.winfo_height()
-        pos_x = main_x + (main_width // 2) - (dialog_width // 2)
-        pos_y = main_y + (main_height // 2) - (dialog_height // 2)
-        dialog.geometry(f"{dialog_width}x{dialog_height}+{pos_x}+{pos_y}")
-        dialog.transient(self)
-        dialog.grab_set()
+    def export_input_file(self, file_format):
+        """Exports the input text to the specified file format."""
+        active_input_tab = self.input_tabs[self.input_notebook.index(self.input_notebook.select())]
+        input_text = active_input_tab.text.get("1.0", tk.END)
+        export_path = self.export_path_var.get()
+        if not os.path.isdir(export_path):
+            messagebox.showerror("Export Error", "Invalid export path specified in settings.")
+            return
 
-        ttk.Label(dialog, text="Copy the current output to which input tab?").pack(pady=10)
+        filename = filedialog.asksaveasfilename(
+            initialdir=export_path,
+            title=f"Save Input as {file_format.upper()}",
+            defaultextension=f".{file_format}",
+            filetypes=[(f"{file_format.upper()} files", f"*.{file_format}"), ("All files", "*.*")]
+        )
+        if not filename: return
 
-        button_frame = ttk.Frame(dialog)
-        button_frame.pack(pady=5)
+        try:
+            if file_format == "txt":
+                with open(filename, "w", encoding="utf-8") as f: f.write(input_text)
+            elif file_format == "csv":
+                with open(filename, "w", encoding="utf-8", newline='') as f:
+                    writer = csv.writer(f)
+                    for line in input_text.splitlines():
+                        writer.writerow([line])
+            elif file_format == "pdf": self.export_to_pdf(filename, input_text)
+            elif file_format == "docx": self.export_to_docx(filename, input_text)
 
-        for i in range(AppConfig.TAB_COUNT):
-            btn = ttk.Button(button_frame, text=f"Tab {i+1}", 
-                             command=lambda target_tab=i: self.copy_to_specific_input_tab(target_tab, dialog))
-            btn.grid(row=0, column=i, padx=5, pady=5)
+            self.logger.info(f"Successfully exported input to {filename}")
+            messagebox.showinfo("Export Successful", f"Input file saved as {filename}")
+
+            if platform.system() == "Windows": os.startfile(filename)
+            elif platform.system() == "Darwin": subprocess.Popen(["open", filename])
+            else: subprocess.Popen(["xdg-open", filename])
+        except Exception as e:
+            self.logger.error(f"Failed to export input to {filename}: {e}")
+            messagebox.showerror("Export Error", f"An error occurred while exporting:\n{e}")
 
     def copy_to_specific_input_tab(self, target_tab_index, dialog):
         """Copies output to a specific input tab and closes the dialog."""
         if hasattr(self, 'diff_frame') and self.diff_frame.winfo_viewable():
             active_output_tab = self.diff_output_tabs[self.diff_output_notebook.index("current")]
+            destination_tab = self.diff_input_tabs[target_tab_index]
         else:
             active_output_tab = self.output_tabs[self.output_notebook.index("current")]
+            destination_tab = self.input_tabs[target_tab_index]
         
         output_text = active_output_tab.text.get("1.0", tk.END)
         
-        destination_tab = self.input_tabs[target_tab_index]
         destination_tab.text.delete("1.0", tk.END)
         destination_tab.text.insert("1.0", output_text)
 
         self.logger.info(f"Output copied to Input Tab {target_tab_index + 1}.")
-        dialog.destroy()
+        if dialog:
+            dialog.destroy()
         
         self.after(10, self.update_all_stats)
         self.update_tab_labels()
-        if self.input_notebook.index("current") == target_tab_index:
-             self.apply_tool()
+        
+        # Switch to the target tab and apply tool if needed
+        if hasattr(self, 'diff_frame') and self.diff_frame.winfo_viewable():
+            self.diff_input_notebook.select(target_tab_index)
+            if self.tool_var.get() == "Diff Viewer":
+                self.run_diff_viewer()
+        else:
+            self.input_notebook.select(target_tab_index)
+            if self.input_notebook.index("current") == target_tab_index:
+                self.apply_tool()
 
     def copy_to_clipboard(self):
         """Copies the content of the output text area to the system clipboard."""
@@ -2128,6 +2280,11 @@ class PromeraAIApp(tk.Tk):
         try:
             if file_format == "txt":
                 with open(filename, "w", encoding="utf-8") as f: f.write(output_text)
+            elif file_format == "csv":
+                with open(filename, "w", encoding="utf-8", newline='') as f:
+                    writer = csv.writer(f)
+                    for line in output_text.splitlines():
+                        writer.writerow([line])
             elif file_format == "pdf": self.export_to_pdf(filename, output_text)
             elif file_format == "docx": self.export_to_docx(filename, output_text)
 
