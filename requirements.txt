@@ -1,0 +1,18 @@
+# Core dependencies for Pomera AI Commander
+requests>=2.25.0
+reportlab>=3.6.0
+python-docx>=0.8.11
+
+# AI Tools dependencies
+huggingface-hub>=0.16.0
+
+# Optional audio dependencies (for advanced features)
+# Uncomment if you need audio processing capabilities
+# pyaudio>=0.2.11
+# numpy>=1.21.0
+
+# Performance monitoring (optional)
+# psutil>=5.8.0
+
+# Development and build tools
+pyinstaller>=5.0.0

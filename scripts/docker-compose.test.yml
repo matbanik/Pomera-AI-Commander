@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  # Linux GUI environment for testing
+  linux-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test-linux
+    ports:
+      - "6080:6080"  # noVNC web interface
+      - "5901:5901"  # VNC direct connection
+    volumes:
+      - ./dist-docker:/home/testuser/app:ro  # Mount your executable
+    environment:
+      - DISPLAY=:1
+    stdin_open: true
+    tty: true
+    
+  # Alternative: Simple command-line testing
+  linux-cli:
+    image: ubuntu:22.04
+    volumes:
+      - ./dist-docker:/app:ro
+    working_dir: /app
+    command: /bin/bash
+    stdin_open: true
+    tty: true

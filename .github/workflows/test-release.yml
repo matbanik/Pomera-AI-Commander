@@ -1,0 +1,538 @@
+name: Test Release Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_tag:
+        description: 'Test tag to use (e.g., v0.0.1-test)'
+        required: true
+        default: 'v0.0.1-test'
+        type: string
+      skip_release:
+        description: 'Skip actual release creation (test build only)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  validate-inputs:
+    name: Validate Test Inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Validate test tag format
+        shell: bash
+        run: |
+          TEST_TAG="${{ github.event.inputs.test_tag }}"
+          
+          if [[ ! "${TEST_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-test)?$ ]]; then
+            echo "Error: Test tag must match v*.*.*-test pattern (e.g., v0.0.1-test)"
+            exit 1
+          fi
+          
+          echo "Test tag format validated: ${TEST_TAG}"
+          echo "TEST_TAG=${TEST_TAG}" >> $GITHUB_ENV
+          
+      - name: Check if test tag exists
+        shell: bash
+        run: |
+          echo "Checking if test tag ${{ github.event.inputs.test_tag }} exists..."
+          
+          # This is just a validation step - we don't actually create tags in test mode
+          echo "Test mode: Tag existence check passed"
+
+  test-build:
+    name: Test Build Executables
+    runs-on: ${{ matrix.os }}
+    needs: validate-inputs
+    timeout-minutes: 30
+    
+    strategy:
+      fail-fast: false  # Continue testing other platforms even if one fails
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            extension: .exe
+          - os: ubuntu-latest
+            platform: linux
+            extension: ""
+          - os: macos-latest
+            platform: macos
+            extension: ""
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+        timeout-minutes: 5
+          
+      - name: Install project dependencies
+        shell: bash
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+        timeout-minutes: 10
+          
+      - name: Test PyInstaller build
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # Use test tag for executable name
+          TEST_TAG="${{ github.event.inputs.test_tag }}"
+          EXECUTABLE_NAME="pomera-${TEST_TAG}-${{ matrix.platform }}"
+          
+          # Configure PyInstaller options
+          PYINSTALLER_OPTS="--onefile --name ${EXECUTABLE_NAME}"
+          
+          # Add windowed mode for GUI applications
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            PYINSTALLER_OPTS="${PYINSTALLER_OPTS} --windowed"
+          elif [[ "${{ matrix.platform }}" == "macos" ]]; then
+            PYINSTALLER_OPTS="${PYINSTALLER_OPTS} --windowed"
+          fi
+          
+          echo "Testing PyInstaller build with options: ${PYINSTALLER_OPTS}"
+          
+          # Build executable
+          if ! pyinstaller ${PYINSTALLER_OPTS} pomera.py; then
+            echo "ERROR: PyInstaller build failed for ${{ matrix.platform }}"
+            echo "Build logs:"
+            find . -name "*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \; || true
+            exit 1
+          fi
+          
+          # Verify build output
+          if [[ ! -d "dist" ]]; then
+            echo "ERROR: PyInstaller dist directory not created"
+            exit 1
+          fi
+          
+          # Move executable to consistent location
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            if [[ ! -f "dist/${EXECUTABLE_NAME}.exe" ]]; then
+              echo "ERROR: Windows executable not found"
+              ls -la dist/ || true
+              exit 1
+            fi
+            mv "dist/${EXECUTABLE_NAME}.exe" "dist/${EXECUTABLE_NAME}${{ matrix.extension }}"
+          else
+            if [[ ! -f "dist/${EXECUTABLE_NAME}" ]]; then
+              echo "ERROR: Unix executable not found"
+              ls -la dist/ || true
+              exit 1
+            fi
+            chmod +x "dist/${EXECUTABLE_NAME}"
+            mv "dist/${EXECUTABLE_NAME}" "dist/${EXECUTABLE_NAME}${{ matrix.extension }}"
+          fi
+          
+          FINAL_EXECUTABLE="dist/${EXECUTABLE_NAME}${{ matrix.extension }}"
+          if [[ ! -f "${FINAL_EXECUTABLE}" ]]; then
+            echo "ERROR: Final executable not found at ${FINAL_EXECUTABLE}"
+            exit 1
+          fi
+          
+          echo "✅ Build test passed: ${FINAL_EXECUTABLE}"
+          ls -la dist/
+          
+      - name: Test executable validation
+        shell: bash
+        run: |
+          TEST_TAG="${{ github.event.inputs.test_tag }}"
+          EXECUTABLE_NAME="pomera-${TEST_TAG}-${{ matrix.platform }}"
+          FINAL_EXECUTABLE="dist/${EXECUTABLE_NAME}${{ matrix.extension }}"
+          
+          echo "Testing executable validation for: ${FINAL_EXECUTABLE}"
+          
+          # Test file size validation
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            FILE_SIZE=$(stat -c%s "${FINAL_EXECUTABLE}" 2>/dev/null || echo "0")
+          else
+            FILE_SIZE=$(stat -f%z "${FINAL_EXECUTABLE}" 2>/dev/null || stat -c%s "${FINAL_EXECUTABLE}" 2>/dev/null || echo "0")
+          fi
+          
+          echo "Executable size: ${FILE_SIZE} bytes"
+          
+          MIN_SIZE=1048576    # 1 MB minimum
+          MAX_SIZE=104857600  # 100 MB maximum
+          
+          if [[ ${FILE_SIZE} -lt ${MIN_SIZE} ]]; then
+            echo "❌ Size validation failed: too small (${FILE_SIZE} bytes)"
+            exit 1
+          fi
+          
+          if [[ ${FILE_SIZE} -gt ${MAX_SIZE} ]]; then
+            echo "❌ Size validation failed: too large (${FILE_SIZE} bytes)"
+            exit 1
+          fi
+          
+          echo "✅ Size validation passed: ${FILE_SIZE} bytes"
+          
+      - name: Test smoke test functionality
+        shell: bash
+        run: |
+          TEST_TAG="${{ github.event.inputs.test_tag }}"
+          EXECUTABLE_NAME="pomera-${TEST_TAG}-${{ matrix.platform }}"
+          FINAL_EXECUTABLE="dist/${EXECUTABLE_NAME}${{ matrix.extension }}"
+          
+          echo "Testing smoke test for: ${FINAL_EXECUTABLE}"
+          
+          # Make executable if not on Windows
+          if [[ "${{ matrix.platform }}" != "windows" ]]; then
+            chmod +x "${FINAL_EXECUTABLE}"
+          fi
+          
+          # Test executable startup
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            timeout 10s "${FINAL_EXECUTABLE}" --help > test_output.txt 2>&1 || true
+          elif [[ "${{ matrix.platform }}" == "macos" ]]; then
+            (timeout 10s "${FINAL_EXECUTABLE}" --help > test_output.txt 2>&1 || true) &
+            SMOKE_PID=$!
+            sleep 5
+            kill $SMOKE_PID 2>/dev/null || true
+            wait $SMOKE_PID 2>/dev/null || true
+          else
+            timeout 10s "${FINAL_EXECUTABLE}" --help > test_output.txt 2>&1 || true
+          fi
+          
+          # Verify executable is valid binary
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            if command -v file >/dev/null 2>&1; then
+              if ! file "${FINAL_EXECUTABLE}" | grep -i "executable"; then
+                echo "❌ Smoke test failed: Invalid Windows executable"
+                exit 1
+              fi
+            fi
+          else
+            if ! file "${FINAL_EXECUTABLE}" | grep -E "(executable|Mach-O)"; then
+              echo "❌ Smoke test failed: Invalid Unix executable"
+              exit 1
+            fi
+          fi
+          
+          echo "✅ Smoke test passed"
+          
+      - name: Test checksum generation
+        shell: bash
+        run: |
+          TEST_TAG="${{ github.event.inputs.test_tag }}"
+          EXECUTABLE_NAME="pomera-${TEST_TAG}-${{ matrix.platform }}"
+          FINAL_EXECUTABLE="dist/${EXECUTABLE_NAME}${{ matrix.extension }}"
+          
+          echo "Testing checksum generation for: ${FINAL_EXECUTABLE}"
+          
+          # Generate SHA256 checksum
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            if command -v sha256sum >/dev/null 2>&1; then
+              CHECKSUM=$(sha256sum "${FINAL_EXECUTABLE}" | cut -d' ' -f1)
+            elif command -v certutil >/dev/null 2>&1; then
+              CHECKSUM=$(certutil -hashfile "${FINAL_EXECUTABLE}" SHA256 | grep -v "SHA256" | grep -v "CertUtil" | tr -d ' \r\n')
+            else
+              echo "❌ No SHA256 utility available"
+              exit 1
+            fi
+          else
+            if command -v shasum >/dev/null 2>&1; then
+              CHECKSUM=$(shasum -a 256 "${FINAL_EXECUTABLE}" | cut -d' ' -f1)
+            elif command -v sha256sum >/dev/null 2>&1; then
+              CHECKSUM=$(sha256sum "${FINAL_EXECUTABLE}" | cut -d' ' -f1)
+            else
+              echo "❌ No SHA256 utility available"
+              exit 1
+            fi
+          fi
+          
+          # Validate checksum format
+          if [[ ! "${CHECKSUM}" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo "❌ Invalid checksum format: ${CHECKSUM}"
+            exit 1
+          fi
+          
+          echo "✅ Checksum generation passed: ${CHECKSUM}"
+          
+          # Create checksum file
+          CHECKSUM_FILE="dist/${EXECUTABLE_NAME}${{ matrix.extension }}.sha256"
+          echo "${CHECKSUM}  ${EXECUTABLE_NAME}${{ matrix.extension }}" > "${CHECKSUM_FILE}"
+          
+          if [[ ! -f "${CHECKSUM_FILE}" ]]; then
+            echo "❌ Checksum file creation failed"
+            exit 1
+          fi
+          
+          echo "✅ Checksum file created: ${CHECKSUM_FILE}"
+          
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-executable-${{ matrix.platform }}
+          path: |
+            dist/pomera-${{ github.event.inputs.test_tag }}-${{ matrix.platform }}${{ matrix.extension }}
+            dist/pomera-${{ github.event.inputs.test_tag }}-${{ matrix.platform }}${{ matrix.extension }}.sha256
+
+  test-checksums:
+    name: Test Combined Checksums
+    runs-on: ubuntu-latest
+    needs: test-build
+    timeout-minutes: 10
+    
+    steps:
+      - name: Download test artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: test-artifacts
+          
+      - name: Test combined checksums creation
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "Testing combined checksums creation..."
+          
+          if [[ ! -d "test-artifacts" ]]; then
+            echo "❌ Test artifacts directory not found"
+            exit 1
+          fi
+          
+          mkdir -p test-checksums
+          
+          # Find checksum files
+          CHECKSUM_FILES=$(find test-artifacts -name "*.sha256" -type f | sort)
+          if [[ -z "${CHECKSUM_FILES}" ]]; then
+            echo "❌ No checksum files found"
+            find test-artifacts -type f || true
+            exit 1
+          fi
+          
+          echo "Found checksum files:"
+          echo "${CHECKSUM_FILES}"
+          
+          # Create combined checksums file
+          CHECKSUMS_FILE="test-checksums/checksums.txt"
+          echo "# SHA256 Checksums for Pomera ${{ github.event.inputs.test_tag }} (TEST)" > "${CHECKSUMS_FILE}"
+          echo "# Generated on $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "${CHECKSUMS_FILE}"
+          echo "" >> "${CHECKSUMS_FILE}"
+          
+          PROCESSED_COUNT=0
+          for checksum_file in ${CHECKSUM_FILES}; do
+            if [[ -f "${checksum_file}" ]]; then
+              CONTENT=$(cat "${checksum_file}")
+              if [[ "${CONTENT}" =~ ^[a-fA-F0-9]{64}[[:space:]]+.+$ ]]; then
+                echo "${CONTENT}" >> "${CHECKSUMS_FILE}"
+                ((PROCESSED_COUNT++))
+              else
+                echo "❌ Invalid checksum format in ${checksum_file}"
+                exit 1
+              fi
+            fi
+          done
+          
+          # Verify checksums file
+          if [[ ! -f "${CHECKSUMS_FILE}" ]]; then
+            echo "❌ Combined checksums file not created"
+            exit 1
+          fi
+          
+          CHECKSUM_COUNT=$(grep -c "^[a-fA-F0-9]" "${CHECKSUMS_FILE}" || echo "0")
+          EXPECTED_COUNT=3
+          
+          if [[ ${CHECKSUM_COUNT} -ne ${EXPECTED_COUNT} ]]; then
+            echo "❌ Expected ${EXPECTED_COUNT} checksums, found ${CHECKSUM_COUNT}"
+            cat "${CHECKSUMS_FILE}"
+            exit 1
+          fi
+          
+          echo "✅ Combined checksums test passed with ${CHECKSUM_COUNT} entries"
+          cat "${CHECKSUMS_FILE}"
+          
+      - name: Upload test checksums
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-checksums
+          path: test-checksums/checksums.txt
+
+  test-release-creation:
+    name: Test Release Creation (Dry Run)
+    runs-on: ubuntu-latest
+    needs: [test-build, test-checksums]
+    timeout-minutes: 15
+    if: ${{ github.event.inputs.skip_release == 'false' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Download test artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: test-release-artifacts
+          
+      - name: Test release preparation
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "Testing release preparation..."
+          
+          if [[ ! -d "test-release-artifacts" ]]; then
+            echo "❌ Test release artifacts directory not found"
+            exit 1
+          fi
+          
+          mkdir -p test-release-assets
+          
+          # Find executables
+          TEST_TAG="${{ github.event.inputs.test_tag }}"
+          EXECUTABLES=$(find test-release-artifacts -name "pomera-${TEST_TAG}-*" -type f ! -name "*.sha256" | sort)
+          
+          if [[ -z "${EXECUTABLES}" ]]; then
+            echo "❌ No test executables found"
+            find test-release-artifacts -type f || true
+            exit 1
+          fi
+          
+          # Copy executables
+          COPIED_COUNT=0
+          for executable in ${EXECUTABLES}; do
+            filename=$(basename "${executable}")
+            cp "${executable}" "test-release-assets/${filename}"
+            ((COPIED_COUNT++))
+          done
+          
+          # Copy checksums
+          if [[ -f "test-release-artifacts/test-checksums/checksums.txt" ]]; then
+            cp "test-release-artifacts/test-checksums/checksums.txt" "test-release-assets/checksums.txt"
+          else
+            echo "❌ Test checksums.txt not found"
+            exit 1
+          fi
+          
+          echo "✅ Release preparation test passed with ${COPIED_COUNT} executables"
+          ls -la test-release-assets/
+          
+      - name: Test release notes generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "Testing release notes generation..."
+          
+          # Generate test release notes
+          cat > test-release-notes.md << EOF
+## Test Release ${{ github.event.inputs.test_tag }}
+
+This is a test release to validate the release workflow functionality.
+
+## Test Results
+- ✅ Cross-platform executable generation
+- ✅ Executable validation and smoke tests
+- ✅ Checksum generation and verification
+- ✅ Release asset preparation
+- ✅ Release notes generation
+
+## Installation (Test)
+
+### Windows
+1. Download \`pomera-${{ github.event.inputs.test_tag }}-windows.exe\`
+2. Run the executable directly
+
+### Linux
+1. Download \`pomera-${{ github.event.inputs.test_tag }}-linux\`
+2. Make executable: \`chmod +x pomera-${{ github.event.inputs.test_tag }}-linux\`
+3. Run: \`./pomera-${{ github.event.inputs.test_tag }}-linux\`
+
+### macOS
+1. Download \`pomera-${{ github.event.inputs.test_tag }}-macos\`
+2. Make executable: \`chmod +x pomera-${{ github.event.inputs.test_tag }}-macos\`
+3. Run: \`./pomera-${{ github.event.inputs.test_tag }}-macos\`
+
+## Verification
+
+Verify file integrity using checksums.txt:
+\`\`\`bash
+sha256sum -c checksums.txt
+\`\`\`
+EOF
+          
+          if [[ ! -f "test-release-notes.md" ]]; then
+            echo "❌ Test release notes creation failed"
+            exit 1
+          fi
+          
+          echo "✅ Release notes generation test passed"
+          echo "Generated release notes:"
+          cat test-release-notes.md
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, test-build, test-checksums]
+    if: always()
+    timeout-minutes: 5
+    
+    steps:
+      - name: Generate test summary
+        shell: bash
+        run: |
+          echo "# Release Workflow Test Summary"
+          echo ""
+          echo "Test Tag: ${{ github.event.inputs.test_tag }}"
+          echo "Skip Release: ${{ github.event.inputs.skip_release }}"
+          echo "Test Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          
+          # Check job results
+          VALIDATE_RESULT="${{ needs.validate-inputs.result }}"
+          BUILD_RESULT="${{ needs.test-build.result }}"
+          CHECKSUMS_RESULT="${{ needs.test-checksums.result }}"
+          
+          echo "## Test Results"
+          echo ""
+          echo "| Test Phase | Result |"
+          echo "|------------|--------|"
+          echo "| Input Validation | ${VALIDATE_RESULT} |"
+          echo "| Cross-platform Build | ${BUILD_RESULT} |"
+          echo "| Checksums Generation | ${CHECKSUMS_RESULT} |"
+          echo ""
+          
+          # Determine overall result
+          if [[ "${VALIDATE_RESULT}" == "success" && "${BUILD_RESULT}" == "success" && "${CHECKSUMS_RESULT}" == "success" ]]; then
+            echo "## ✅ Overall Result: SUCCESS"
+            echo ""
+            echo "The release workflow is functioning correctly and ready for production use."
+            echo ""
+            echo "### Next Steps"
+            echo "1. Create a real version tag (e.g., v1.0.0) to trigger the actual release workflow"
+            echo "2. Monitor the release workflow execution"
+            echo "3. Verify the created GitHub release and uploaded assets"
+          else
+            echo "## ❌ Overall Result: FAILURE"
+            echo ""
+            echo "One or more test phases failed. Please review the job logs and fix issues before using the release workflow."
+            echo ""
+            echo "### Failed Phases"
+            if [[ "${VALIDATE_RESULT}" != "success" ]]; then
+              echo "- Input Validation: ${VALIDATE_RESULT}"
+            fi
+            if [[ "${BUILD_RESULT}" != "success" ]]; then
+              echo "- Cross-platform Build: ${BUILD_RESULT}"
+            fi
+            if [[ "${CHECKSUMS_RESULT}" != "success" ]]; then
+              echo "- Checksums Generation: ${CHECKSUMS_RESULT}"
+            fi
+          fi

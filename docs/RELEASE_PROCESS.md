@@ -1,0 +1,248 @@
+7# Release Process Guide
+
+This guide documents the complete release process for Pomera AI Commander maintainers.
+
+## Quick Release Checklist
+
+- [ ] All changes merged to main branch
+- [ ] Application tested locally
+- [ ] Version tag created and pushed
+- [ ] GitHub Actions build completed successfully
+- [ ] Release assets downloaded and verified
+- [ ] Release notes reviewed and updated if needed
+- [ ] Documentation updated (if required)
+
+## Detailed Release Steps
+
+### 1. Pre-Release Preparation
+
+#### Code Preparation
+```bash
+# Ensure you're on the main branch
+git checkout main
+git pull origin main
+
+# Verify the application works
+python pomera.py
+
+# Run any available tests
+python -m pytest  # if tests exist
+```
+
+#### Version Planning
+- Determine the version number using [semantic versioning](https://semver.org/)
+- **Major** (v2.0.0): Breaking changes
+- **Minor** (v1.1.0): New features, backward compatible
+- **Patch** (v1.0.1): Bug fixes, backward compatible
+
+### 2. Create and Push Version Tag
+
+```bash
+# Create the version tag
+git tag v1.0.0
+
+# Push the tag to trigger the release workflow
+git push origin v1.0.0
+```
+
+**Important**: The tag must start with `v` and follow the pattern `v*.*.*` to trigger the automated release workflow.
+
+### 3. Monitor the Build Process
+
+1. **Go to the Actions tab** in the GitHub repository
+2. **Find the "Release" workflow** that was triggered by your tag
+3. **Monitor the build progress** for all three platforms (Windows, Linux, macOS)
+4. **Check for any build failures** and resolve if necessary
+
+#### Build Process Overview
+The automated workflow will:
+- Build executables for Windows, Linux, and macOS in parallel
+- Generate SHA256 checksums for all executables
+- Create a GitHub release with auto-generated release notes
+- Upload all executables and checksums as release assets
+
+### 4. Verify the Release
+
+#### Download and Test Executables
+1. **Go to the Releases page** on GitHub
+2. **Download each platform executable**:
+   - `pomera-v1.0.0-windows.exe`
+   - `pomera-v1.0.0-linux.bin`
+   - `pomera-v1.0.0-macos.bin`
+   - `checksums.txt`
+
+3. **Verify checksums**:
+   ```bash
+   # Linux/macOS
+   sha256sum -c checksums.txt
+   
+   # Windows PowerShell
+   Get-FileHash pomera-v1.0.0-windows.exe -Algorithm SHA256
+   ```
+
+4. **Test each executable**:
+   - Verify it starts without errors
+   - Test core functionality
+   - Check that all tools work properly
+
+### 5. Post-Release Tasks
+
+#### Update Documentation (if needed)
+- Update README.md if new features were added
+- Update TOOLS_DOCUMENTATION.md for new tools
+- Create or update migration guides for breaking changes
+
+#### Announce the Release
+- Consider posting in relevant communities
+- Update any external documentation
+- Notify users of significant changes
+
+## Troubleshooting Release Issues
+
+### Build Failures
+
+#### Windows Build Fails
+- Check for Windows-specific dependencies
+- Verify PyInstaller compatibility
+- Review build logs in GitHub Actions
+
+#### Linux Build Fails
+- Check for missing system libraries
+- Verify Python dependencies
+- Review build logs for specific errors
+
+#### macOS Build Fails
+- Check for macOS-specific issues
+- Verify code signing requirements (if applicable)
+- Review build logs for permission issues
+
+### Release Creation Fails
+
+#### "Release already exists" Error
+```bash
+# Delete the existing release and tag
+gh release delete v1.0.0 --yes
+git tag -d v1.0.0
+git push origin --delete v1.0.0
+
+# Recreate the tag
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+#### Missing Assets
+- Check if all build jobs completed successfully
+- Verify artifact upload steps in the workflow
+- Re-run failed jobs if necessary
+
+### Checksum Issues
+
+#### Checksums Don't Match
+- Re-download the files
+- Check for network issues during download
+- Verify the checksums.txt file is from the same release
+
+## Emergency Procedures
+
+### Rollback a Release
+
+#### If Critical Issues Are Found
+1. **Mark the release as pre-release** to hide it from the latest release
+2. **Create a hotfix** on a separate branch
+3. **Tag and release the hotfix** as a patch version
+4. **Delete the problematic release** once the fix is confirmed
+
+#### Delete a Release
+```bash
+# Using GitHub CLI
+gh release delete v1.0.0 --yes
+
+# Delete the tag locally and remotely
+git tag -d v1.0.0
+git push origin --delete v1.0.0
+```
+
+### Fix Release Notes
+
+#### Update Release Notes After Publication
+1. Go to the release page on GitHub
+2. Click "Edit release"
+3. Update the release notes
+4. Save changes
+
+## Release Workflow Configuration
+
+### Workflow File Location
+`.github/workflows/release.yml`
+
+### Key Configuration Points
+- **Trigger**: Tags matching `v*.*.*` pattern
+- **Build Matrix**: Windows, Linux, macOS
+- **PyInstaller Options**: `--onefile` for standalone executables
+- **Asset Naming**: `pomera-{version}-{platform}{extension}`
+
+### Customizing the Workflow
+
+#### Adding New Platforms
+Add to the build matrix in `.github/workflows/release.yml`:
+```yaml
+- os: ubuntu-20.04
+  platform: linux-old
+  extension: ""
+```
+
+#### Modifying Build Options
+Update the PyInstaller command:
+```bash
+PYINSTALLER_OPTS="--onefile --windowed --name ${EXECUTABLE_NAME}"
+```
+
+## Version Management
+
+### Semantic Versioning Guidelines
+
+#### Major Version (v2.0.0)
+- Breaking API changes
+- Significant UI overhauls
+- Incompatible configuration changes
+
+#### Minor Version (v1.1.0)
+- New features
+- New tools added
+- Performance improvements
+- Backward-compatible changes
+
+#### Patch Version (v1.0.1)
+- Bug fixes
+- Security patches
+- Minor improvements
+- Documentation updates
+
+### Pre-Release Versions
+- **Alpha**: `v1.0.0-alpha.1` - Early development
+- **Beta**: `v1.0.0-beta.1` - Feature complete, testing
+- **Release Candidate**: `v1.0.0-rc.1` - Final testing
+
+## Best Practices
+
+### Before Each Release
+- [ ] Test the application thoroughly
+- [ ] Review all changes since the last release
+- [ ] Update documentation
+- [ ] Check for security vulnerabilities
+- [ ] Verify all dependencies are up to date
+
+### Release Timing
+- **Avoid Friday releases** - Limited time to fix issues
+- **Consider time zones** - Release when team is available
+- **Plan for support** - Ensure someone can handle issues
+
+### Communication
+- **Clear release notes** - Explain what changed and why
+- **Breaking changes** - Highlight prominently
+- **Migration guides** - Help users upgrade smoothly
+
+---
+
+*This guide is maintained by the Pomera AI Commander development team.*
+*Last updated: October 2025*

@@ -1,0 +1,54 @@
+# Lightweight Linux GUI for testing executables
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install minimal GUI and VNC
+RUN apt-get update && apt-get install -y \
+    xfce4-session \
+    xfce4-panel \
+    xfce4-terminal \
+    xfwm4 \
+    thunar \
+    tightvncserver \
+    novnc \
+    websockify \
+    python3 \
+    python3-tk \
+    file \
+    && apt-get clean
+
+# Create test user
+RUN useradd -m -s /bin/bash tester
+RUN echo 'tester:test123' | chpasswd
+
+# Setup VNC for tester
+USER tester
+WORKDIR /home/tester
+
+RUN mkdir -p ~/.vnc
+RUN echo 'test123' | vncpasswd -f > ~/.vnc/passwd
+RUN chmod 600 ~/.vnc/passwd
+
+# VNC startup script
+RUN echo '#!/bin/bash' > ~/.vnc/xstartup && \
+    echo 'export XKL_XMODMAP_DISABLE=1' >> ~/.vnc/xstartup && \
+    echo 'unset SESSION_MANAGER' >> ~/.vnc/xstartup && \
+    echo 'unset DBUS_SESSION_BUS_ADDRESS' >> ~/.vnc/xstartup && \
+    echo 'startxfce4 &' >> ~/.vnc/xstartup && \
+    chmod +x ~/.vnc/xstartup
+
+# Create app directory
+RUN mkdir -p ~/app
+
+USER root
+
+# Start script
+RUN echo '#!/bin/bash' > /start.sh && \
+    echo 'su - tester -c "vncserver :1 -geometry 1280x720 -depth 24"' >> /start.sh && \
+    echo 'websockify --web=/usr/share/novnc/ 6080 localhost:5901' >> /start.sh && \
+    chmod +x /start.sh
+
+EXPOSE 6080
+
+CMD ["/start.sh"]

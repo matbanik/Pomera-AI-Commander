@@ -1,0 +1,37 @@
+# Alpine Linux build - creates smaller, more portable executables
+FROM python:3.11-alpine
+
+# Install build dependencies
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    libffi-dev \
+    g++ \
+    make
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY . .
+
+# Build static executable with enhanced options
+RUN pyinstaller \
+    --onefile \
+    --name pomera-linux-alpine \
+    --strip \
+    --noupx \
+    --clean \
+    --noconfirm \
+    pomera.py
+
+# Copy to output
+RUN mkdir -p /output && \
+    cp dist/pomera-linux-alpine /output/ && \
+    chmod +x /output/pomera-linux-alpine
+
+CMD ["cp", "/output/pomera-linux-alpine", "/output/"]

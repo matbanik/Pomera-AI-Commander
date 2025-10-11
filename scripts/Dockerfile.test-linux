@@ -1,0 +1,80 @@
+# Dockerfile for testing Linux executable with GUI
+FROM ubuntu:22.04
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install minimal desktop environment and VNC server
+RUN apt-get update && apt-get install -y \
+    xfce4 \
+    xfce4-goodies \
+    tightvncserver \
+    novnc \
+    websockify \
+    supervisor \
+    dbus-x11 \
+    firefox \
+    xterm \
+    nano \
+    wget \
+    curl \
+    python3 \
+    python3-tk \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a user for VNC
+RUN useradd -m -s /bin/bash testuser
+RUN echo 'testuser:password' | chpasswd
+
+# Set up VNC for the user
+USER testuser
+WORKDIR /home/testuser
+
+# Set VNC password
+RUN mkdir -p ~/.vnc
+RUN echo 'password' | vncpasswd -f > ~/.vnc/passwd
+RUN chmod 600 ~/.vnc/passwd
+
+# Create VNC startup script
+RUN echo '#!/bin/bash' > ~/.vnc/xstartup
+RUN echo 'xrdb $HOME/.Xresources' >> ~/.vnc/xstartup
+RUN echo 'startxfce4 &' >> ~/.vnc/xstartup
+RUN chmod +x ~/.vnc/xstartup
+
+# Switch back to root for supervisor setup
+USER root
+
+# Create supervisor configuration
+RUN mkdir -p /var/log/supervisor
+COPY <<EOF /etc/supervisor/conf.d/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+
+[program:vnc]
+command=/usr/bin/vncserver :1 -geometry 1024x768 -depth 24
+user=testuser
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/vnc.log
+stderr_logfile=/var/log/supervisor/vnc.log
+
+[program:novnc]
+command=/usr/share/novnc/utils/launch.sh --vnc localhost:5901 --listen 6080
+user=testuser
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/novnc.log
+stderr_logfile=/var/log/supervisor/novnc.log
+EOF
+
+# Create directory for the executable
+RUN mkdir -p /home/testuser/app
+RUN chown testuser:testuser /home/testuser/app
+
+# Expose VNC and noVNC ports
+EXPOSE 5901 6080
+
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

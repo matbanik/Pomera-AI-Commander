@@ -1,0 +1,37 @@
+# Dockerfile for building Linux executables
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libc6-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY . .
+
+# Build the executable
+RUN pyinstaller --onefile --name pomera-linux pomera.py
+
+# Create output directory
+RUN mkdir -p /output
+
+# Copy executable to output
+RUN cp dist/pomera-linux /output/
+
+# Set executable permissions
+RUN chmod +x /output/pomera-linux
+
+# Default command
+CMD ["cp", "/output/pomera-linux", "/host-output/"]

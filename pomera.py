@@ -1,0 +1,6262 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, scrolledtext, messagebox, font
+import re
+import json
+import os
+import logging
+
+import csv
+import io
+import platform
+from typing import Optional, Dict, Any, List
+import requests
+import threading
+import time
+import string
+import random
+import webbrowser
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from docx import Document
+try:
+    import pyaudio
+    import numpy as np
+    PYAUDIO_AVAILABLE = True
+except ImportError:
+    PYAUDIO_AVAILABLE = False
+
+# AI Tools import
+try:
+    from tools.ai_tools import AIToolsWidget
+    AI_TOOLS_AVAILABLE = True
+except ImportError:
+    AI_TOOLS_AVAILABLE = False
+    print("AI Tools module not available")
+
+# Find & Replace module import
+try:
+    from tools.find_replace import FindReplaceWidget, SettingsManager
+    FIND_REPLACE_MODULE_AVAILABLE = True
+except ImportError:
+    FIND_REPLACE_MODULE_AVAILABLE = False
+    print("Find & Replace module not available")
+
+# Diff Viewer module import
+try:
+    from tools.diff_viewer import DiffViewerWidget, DiffViewerSettingsWidget
+    DIFF_VIEWER_MODULE_AVAILABLE = True
+except ImportError:
+    DIFF_VIEWER_MODULE_AVAILABLE = False
+    print("Diff Viewer module not available")
+
+# Database Settings Manager import
+try:
+    from core.database_settings_manager import DatabaseSettingsManager
+    DATABASE_SETTINGS_AVAILABLE = True
+except ImportError:
+    DATABASE_SETTINGS_AVAILABLE = False
+    print("Database Settings Manager not available, falling back to JSON")
+
+# Case Tool module import
+try:
+    from tools.case_tool import CaseTool
+    CASE_TOOL_MODULE_AVAILABLE = True
+except ImportError:
+    CASE_TOOL_MODULE_AVAILABLE = False
+    print("Case Tool module not available")
+
+# Email Extraction Tool module import
+try:
+    from tools.email_extraction_tool import EmailExtractionTool
+    EMAIL_EXTRACTION_MODULE_AVAILABLE = True
+except ImportError:
+    EMAIL_EXTRACTION_MODULE_AVAILABLE = False
+    print("Email Extraction Tool module not available")
+
+# Email Header Analyzer module import
+try:
+    from tools.email_header_analyzer import EmailHeaderAnalyzer
+    EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE = True
+except ImportError:
+    EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE = False
+    print("Email Header Analyzer module not available")
+
+# URL and Link Extractor module import
+try:
+    from tools.url_link_extractor import URLLinkExtractor
+    URL_LINK_EXTRACTOR_MODULE_AVAILABLE = True
+except ImportError:
+    URL_LINK_EXTRACTOR_MODULE_AVAILABLE = False
+    print("URL and Link Extractor module not available")
+
+# URL Parser module import
+try:
+    from tools.url_parser import URLParser
+    URL_PARSER_MODULE_AVAILABLE = True
+except ImportError:
+    URL_PARSER_MODULE_AVAILABLE = False
+    print("URL Parser module not available")
+
+# Word Frequency Counter module import
+try:
+    from tools.word_frequency_counter import WordFrequencyCounter
+    WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE = True
+except ImportError:
+    WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE = False
+    print("Word Frequency Counter module not available")
+
+# Sorter Tools module import
+try:
+    from tools.sorter_tools import SorterTools
+    SORTER_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    SORTER_TOOLS_MODULE_AVAILABLE = False
+    print("Sorter Tools module not available")
+
+# Translator Tools module import
+try:
+    from tools.translator_tools import TranslatorTools
+    TRANSLATOR_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    TRANSLATOR_TOOLS_MODULE_AVAILABLE = False
+    print("Translator Tools module not available")
+
+# Generator Tools module import
+try:
+    from tools.generator_tools import GeneratorTools, GeneratorToolsWidget
+    GENERATOR_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    GENERATOR_TOOLS_MODULE_AVAILABLE = False
+    print("Generator Tools module not available")
+
+# Base64 Tools module import
+try:
+    from tools.base64_tools import Base64Tools, Base64ToolsWidget
+    BASE64_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    BASE64_TOOLS_MODULE_AVAILABLE = False
+
+# JSON/XML Tool module import
+try:
+    from tools.jsonxml_tool import JSONXMLTool
+    JSONXML_TOOL_MODULE_AVAILABLE = True
+except ImportError:
+    JSONXML_TOOL_MODULE_AVAILABLE = False
+
+# Cron Tool module import
+try:
+    from tools.cron_tool import CronTool
+    CRON_TOOL_MODULE_AVAILABLE = True
+except ImportError:
+    CRON_TOOL_MODULE_AVAILABLE = False
+    print("Cron Tool module not available")
+
+# HTML Extraction Tool module import
+try:
+    from tools.html_tool import HTMLExtractionTool
+    HTML_EXTRACTION_TOOL_MODULE_AVAILABLE = True
+except ImportError:
+    HTML_EXTRACTION_TOOL_MODULE_AVAILABLE = False
+    print("HTML Extraction Tool module not available")
+
+# cURL Tool module import
+try:
+    from tools.curl_tool import CurlToolWidget
+    CURL_TOOL_MODULE_AVAILABLE = True
+except ImportError:
+    CURL_TOOL_MODULE_AVAILABLE = False
+    print("cURL Tool module not available")
+
+# List Comparator module import
+try:
+    from tools.list_comparator import DiffApp
+    LIST_COMPARATOR_MODULE_AVAILABLE = True
+except ImportError:
+    LIST_COMPARATOR_MODULE_AVAILABLE = False
+    print("List Comparator module not available")
+
+# Folder File Reporter module import
+try:
+    from tools.folder_file_reporter_adapter import FolderFileReporterAdapter
+    FOLDER_FILE_REPORTER_MODULE_AVAILABLE = True
+except ImportError:
+    FOLDER_FILE_REPORTER_MODULE_AVAILABLE = False
+    print("Folder File Reporter module not available")
+try:
+    from huggingface_hub import InferenceClient
+    from huggingface_hub.utils import HfHubHTTPError
+    HUGGINGFACE_AVAILABLE = True
+except ImportError:
+    HUGGINGFACE_AVAILABLE = False
+
+
+
+# Async processing imports
+try:
+    from core.async_text_processor import (
+        get_async_text_processor, AsyncTextProcessor, TextProcessingContext, 
+        ProcessingResult, ProcessingMode, shutdown_async_processor
+    )
+    ASYNC_PROCESSING_AVAILABLE = True
+except ImportError:
+    ASYNC_PROCESSING_AVAILABLE = False
+    print("Async processing not available")
+
+# Intelligent caching imports
+try:
+    from core.smart_stats_calculator import get_smart_stats_calculator, SmartStatsCalculator, TextStats
+    from core.regex_pattern_cache import get_regex_pattern_cache, RegexPatternCache
+    from core.content_hash_cache import get_content_hash_cache, get_processing_result_cache, ContentHashCache, ProcessingResultCache
+    INTELLIGENT_CACHING_AVAILABLE = True
+except ImportError as e:
+    INTELLIGENT_CACHING_AVAILABLE = False
+    print(f"Intelligent caching not available: {e}")
+
+# Efficient line numbers import
+try:
+    from core.efficient_line_numbers import OptimizedTextWithLineNumbers
+    EFFICIENT_LINE_NUMBERS_AVAILABLE = True
+except ImportError:
+    EFFICIENT_LINE_NUMBERS_AVAILABLE = False
+    print("Efficient line numbers not available")
+
+# Memory efficient text widget import (removed - no longer used)
+MEMORY_EFFICIENT_TEXT_AVAILABLE = False
+
+# Advanced memory management imports - removed for optimization
+ADVANCED_MEMORY_MANAGEMENT_AVAILABLE = False
+
+# Progressive search and highlighting imports
+try:
+    from core.optimized_search_highlighter import get_search_highlighter, OptimizedSearchHighlighter, HighlightMode
+    from core.optimized_find_replace import get_find_replace_processor, OptimizedFindReplace, ProcessingMode
+    from core.search_operation_manager import get_operation_manager, SearchOperationManager, CancellationReason
+    PROGRESSIVE_SEARCH_AVAILABLE = True
+except ImportError as e:
+    PROGRESSIVE_SEARCH_AVAILABLE = False
+    print(f"Progressive search not available: {e}")
+
+# Dialog Manager import
+try:
+    from core.dialog_manager import DialogManager
+    DIALOG_MANAGER_AVAILABLE = True
+except ImportError as e:
+    DIALOG_MANAGER_AVAILABLE = False
+    print(f"Dialog Manager not available: {e}")
+
+# Event Consolidator import
+try:
+    from core.event_consolidator import get_event_consolidator, EventConsolidator, DebounceConfig, DebounceStrategy
+    EVENT_CONSOLIDATOR_AVAILABLE = True
+except ImportError as e:
+    EVENT_CONSOLIDATOR_AVAILABLE = False
+    print(f"Event Consolidator not available: {e}")
+
+# Visibility Monitor and Statistics Update Manager imports
+try:
+    from core.visibility_monitor import get_visibility_monitor, VisibilityMonitor, VisibilityState
+    from core.statistics_update_manager import get_statistics_update_manager, StatisticsUpdateManager, UpdatePriority
+    VISIBILITY_AWARE_UPDATES_AVAILABLE = True
+except ImportError as e:
+    VISIBILITY_AWARE_UPDATES_AVAILABLE = False
+    print(f"Visibility-aware updates not available: {e}")
+
+# Progressive Statistics Calculator import
+try:
+    from core.progressive_stats_calculator import get_progressive_stats_calculator, ProgressiveStatsCalculator
+    PROGRESSIVE_STATS_CALCULATOR_AVAILABLE = True
+except ImportError as e:
+    PROGRESSIVE_STATS_CALCULATOR_AVAILABLE = False
+    print(f"Progressive Statistics Calculator not available: {e}")
+
+# Context Menu import
+try:
+    from core.context_menu import add_context_menu, add_context_menu_to_children
+    CONTEXT_MENU_AVAILABLE = True
+except ImportError as e:
+    CONTEXT_MENU_AVAILABLE = False
+    print(f"Context Menu not available: {e}")
+
+class AppConfig:
+    """Configuration constants for the application."""
+    DEFAULT_WINDOW_SIZE = "1200x900"
+    TAB_COUNT = 7
+    DEBOUNCE_DELAY = 300  # milliseconds
+    MORSE_DOT_DURATION = 0.080
+    MORSE_DASH_DURATION = 0.080 * 3
+    SAMPLE_RATE = 44100
+    TONE_FREQUENCY = 700
+    MAX_RETRIES = 5
+    BASE_DELAY = 1
+
+class TextProcessor:
+    """Separate class for text processing logic to improve maintainability."""
+
+
+
+
+
+
+
+
+# Use optimized components when available
+if EFFICIENT_LINE_NUMBERS_AVAILABLE:
+    # Use the optimized TextWithLineNumbers from efficient_line_numbers.py
+    TextWithLineNumbers = OptimizedTextWithLineNumbers
+else:
+    # Fallback implementation for when optimized components are not available
+    class TextWithLineNumbers(tk.Frame):
+        """Fallback implementation of TextWithLineNumbers."""
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.text = scrolledtext.ScrolledText(self, wrap=tk.WORD, height=15, width=50, undo=True)
+            self.linenumbers = tk.Canvas(self, width=40, bg='#f0f0f0', highlightthickness=0)
+            
+            self.linenumbers.pack(side=tk.LEFT, fill=tk.Y)
+            self.text.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+            # Basic event bindings
+            self.text.vbar.config(command=self._on_text_scroll)
+            self.linenumbers.bind("<MouseWheel>", self._on_mousewheel)
+            self.linenumbers.bind("<Button-4>", self._on_mousewheel)
+            self.linenumbers.bind("<Button-5>", self._on_mousewheel)
+            self.text.bind("<<Modified>>", self._on_text_modified)
+            self.text.bind("<Configure>", self._on_text_modified)
+            self._on_text_modified()
+
+        def _on_text_scroll(self, *args):
+            self.text.yview(*args)
+            self._on_text_modified()
+
+        def _on_mousewheel(self, event):
+            if platform.system() == "Windows":
+                self.text.yview_scroll(int(-1*(event.delta/120)), "units")
+            elif platform.system() == "Darwin":
+                 self.text.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                if event.num == 4:
+                    self.text.yview_scroll(-1, "units")
+                elif event.num == 5:
+                    self.text.yview_scroll(1, "units")
+            self._on_text_modified()
+            return "break"
+
+        def _on_text_modified(self, event=None):
+            self.linenumbers.delete("all")
+            line_info_cache = []
+            i = self.text.index("@0,0")
+            while True:
+                dline = self.text.dlineinfo(i)
+                if dline is None: 
+                    break
+                line_info_cache.append((i, dline[1]))
+                i = self.text.index("%s+1line" % i)
+            
+            for i, y in line_info_cache:
+                linenum = str(i).split(".")[0]
+                self.linenumbers.create_text(20, y, anchor="n", text=linenum, fill="gray")
+            
+            self.after(10, self.linenumbers.yview_moveto, self.text.yview()[0])
+            if event and event.widget.edit_modified():
+                event.widget.edit_modified(False)
+
+class PromeraAISettingsManager:
+    """Settings manager implementation for Find & Replace widget."""
+    
+    def __init__(self, app):
+        self.app = app
+    
+    def get_tool_settings(self, tool_name: str) -> Dict[str, Any]:
+        """Get settings for a specific tool."""
+        return self.app.settings.get("tool_settings", {}).get(tool_name, {})
+    
+    def save_settings(self):
+        """Save current settings to persistent storage."""
+        self.app.save_settings()
+    
+    def get_pattern_library(self) -> List[Dict[str, str]]:
+        """Get the regex pattern library."""
+        # Initialize pattern library if it doesn't exist
+        if ("pattern_library" not in self.app.settings or 
+            len(self.app.settings.get("pattern_library", [])) < 10):
+            
+            # Try to import and use the comprehensive pattern library
+            try:
+                from core.regex_pattern_library import RegexPatternLibrary
+                library = RegexPatternLibrary()
+                self.app.settings["pattern_library"] = library._convert_to_settings_format()
+                self.app.logger.info(f"Loaded comprehensive pattern library with {len(self.app.settings['pattern_library'])} patterns")
+            except ImportError:
+                # Fallback to basic patterns if comprehensive library is not available
+                self.app.settings["pattern_library"] = [
+                    {"find": "\\d+", "replace": "NUMBER", "purpose": "Match any number"},
+                    {"find": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "replace": "[EMAIL]", "purpose": "Match email addresses"},
+                    {"find": "\\b\\d{3}-\\d{3}-\\d{4}\\b", "replace": "XXX-XXX-XXXX", "purpose": "Match phone numbers (XXX-XXX-XXXX format)"}
+                ]
+                self.app.logger.warning("Comprehensive pattern library not available, using basic patterns")
+            
+            self.app.save_settings()
+        
+        return self.app.settings.get("pattern_library", [])
+
+
+class DialogSettingsAdapter:
+    """
+    Adapter class to provide dialog settings interface to DialogManager.
+    
+    This adapter bridges the gap between the main application's settings system
+    and the DialogManager's requirements. It provides a clean interface for
+    the DialogManager to access dialog-related settings without tight coupling
+    to the main application structure.
+    
+    Design Pattern:
+        Adapter Pattern - Adapts the main application's settings interface
+        to match what DialogManager expects.
+    
+    Responsibilities:
+        - Provide get_setting() method for DialogManager
+        - Handle settings retrieval errors gracefully
+        - Maintain loose coupling between DialogManager and main app
+    
+    Args:
+        app: Reference to the main PomeraApp instance
+        
+    Methods:
+        get_setting(key, default): Retrieve setting value with fallback default
+    """
+    
+    def __init__(self, app):
+        """
+        Initialize the adapter with a reference to the main application.
+        
+        Args:
+            app (PomeraApp): Main application instance with settings attribute
+        """
+        self.app = app
+    
+    def get_setting(self, key: str, default=None):
+        """
+        Get setting from the main app's settings with error handling.
+        
+        This method provides safe access to application settings for the
+        DialogManager, handling cases where settings might be corrupted
+        or unavailable.
+        
+        Args:
+            key (str): Settings key to retrieve (e.g., "dialog_settings")
+            default: Default value to return if key is not found or error occurs
+            
+        Returns:
+            The setting value if found, otherwise the default value
+            
+        Error Handling:
+            - Missing app reference: Returns default
+            - Missing settings attribute: Returns default  
+            - Key not found: Returns default
+            - Any other exception: Logs error and returns default
+        """
+        try:
+            if not self.app:
+                return default
+                
+            if not hasattr(self.app, 'settings'):
+                return default
+                
+            return self.app.settings.get(key, default)
+            
+        except Exception as e:
+            # Log error if logger is available
+            if hasattr(self.app, 'logger') and self.app.logger:
+                self.app.logger.warning(f"Error retrieving setting '{key}': {e}")
+            return default
+
+
+class PromeraAIApp(tk.Tk):
+    """
+    A comprehensive Text Processing GUI application built with Tkinter.
+    """
+    class Tooltip:
+        """Creates a tooltip for a given widget."""
+        def __init__(self, widget, text):
+            self.widget = widget
+            self.text = text
+            self.tooltip_window = None
+            self.widget.bind("<Enter>", self.show_tip)
+            self.widget.bind("<Leave>", self.hide_tip)
+
+        def show_tip(self, event=None):
+            x, y, _, _ = self.widget.bbox("insert")
+            x += self.widget.winfo_rootx() + 25
+            y += self.widget.winfo_rooty() + 25
+
+            self.tooltip_window = tk.Toplevel(self.widget)
+            self.tooltip_window.wm_overrideredirect(True)
+            self.tooltip_window.wm_geometry(f"+{x}+{y}")
+
+            label = tk.Label(self.tooltip_window, text=self.text, justify='left',
+                             background="#ffffe0", relief='solid', borderwidth=1,
+                             wraplength=250, font=("sans-serif", 8))
+            label.pack(ipadx=1)
+
+        def hide_tip(self, event=None):
+            if self.tooltip_window:
+                self.tooltip_window.destroy()
+            self.tooltip_window = None
+
+    def __init__(self):
+        """Initializes the main application window and its components."""
+        global DATABASE_SETTINGS_AVAILABLE
+        super().__init__()
+        
+        # Record startup time for performance monitoring
+        self.startup_time = time.time()
+        
+        # Flag to prevent automatic processing during initialization
+        self._initializing = True
+        
+        self.title("Pomera AI Commander")
+        self.geometry(AppConfig.DEFAULT_WINDOW_SIZE)
+
+        self._after_id = None 
+        self._regex_cache = {}
+        self.ai_widgets = {}
+        self.ai_provider_urls = {
+            "Google AI": "https://aistudio.google.com/apikey",
+            "Cohere AI": "https://dashboard.cohere.com/api-keys",
+            "HuggingFace AI": "https://huggingface.co/settings/tokens",
+            "Groq AI": "https://console.groq.com/keys",
+            "OpenRouterAI": "https://openrouter.ai/settings/keys",
+            "Anthropic AI": "https://console.anthropic.com/settings/keys",
+            "OpenAI": "https://platform.openai.com/settings/organization/api-keys"
+        }
+
+        self.manual_process_tools = [
+            "Case Tool", "Find & Replace Text", "AI Tools",
+            "Email Extraction Tool", "Email Header Analyzer", "URL and Link Extractor", "Folder File Reporter", "Generator Tools", "Sorter Tools",
+            "Word Frequency Counter", "URL Parser",
+            "Base64 Encoder/Decoder", "Translator Tools", "Diff Viewer", "HTML Extraction Tool"
+        ]
+
+        # CORRECTED ORDER: Load settings BEFORE setting up logging
+        # Initialize database settings manager or fallback to JSON
+        if DATABASE_SETTINGS_AVAILABLE:
+            try:
+                self.db_settings_manager = DatabaseSettingsManager(
+                    db_path="settings.db",
+                    backup_path="settings_backup.db",
+                    json_settings_path="settings.json"
+                )
+                # Provide default settings to database manager
+                self.db_settings_manager.set_default_settings_provider(self._get_default_settings)
+                self.settings = self.db_settings_manager._settings_proxy
+                self.logger = logging.getLogger(__name__)
+                self.logger.info("Using database settings manager")
+            except Exception as e:
+                print(f"Failed to initialize database settings manager: {e}")
+                print("Falling back to JSON settings")
+                DATABASE_SETTINGS_AVAILABLE = False
+                self.settings = self.load_settings()
+        else:
+            self.settings = self.load_settings()
+        self.setup_logging()
+        self.setup_audio()
+        
+        # Initialize DialogManager BEFORE optimized components
+        if DIALOG_MANAGER_AVAILABLE:
+            self.dialog_settings_adapter = DialogSettingsAdapter(self)
+            self.dialog_manager = DialogManager(self.dialog_settings_adapter, self.logger)
+            
+            # Register tool-specific dialog categories
+            self._register_tool_dialog_categories()
+            
+            self.logger.info("DialogManager initialized successfully")
+        else:
+            self.dialog_manager = None
+            self.logger.warning("DialogManager not available, using direct messagebox calls")
+
+        # Setup optimized components AFTER DialogManager is available
+        self.setup_optimized_components()
+        
+        self.create_widgets()
+        self.load_last_state()
+        
+        # Initialization complete - allow automatic processing
+        self._initializing = False
+        
+        # Only apply tool during initialization if there's no existing content
+        # This prevents clearing loaded content from settings.json
+        if self.tool_var.get() not in self.manual_process_tools:
+            # Check if we have existing content in tabs (from settings.json)
+            has_existing_content = False
+            for i, tab in enumerate(self.input_tabs + self.output_tabs):
+                content = tab.text.get("1.0", tk.END).strip()
+                if content:
+                    has_existing_content = True
+                    tab_type = "input" if i < len(self.input_tabs) else "output"
+                    tab_num = i + 1 if i < len(self.input_tabs) else i - len(self.input_tabs) + 1
+                    self.logger.info(f"Found existing content in {tab_type} tab {tab_num}: '{content[:50]}...'")
+            
+            # Only apply tool if no existing content
+            if not has_existing_content:
+                self.logger.info("No existing content found - applying tool")
+                self.apply_tool()
+            else:
+                self.logger.info("Existing content found - skipping apply_tool to preserve loaded content")
+        elif self.tool_var.get() == "Diff Viewer":
+            self.central_frame.grid_remove()
+            self.diff_frame.grid(row=0, column=0, sticky="nsew", pady=5)
+            self.update_tool_settings_ui()
+            self.load_diff_viewer_content()
+            self.run_diff_viewer()
+        
+        # Set up global undo/redo key bindings
+        self.bind_all("<Control-z>", self.global_undo)
+        self.bind_all("<Control-y>", self.global_redo)
+        self.bind_all("<Control-Shift-Z>", self.global_redo)  # Alternative redo shortcut
+        
+        # Set up cURL tool keyboard shortcut
+        if CURL_TOOL_MODULE_AVAILABLE:
+            self.bind_all("<Control-u>", lambda e: self.open_curl_tool_window())
+        
+        # Set up window focus and minimize event handlers for visibility-aware updates
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            self.bind("<FocusIn>", self._on_window_focus_in)
+            self.bind("<FocusOut>", self._on_window_focus_out)
+            self.bind("<Unmap>", self._on_window_minimized)
+            self.bind("<Map>", self._on_window_restored)
+            self.logger.info("Window focus/minimize event handlers registered for visibility-aware updates")
+        
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Final debug check - see if content survived initialization
+        final_input_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.input_tabs]
+        final_output_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.output_tabs]
+        final_non_empty_inputs = sum(1 for content in final_input_contents if content)
+        final_non_empty_outputs = sum(1 for content in final_output_contents if content)
+        self.logger.info(f"Initialization complete - {final_non_empty_inputs} non-empty input tabs, {final_non_empty_outputs} non-empty output tabs remain")
+
+    def _register_tool_dialog_categories(self):
+        """Register tool-specific dialog categories with DialogManager."""
+        if not self.dialog_manager:
+            return
+            
+        # Register categories for different tool operations
+        self.dialog_manager.register_dialog_type(
+            "tool_export",
+            "Export completion notifications from tools",
+            default_enabled=True,
+            examples=["Data exported to CSV", "File saved successfully", "Export complete"]
+        )
+        
+        self.dialog_manager.register_dialog_type(
+            "tool_import", 
+            "Import completion notifications from tools",
+            default_enabled=True,
+            examples=["Data imported successfully", "Configuration loaded", "Command imported"]
+        )
+        
+        self.dialog_manager.register_dialog_type(
+            "tool_validation",
+            "Validation warnings from tools",
+            default_enabled=True,
+            examples=["No data specified", "Invalid input format", "Missing required field"]
+        )
+        
+        self.dialog_manager.register_dialog_type(
+            "tool_operation",
+            "General tool operation notifications", 
+            default_enabled=True,
+            examples=["Operation complete", "Processing finished", "Task completed"]
+        )
+        
+        self.logger.info("Tool-specific dialog categories registered")
+
+    def global_undo(self, event=None):
+        """Global undo handler that works on the currently focused text widget."""
+        focused_widget = self.focus_get()
+        
+        # Check if the focused widget is a Text widget or ScrolledText widget
+        if isinstance(focused_widget, (tk.Text, scrolledtext.ScrolledText)):
+            try:
+                focused_widget.edit_undo()
+                return "break"  # Prevent default handling
+            except tk.TclError:
+                # No undo information available
+                pass
+        
+        # If not a direct text widget, check if it's part of a TextWithLineNumbers
+        parent = focused_widget
+        while parent and parent != self:
+            if hasattr(parent, 'text') and isinstance(parent.text, (tk.Text, scrolledtext.ScrolledText)):
+                try:
+                    parent.text.edit_undo()
+                    return "break"
+                except tk.TclError:
+                    pass
+                break
+            parent = parent.master if hasattr(parent, 'master') else None
+        
+        return None
+
+    def global_redo(self, event=None):
+        """Global redo handler that works on the currently focused text widget."""
+        focused_widget = self.focus_get()
+        
+        # Check if the focused widget is a Text widget or ScrolledText widget
+        if isinstance(focused_widget, (tk.Text, scrolledtext.ScrolledText)):
+            try:
+                focused_widget.edit_redo()
+                return "break"  # Prevent default handling
+            except tk.TclError:
+                # No redo information available
+                pass
+        
+        # If not a direct text widget, check if it's part of a TextWithLineNumbers
+        parent = focused_widget
+        while parent and parent != self:
+            if hasattr(parent, 'text') and isinstance(parent.text, (tk.Text, scrolledtext.ScrolledText)):
+                try:
+                    parent.text.edit_redo()
+                    return "break"
+                except tk.TclError:
+                    pass
+                break
+            parent = parent.master if hasattr(parent, 'master') else None
+        
+        return None
+
+    def load_settings(self):
+        """Loads settings from the 'settings.json' file or database."""
+        # If database settings manager is available, use it
+        if hasattr(self, 'db_settings_manager') and self.db_settings_manager:
+            try:
+                settings = self.db_settings_manager.load_settings()
+                if settings:
+                    return settings
+                else:
+                    # Fallback to defaults if database is empty
+                    return self._get_default_settings()
+            except Exception as e:
+                print(f"Database settings load error: {e}, falling back to JSON")
+                # Fall through to JSON loading
+        
+        # Original JSON loading logic
+        try:
+            with open("settings.json", "r", encoding='utf-8') as f:
+                settings = json.load(f)
+                self._validate_settings(settings)
+                return settings
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            # self.logger is not available yet if this is the first run, so we can't log here
+            print(f"Settings file error: {e}, using defaults")
+            return self._get_default_settings()
+    
+    def _validate_settings(self, settings):
+        """Validate and sanitize loaded settings."""
+        default_settings = self._get_default_settings()
+        
+        for key in ["input_tabs", "output_tabs", "tool_settings", "performance_settings", "font_settings", "dialog_settings"]:
+            if key not in settings:
+                settings[key] = default_settings[key]
+        
+        if len(settings.get("input_tabs", [])) != AppConfig.TAB_COUNT:
+            settings["input_tabs"] = [""] * AppConfig.TAB_COUNT
+        if len(settings.get("output_tabs", [])) != AppConfig.TAB_COUNT:
+            settings["output_tabs"] = [""] * AppConfig.TAB_COUNT
+        
+        # Backward compatibility for model lists
+        for tool_name, tool_data in default_settings["tool_settings"].items():
+            if "MODELS_LIST" in tool_data:
+                if tool_name not in settings["tool_settings"] or "MODELS_LIST" not in settings["tool_settings"][tool_name]:
+                    if tool_name not in settings["tool_settings"]:
+                         settings["tool_settings"][tool_name] = {}
+                    settings["tool_settings"][tool_name]["MODELS_LIST"] = tool_data["MODELS_LIST"]
+        
+        # Remove deprecated performance monitoring settings if they exist
+        if "performance_settings" in settings and "monitoring" in settings["performance_settings"]:
+            del settings["performance_settings"]["monitoring"]
+        
+        # Validate dialog settings structure and ensure all required categories exist
+        if "dialog_settings" in settings:
+            default_dialog_settings = default_settings["dialog_settings"]
+            for category, category_data in default_dialog_settings.items():
+                if category not in settings["dialog_settings"]:
+                    settings["dialog_settings"][category] = category_data.copy()
+                else:
+                    # Ensure all required fields exist for each category
+                    for field, default_value in category_data.items():
+                        if field not in settings["dialog_settings"][category]:
+                            settings["dialog_settings"][category][field] = default_value
+                    
+                    # Validate enabled field is boolean
+                    if not isinstance(settings["dialog_settings"][category].get("enabled"), bool):
+                        settings["dialog_settings"][category]["enabled"] = category_data["enabled"]
+                    
+                    # Ensure error dialogs cannot be disabled
+                    if category == "error":
+                        settings["dialog_settings"][category]["enabled"] = True
+                        settings["dialog_settings"][category]["locked"] = True
+    
+    def _get_default_settings(self):
+        """Returns default settings when none exist or are invalid."""
+        default_path = os.path.join(os.path.expanduser('~'), 'Downloads')
+        return {
+            "export_path": default_path,
+            "debug_level": "INFO",
+            "selected_tool": "Case Tool",
+            "input_tabs": [""] * AppConfig.TAB_COUNT,
+            "output_tabs": [""] * AppConfig.TAB_COUNT,
+            "active_input_tab": 0,
+            "active_output_tab": 0,
+            "tool_settings": {
+                "Case Tool": CaseTool().get_default_settings() if CASE_TOOL_MODULE_AVAILABLE else {"mode": "Sentence", "exclusions": "a\nan\nand\nas\nat\nbut\nby\nen\nfor\nif\nin\nis\nof\non\nor\nthe\nto\nvia\nvs"},
+
+                "Base64 Encoder/Decoder": Base64Tools().get_default_settings() if BASE64_TOOLS_MODULE_AVAILABLE else {"mode": "encode"},
+                "JSON/XML Tool": JSONXMLTool(None).get_default_settings() if JSONXML_TOOL_MODULE_AVAILABLE else {"operation": "json_to_xml", "json_indent": 2, "xml_indent": 2, "preserve_attributes": True, "sort_keys": False, "array_wrapper": "item", "root_element": "root", "jsonpath_query": "$", "xpath_query": "//*"},
+                "Cron Tool": CronTool(None).get_default_settings() if CRON_TOOL_MODULE_AVAILABLE else {"action": "parse_explain", "preset_category": "Daily Schedules", "preset_pattern": "Daily at midnight", "compare_expressions": "", "next_runs_count": 10},
+                "Find & Replace Text": {"find": "", "replace": "", "mode": "Text", "option": "ignore_case", "find_history": [], "replace_history": []},
+                "Generator Tools": GeneratorTools().get_default_settings() if GENERATOR_TOOLS_MODULE_AVAILABLE else {"Strong Password Generator": {"length": 20, "numbers": "", "symbols": ""}, "Repeating Text Generator": {"times": 5, "separator": "+"}},
+                "Sorter Tools": SorterTools().get_default_settings() if SORTER_TOOLS_MODULE_AVAILABLE else {"Number Sorter": {"order": "ascending"}, "Alphabetical Sorter": {"order": "ascending", "unique_only": False, "trim": False}},
+                "URL and Link Extractor": URLLinkExtractor().get_default_settings() if URL_LINK_EXTRACTOR_MODULE_AVAILABLE else {"extract_href": False, "extract_https": False, "extract_any_protocol": False, "extract_markdown": False, "filter_text": ""},
+                "Email Extraction Tool": EmailExtractionTool().get_default_settings() if EMAIL_EXTRACTION_MODULE_AVAILABLE else {"omit_duplicates": False, "hide_counts": True, "sort_emails": False, "only_domain": False},
+                "Email Header Analyzer": EmailHeaderAnalyzer().get_default_settings() if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE else {"show_timestamps": True, "show_delays": True, "show_authentication": True, "show_spam_score": True},
+                "Folder File Reporter": {
+                    "last_input_folder": "", "last_output_folder": "",
+                    "field_selections": {"path": True, "name": True, "size": True, "date_modified": True},
+                    "separator": " | ", "folders_only": False, "recursion_mode": "full", "recursion_depth": 2,
+                    "size_format": "human", "date_format": "%Y-%m-%d %H:%M:%S"
+                },
+                "URL Parser": URLParser().get_default_settings() if URL_PARSER_MODULE_AVAILABLE else {"ascii_decode": True},
+                "Word Frequency Counter": WordFrequencyCounter().get_default_settings() if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE else {},
+                "Google AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "gemini-1.5-pro-latest", "MODELS_LIST": ["gemini-1.5-pro-latest", "gemini-1.5-flash-latest", "gemini-1.0-pro"],
+                    "system_prompt": "You are a helpful assistant.",
+                    "temperature": 0.7, "topK": 40, "topP": 0.95, "candidateCount": 1, "maxOutputTokens": 8192, "stopSequences": ""
+                },
+                "Anthropic AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "claude-3-5-sonnet-20240620", "MODELS_LIST": ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
+                    "system": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.9, "top_k": 40, "stop_sequences": ""
+                },
+                "OpenAI": {
+                    "API_KEY": "putinyourkey", "MODEL": "gpt-4o", "MODELS_LIST": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o-mini"],
+                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "seed": "", "response_format": "text", "stop": ""
+                },
+                "Cohere AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "command-r-plus", "MODELS_LIST": ["command-r-plus", "command-r", "command", "command-light"],
+                    "preamble": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4000, "k": 50, "p": 0.75, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "stop_sequences": "", "citation_quality": "accurate"
+                },
+                "HuggingFace AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "meta-llama/Meta-Llama-3-8B-Instruct", "MODELS_LIST": ["meta-llama/Meta-Llama-3-8B-Instruct", "mistralai/Mistral-7B-Instruct-v0.2", "google/gemma-7b-it"],
+                    "system_prompt": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.95, "stop_sequences": "", "seed": ""
+                },
+                "Groq AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "llama3-70b-8192", "MODELS_LIST": ["llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"],
+                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 8192, "top_p": 1.0, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "stop": "", "seed": "", "response_format": "text"
+                },
+                "OpenRouterAI": {
+                    "API_KEY": "putinyourkey", "MODEL": "anthropic/claude-3.5-sonnet", "MODELS_LIST": ["anthropic/claude-3.5-sonnet", "google/gemini-flash-1.5:free", "meta-llama/llama-3-8b-instruct:free", "openai/gpt-4o-mini"],
+                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "top_k": 0, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "repetition_penalty": 1.0, "seed": "", "stop": ""
+                },
+                "AI Tools": {},  # Settings managed by AIToolsWidget
+                "Diff Viewer": {"option": "ignore_case"}
+            },
+            "performance_settings": {
+                "mode": "automatic",  # automatic, always_on, always_off
+                "async_processing": {
+                    "enabled": True,
+                    "threshold_kb": 10,  # KB threshold for async processing
+                    "max_workers": 2,
+                    "chunk_size_kb": 50
+                },
+                "caching": {
+                    "enabled": True,
+                    "stats_cache_size": 1000,
+                    "regex_cache_size": 100,
+                    "content_cache_size_mb": 50,
+                    "processing_cache_size": 500
+                },
+                "memory_management": {
+                    "enabled": True,
+                    "gc_optimization": True,
+                    "memory_pool": True,
+                    "leak_detection": True,
+                    "memory_threshold_mb": 500
+                },
+                "ui_optimizations": {
+                    "enabled": True,
+                    "efficient_line_numbers": True,
+                    "progressive_search": True,
+                    "debounce_delay_ms": 300,
+                    "lazy_updates": True
+                },
+
+            },
+            "font_settings": {
+                "text_font": {
+                    "family": "Source Code Pro",
+                    "size": 11,
+                    "fallback_family": "Consolas",  # Windows fallback
+                    "fallback_family_mac": "Monaco",  # Mac fallback
+                    "fallback_family_linux": "DejaVu Sans Mono"  # Linux fallback
+                },
+                "interface_font": {
+                    "family": "Segoe UI",
+                    "size": 9,
+                    "fallback_family": "Arial",  # Windows fallback
+                    "fallback_family_mac": "Helvetica",  # Mac fallback
+                    "fallback_family_linux": "Ubuntu"  # Linux fallback
+                }
+            },
+            "dialog_settings": {
+                "success": {
+                    "enabled": True,
+                    "description": "Success notifications for completed operations",
+                    "examples": ["File saved successfully", "Settings applied", "Export complete"]
+                },
+                "confirmation": {
+                    "enabled": True,
+                    "description": "Confirmation dialogs for destructive actions",
+                    "examples": ["Clear all tabs?", "Delete entry?", "Reset settings?"],
+                    "default_action": "yes"
+                },
+                "warning": {
+                    "enabled": True,
+                    "description": "Warning messages for potential issues",
+                    "examples": ["No data specified", "Invalid input detected", "Feature unavailable"]
+                },
+                "error": {
+                    "enabled": True,
+                    "locked": True,
+                    "description": "Error messages for critical issues (cannot be disabled)",
+                    "examples": ["File not found", "Network error", "Invalid configuration"]
+                }
+            }
+        }
+        
+    def save_settings(self):
+        """Saves the current settings to database or 'settings.json'."""
+        # Don't save during initialization to prevent overwriting loaded content
+        if hasattr(self, '_initializing') and self._initializing:
+            self.logger.info("Skipping save_settings during initialization")
+            return
+            
+        input_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.input_tabs]
+        output_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.output_tabs]
+        
+        self.settings["input_tabs"] = input_contents
+        self.settings["output_tabs"] = output_contents
+        self.settings["active_input_tab"] = self.input_notebook.index(self.input_notebook.select())
+        self.settings["active_output_tab"] = self.output_notebook.index(self.output_notebook.select())
+        
+        # Debug logging to track what's being saved
+        non_empty_inputs = sum(1 for content in input_contents if content)
+        non_empty_outputs = sum(1 for content in output_contents if content)
+        self.logger.info(f"Settings saved - {non_empty_inputs} non-empty input tabs, {non_empty_outputs} non-empty output tabs")
+        
+        # Save to database if available, otherwise save to JSON
+        if hasattr(self, 'db_settings_manager') and self.db_settings_manager:
+            try:
+                # Database manager handles saving automatically through the proxy
+                # Force a backup to disk
+                self.db_settings_manager.connection_manager.backup_to_disk()
+                self.logger.info("Settings saved to database")
+            except Exception as e:
+                self.logger.error(f"Failed to save to database: {e}, falling back to JSON")
+                # Fall through to JSON saving - get proper dictionary from database manager
+                try:
+                    settings_dict = self.db_settings_manager.load_settings()
+                    with open("settings.json", "w") as f:
+                        json.dump(settings_dict, f, indent=4)
+                except Exception as json_error:
+                    self.logger.error(f"Failed to save to JSON as well: {json_error}")
+                    # Create minimal fallback settings
+                    fallback_settings = {
+                        "export_path": str(Path.home() / "Downloads"),
+                        "debug_level": "INFO",
+                        "selected_tool": "Case Tool",
+                        "active_input_tab": 0,
+                        "active_output_tab": 0,
+                        "input_tabs": [""] * 7,
+                        "output_tabs": [""] * 7,
+                        "tool_settings": {}
+                    }
+                    with open("settings.json", "w") as f:
+                        json.dump(fallback_settings, f, indent=4)
+        else:
+            # Original JSON saving logic
+            with open("settings.json", "w") as f:
+                json.dump(self.settings, f, indent=4)
+
+    def load_last_state(self):
+        """Loads the last saved text and tab selections into the UI."""
+        input_tabs_data = self.settings.get("input_tabs", [""]*AppConfig.TAB_COUNT)
+        output_tabs_data = self.settings.get("output_tabs", [""]*AppConfig.TAB_COUNT)
+        
+        # Debug logging
+        non_empty_inputs = sum(1 for content in input_tabs_data if content.strip())
+        non_empty_outputs = sum(1 for content in output_tabs_data if content.strip())
+        self.logger.info(f"Loading state - {non_empty_inputs} non-empty input tabs, {non_empty_outputs} non-empty output tabs")
+        
+        for i, content in enumerate(input_tabs_data):
+            if content.strip():
+                self.logger.info(f"Loading input tab {i+1}: '{content[:50]}...' ({len(content)} chars)")
+            self.input_tabs[i].text.insert("1.0", content)
+            
+        for i, content in enumerate(output_tabs_data):
+            if content.strip():
+                self.logger.info(f"Loading output tab {i+1}: '{content[:50]}...' ({len(content)} chars)")
+            self.output_tabs[i].text.config(state="normal")
+            self.output_tabs[i].text.insert("1.0", content)
+            self.output_tabs[i].text.config(state="disabled")
+        
+        self.input_notebook.select(self.settings.get("active_input_tab", 0))
+        self.output_notebook.select(self.settings.get("active_output_tab", 0))
+        
+        # Verify content after loading
+        loaded_input_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.input_tabs]
+        loaded_output_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.output_tabs]
+        actual_non_empty_inputs = sum(1 for content in loaded_input_contents if content)
+        actual_non_empty_outputs = sum(1 for content in loaded_output_contents if content)
+        self.logger.info(f"After loading - {actual_non_empty_inputs} non-empty input tabs, {actual_non_empty_outputs} non-empty output tabs in UI")
+        
+        self.update_all_stats()
+        self.update_tab_labels()
+
+
+    def setup_logging(self):
+        """Configures the logging system for the application."""
+        self.logger = logging.getLogger("PromeraAIApp")
+        
+        if not self.logger.handlers:
+            self.log_level = tk.StringVar(value=self.settings.get("debug_level", "INFO"))
+            self.logger.setLevel(self.log_level.get())
+            
+            self.log_handler = logging.StreamHandler()
+            self.log_handler.setFormatter(
+                logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            )
+            self.logger.addHandler(self.log_handler)
+    
+        # Initialize async processing
+        if ASYNC_PROCESSING_AVAILABLE:
+            self.async_processor = get_async_text_processor()
+            self.async_processor.logger = self.logger
+            
+            # Track async processing operations
+            self.pending_async_operations = {}
+            self.async_progress_indicators = {}
+            
+            self.logger.info("Async text processing initialized")
+        else:
+            self.async_processor = None
+            self.pending_async_operations = {}
+            self.async_progress_indicators = {}
+            self.logger.warning("Async processing not available")
+        
+        # Text chunking functionality not available
+        self.text_chunker = None
+        
+        # Initialize intelligent caching
+        if INTELLIGENT_CACHING_AVAILABLE:
+            self.smart_stats_calculator = get_smart_stats_calculator()
+            self.regex_cache = get_regex_pattern_cache()
+            self.content_cache = get_content_hash_cache()
+            self.processing_cache = get_processing_result_cache()
+            
+            self.logger.info("Intelligent caching initialized")
+        else:
+            self.smart_stats_calculator = None
+            self.regex_cache = None
+            self.content_cache = None
+            self.processing_cache = None
+            self.logger.warning("Intelligent caching not available")
+        
+        # Initialize progressive search and highlighting
+        if PROGRESSIVE_SEARCH_AVAILABLE:
+            self.search_highlighter = get_search_highlighter()
+            self.find_replace_processor = get_find_replace_processor()
+            self.operation_manager = get_operation_manager()
+            
+            # Track active search operations
+            self.active_search_operations = {}
+            
+            self.logger.info("Progressive search and highlighting initialized")
+        else:
+            self.search_highlighter = None
+            self.find_replace_processor = None
+            self.operation_manager = None
+            self.active_search_operations = {}
+            self.logger.warning("Progressive search not available")
+    
+    def setup_optimized_components(self):
+        """Initialize optimized components for better performance."""
+        # Get performance settings
+        perf_settings = self.settings.get("performance_settings", {})
+        performance_mode = perf_settings.get("mode", "automatic")
+        
+        # Check if optimizations should be enabled
+        optimizations_enabled = (
+            performance_mode == "always_on" or 
+            (performance_mode == "automatic" and self._should_enable_optimizations())
+        )
+        
+        if performance_mode == "always_off":
+            self.logger.info("Performance optimizations disabled by user setting")
+            self._disable_all_optimizations()
+            return
+        
+        # Advanced memory management modules not available
+        self.memory_pool_allocator = None
+        self.gc_optimizer = None
+        self.memory_leak_detector = None
+        
+        # Memory efficient text widgets removed - no longer used
+        self.use_memory_efficient_widgets = False
+        
+        # Activity tracking for GC optimization removed (advanced memory management disabled)
+        
+        # Update debounce delay from settings
+        ui_settings = perf_settings.get("ui_optimizations", {})
+        AppConfig.DEBOUNCE_DELAY = ui_settings.get("debounce_delay_ms", 300)
+        
+        # Initialize Find & Replace widget if available
+        if FIND_REPLACE_MODULE_AVAILABLE:
+            self.settings_manager = PromeraAISettingsManager(self)
+            self.find_replace_widget = FindReplaceWidget(self, self.settings_manager, self.logger, self.dialog_manager)
+            self.logger.info("Find & Replace module initialized")
+        else:
+            self.find_replace_widget = None
+            self.logger.warning("Find & Replace module not available")
+            
+        # Initialize Case Tool
+        if CASE_TOOL_MODULE_AVAILABLE:
+            self.case_tool = CaseTool()
+            self.logger.info("Case Tool module initialized")
+        else:
+            self.case_tool = None
+            self.logger.warning("Case Tool module not available")
+            
+        # Initialize Email Extraction Tool
+        if EMAIL_EXTRACTION_MODULE_AVAILABLE:
+            self.email_extraction_tool = EmailExtractionTool()
+            self.logger.info("Email Extraction Tool module initialized")
+        else:
+            self.email_extraction_tool = None
+            self.logger.warning("Email Extraction Tool module not available")
+            
+        # Initialize Email Header Analyzer
+        if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE:
+            self.email_header_analyzer = EmailHeaderAnalyzer()
+            self.logger.info("Email Header Analyzer module initialized")
+        else:
+            self.email_header_analyzer = None
+            self.logger.warning("Email Header Analyzer module not available")
+        
+        # Initialize Folder File Reporter
+        if FOLDER_FILE_REPORTER_MODULE_AVAILABLE:
+            self.folder_file_reporter = FolderFileReporterAdapter(self)
+            self.logger.info("Folder File Reporter module initialized")
+        else:
+            self.folder_file_reporter = None
+            self.logger.warning("Folder File Reporter module not available")
+            
+        # Initialize URL and Link Extractor
+        if URL_LINK_EXTRACTOR_MODULE_AVAILABLE:
+            self.url_link_extractor = URLLinkExtractor()
+            self.logger.info("URL and Link Extractor module initialized")
+        else:
+            self.url_link_extractor = None
+            self.logger.warning("URL and Link Extractor module not available")
+            
+        # Initialize URL Parser
+        if URL_PARSER_MODULE_AVAILABLE:
+            self.url_parser = URLParser()
+            self.logger.info("URL Parser module initialized")
+        else:
+            self.url_parser = None
+            self.logger.warning("URL Parser module not available")
+            
+        # Initialize Word Frequency Counter
+        if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE:
+            self.word_frequency_counter = WordFrequencyCounter()
+            self.logger.info("Word Frequency Counter module initialized")
+        else:
+            self.word_frequency_counter = None
+            self.logger.warning("Word Frequency Counter module not available")
+            
+        # Initialize Sorter Tools
+        if SORTER_TOOLS_MODULE_AVAILABLE:
+            self.sorter_tools = SorterTools()
+            self.logger.info("Sorter Tools module initialized")
+        else:
+            self.sorter_tools = None
+            self.logger.warning("Sorter Tools module not available")
+            
+        # Initialize Translator Tools
+        if TRANSLATOR_TOOLS_MODULE_AVAILABLE:
+            self.translator_tools = TranslatorTools()
+            self.logger.info("Translator Tools module initialized")
+        else:
+            self.translator_tools = None
+        
+        # Initialize Generator Tools
+        if GENERATOR_TOOLS_MODULE_AVAILABLE:
+            self.generator_tools = GeneratorTools()
+            self.logger.info("Generator Tools module initialized")
+        else:
+            self.generator_tools = None
+        
+        # Initialize Base64 Tools
+        if BASE64_TOOLS_MODULE_AVAILABLE:
+            self.base64_tools = Base64Tools()
+            self.logger.info("Base64 Tools module initialized")
+        else:
+            self.base64_tools = None
+            self.logger.warning("Base64 Tools module not available")
+        
+        # Initialize JSON/XML Tool
+        if JSONXML_TOOL_MODULE_AVAILABLE:
+            self.logger.info("JSON/XML Tool module initialized")
+        else:
+            self.logger.warning("JSON/XML Tool module not available")
+        
+        # Initialize Cron Tool
+        if CRON_TOOL_MODULE_AVAILABLE:
+            self.logger.info("Cron Tool module initialized")
+        else:
+            self.logger.warning("Cron Tool module not available")
+        
+        # Initialize HTML Extraction Tool
+        if HTML_EXTRACTION_TOOL_MODULE_AVAILABLE:
+            self.html_extraction_tool = HTMLExtractionTool(self.logger)
+            self.logger.info("HTML Extraction Tool module initialized")
+        else:
+            self.html_extraction_tool = None
+            self.logger.warning("HTML Extraction Tool module not available")
+        
+        # Initialize Event Consolidator
+        if EVENT_CONSOLIDATOR_AVAILABLE:
+            # Create debounce configuration based on performance settings
+            ui_settings = perf_settings.get("ui_optimizations", {})
+            debounce_config = DebounceConfig(
+                strategy=DebounceStrategy.ADAPTIVE,
+                fast_delay_ms=ui_settings.get("fast_debounce_ms", 50),
+                normal_delay_ms=ui_settings.get("normal_debounce_ms", 300),
+                slow_delay_ms=ui_settings.get("slow_debounce_ms", 500),
+                large_content_threshold=ui_settings.get("large_content_threshold", 10000),
+                very_large_threshold=ui_settings.get("very_large_threshold", 100000)
+            )
+            
+            self.event_consolidator = EventConsolidator(debounce_config)
+            self.event_consolidator.set_tk_root(self)
+            self.logger.info(f"Event Consolidator initialized with adaptive debouncing (strategy: {debounce_config.strategy.value})")
+            self.logger.info(f"Debounce delays - Fast: {debounce_config.fast_delay_ms}ms, Normal: {debounce_config.normal_delay_ms}ms, Slow: {debounce_config.slow_delay_ms}ms")
+        else:
+            self.event_consolidator = None
+            self.logger.warning("Event Consolidator not available - using legacy event handling")
+        
+        # Initialize Visibility Monitor and Statistics Update Manager
+        if VISIBILITY_AWARE_UPDATES_AVAILABLE:
+            # Initialize visibility monitor
+            self.visibility_monitor = get_visibility_monitor()
+            self.visibility_monitor.set_tk_root(self)
+            
+            # Initialize statistics update manager
+            self.statistics_update_manager = get_statistics_update_manager()
+            self.statistics_update_manager.set_tk_root(self)
+            
+            self.logger.info("Visibility Monitor and Statistics Update Manager initialized")
+            self.logger.info("Visibility-aware statistics updates enabled")
+        else:
+            self.visibility_monitor = None
+            self.statistics_update_manager = None
+            self.logger.warning("Visibility-aware updates not available - using direct statistics updates")
+        
+        # Initialize Progressive Statistics Calculator
+        if PROGRESSIVE_STATS_CALCULATOR_AVAILABLE:
+            # Get configuration from performance settings
+            progressive_settings = perf_settings.get("progressive_calculation", {})
+            chunk_size = progressive_settings.get("chunk_size", 10000)
+            progress_threshold_ms = progressive_settings.get("progress_indicator_threshold_ms", 100.0)
+            
+            self.progressive_stats_calculator = get_progressive_stats_calculator()
+            self.logger.info(f"Progressive Statistics Calculator initialized (chunk_size: {chunk_size}, threshold: {progress_threshold_ms}ms)")
+            self.logger.info("Progressive calculation enabled for large content (>50,000 characters)")
+        else:
+            self.progressive_stats_calculator = None
+            self.logger.warning("Progressive Statistics Calculator not available - using standard calculation for all content sizes")
+    
+    def _should_enable_optimizations(self):
+        """Determine if optimizations should be enabled in automatic mode."""
+        # In automatic mode, enable optimizations if any performance components are available
+        return (ASYNC_PROCESSING_AVAILABLE or 
+                INTELLIGENT_CACHING_AVAILABLE or 
+                PROGRESSIVE_SEARCH_AVAILABLE or
+                ADVANCED_MEMORY_MANAGEMENT_AVAILABLE or
+                MEMORY_EFFICIENT_TEXT_AVAILABLE or
+                EVENT_CONSOLIDATOR_AVAILABLE)
+    
+    def _disable_all_optimizations(self):
+        """Disable all performance optimizations."""
+        self.memory_pool_allocator = None
+        self.gc_optimizer = None
+        self.memory_leak_detector = None
+        self.use_memory_efficient_widgets = False
+    
+    def _record_activity(self, event=None):
+        """Record user activity for GC optimization - not available."""
+        # Advanced memory management modules not available
+        pass
+    
+
+        
+    def setup_audio(self):
+        """Initializes the PyAudio stream for Morse code playback."""
+        global PYAUDIO_AVAILABLE
+        self.audio_stream = None
+        self.pyaudio_instance = None
+
+        
+        if PYAUDIO_AVAILABLE:
+            try:
+                self.pyaudio_instance = pyaudio.PyAudio()
+                self.audio_stream = self.pyaudio_instance.open(format=pyaudio.paFloat32,
+                                                     channels=1,
+                                                     rate=AppConfig.SAMPLE_RATE,
+                                                     output=True)
+                self.logger.info("PyAudio initialized successfully.")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize PyAudio: {e}")
+                PYAUDIO_AVAILABLE = False
+
+
+    def create_widgets(self):
+        """Creates and arranges all the GUI widgets in the main window."""
+        # Create menu bar
+        self.create_menu_bar()
+        
+        main_frame = ttk.Frame(self, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+
+        self.central_frame = ttk.Frame(main_frame, padding="10")
+        self.central_frame.grid(row=0, column=0, sticky="nsew", pady=5)
+        self.central_frame.grid_columnconfigure(0, weight=1)
+        self.central_frame.grid_columnconfigure(1, weight=1)
+        self.central_frame.grid_rowconfigure(1, weight=1)
+
+        self.create_input_widgets(self.central_frame)
+        self.create_output_widgets(self.central_frame)
+        
+        # Register tabs with visibility monitor and statistics update manager
+        self.register_tabs_with_visibility_system()
+
+        self.create_diff_viewer(main_frame)
+
+        # Add separator
+        separator = ttk.Separator(main_frame, orient='horizontal')
+        separator.grid(row=1, column=0, sticky="ew", pady=10)
+
+        tool_frame = ttk.Frame(main_frame, padding="10")
+        tool_frame.grid(row=2, column=0, sticky="ew", pady=5)
+        self.create_tool_widgets(tool_frame)
+        
+        # Setup context menus for all text widgets
+        self.setup_context_menus()
+        
+        # Initialize console window as None (will be created when needed)
+        self.console_window = None
+        
+        # Initialize cURL tool window as None (will be created when needed)
+        self.curl_tool_window = None
+        
+        # Initialize List Comparator window as None (will be created when needed)
+        self.list_comparator_window = None
+
+    def get_system_fonts(self):
+        """Get list of available system fonts."""
+        try:
+            import tkinter.font as tkfont
+            return sorted(tkfont.families())
+        except:
+            return ["Arial", "Helvetica", "Times", "Courier", "Consolas", "Monaco", "DejaVu Sans Mono"]
+    
+    def is_monospace_font(self, font_name):
+        """Check if a font is monospace by testing character widths."""
+        # Known monospace fonts (always return True for these)
+        known_monospace = {
+            'source code pro', 'consolas', 'monaco', 'courier', 'courier new',
+            'dejavu sans mono', 'liberation mono', 'ubuntu mono', 'fira code',
+            'inconsolata', 'roboto mono', 'jetbrains mono', 'cascadia code',
+            'sf mono', 'menlo', 'andale mono', 'lucida console', 'hack',
+            'noto mono', 'droid sans mono', 'pt mono', 'space mono'
+        }
+        
+        if font_name.lower() in known_monospace:
+            return True
+        
+        try:
+            import tkinter.font as tkfont
+            font = tkfont.Font(family=font_name, size=12)
+            # Test multiple character pairs for better accuracy
+            i_width = font.measure('i')
+            w_width = font.measure('W')
+            m_width = font.measure('M')
+            l_width = font.measure('l')
+            
+            # All characters should have the same width in monospace fonts
+            return i_width == w_width == m_width == l_width
+        except:
+            return False
+    
+    def get_monospace_fonts(self):
+        """Get list of monospace fonts."""
+        all_fonts = self.get_system_fonts()
+        monospace = []
+        
+        # Always add Source Code Pro first (even if not installed, for selection purposes)
+        monospace.append("Source Code Pro")
+        
+        # Add other monospace fonts from system
+        for font in all_fonts:
+            if font != "Source Code Pro" and self.is_monospace_font(font):
+                monospace.append(font)
+        
+        # Ensure we have essential fallbacks (add if not already present)
+        essential_fallbacks = ["Consolas", "Monaco", "Courier New", "DejaVu Sans Mono", "Courier"]
+        for fallback in essential_fallbacks:
+            if fallback not in monospace:
+                monospace.append(fallback)
+        
+        return monospace
+    
+
+
+    def get_best_font(self, font_type="text"):
+        """Get the best available font based on settings and system."""
+        font_settings = self.settings.get("font_settings", {})
+        
+        # Handle legacy settings format
+        if "family" in font_settings:
+            # Convert old format to new format
+            font_settings = {
+                "text_font": {
+                    "family": font_settings.get("family", "Source Code Pro"),
+                    "size": font_settings.get("size", 11),
+                    "fallback_family": font_settings.get("fallback_family", "Consolas"),
+                    "fallback_family_mac": font_settings.get("fallback_family_mac", "Monaco"),
+                    "fallback_family_linux": font_settings.get("fallback_family_linux", "DejaVu Sans Mono")
+                }
+            }
+            self.settings["font_settings"] = font_settings
+        
+        # Only handle text fonts now
+        type_settings = font_settings.get("text_font", {})
+        preferred_font = type_settings.get("family", "Source Code Pro")
+        font_size = type_settings.get("size", 11)
+        
+        # Get available system fonts
+        available_fonts = self.get_system_fonts()
+        
+        # Try preferred font first
+        if preferred_font in available_fonts:
+            return (preferred_font, font_size)
+        
+        # Special handling for Source Code Pro - if selected but not installed, show a helpful message
+        if preferred_font == "Source Code Pro" and preferred_font not in available_fonts:
+            self.logger.warning("Source Code Pro selected but not installed. Using fallback font. Download from: https://fonts.google.com/specimen/Source+Code+Pro")
+        
+        # Try platform-specific fallbacks
+        import platform
+        system = platform.system().lower()
+        
+        fallback_key = "fallback_family"
+        if system == "darwin":
+            fallback_key = "fallback_family_mac"
+        elif system == "linux":
+            fallback_key = "fallback_family_linux"
+        
+        fallback_font = type_settings.get(fallback_key, "Consolas" if font_type == "text" else "Arial")
+        if fallback_font in available_fonts:
+            return (fallback_font, font_size)
+        
+        # Final fallbacks based on font type
+        if font_type == "text":
+            fallbacks = ["Consolas", "Monaco", "DejaVu Sans Mono", "Courier New", "monospace"]
+        else:
+            fallbacks = ["Arial", "Helvetica", "Verdana", "Tahoma", "sans-serif"]
+        
+        for font in fallbacks:
+            if font in available_fonts:
+                return (font, font_size)
+        
+        # System default
+        return ("TkDefaultFont", font_size)
+
+    def apply_font_to_text_widgets(self):
+        """Apply font settings to all text widgets throughout the application."""
+        text_font_family, text_font_size = self.get_best_font("text")
+        text_font_tuple = (text_font_family, text_font_size)
+        
+        try:
+            # Apply text font to input tabs
+            for tab in self.input_tabs:
+                if hasattr(tab, 'text'):
+                    tab.text.configure(font=text_font_tuple)
+            
+            # Apply text font to output tabs
+            for tab in self.output_tabs:
+                if hasattr(tab, 'text'):
+                    tab.text.configure(font=text_font_tuple)
+            
+            # Apply text font to console log if it exists
+            if hasattr(self, 'console_log') and self.console_log:
+                self.console_log.configure(font=text_font_tuple)
+            
+            # Apply to AI Tools text areas
+            self.apply_font_to_ai_tools(text_font_tuple)
+            
+            # Apply to JSON/XML Tool if it exists
+            if hasattr(self, 'jsonxml_tool') and self.jsonxml_tool:
+                self.jsonxml_tool.apply_font_to_widgets(text_font_tuple)
+            
+            # Apply to Cron Tool if it exists
+            if hasattr(self, 'cron_tool') and self.cron_tool:
+                self.cron_tool.apply_font_to_widgets(text_font_tuple)
+            
+            # Apply to diff viewer using its method if available
+            if hasattr(self, 'diff_viewer_widget') and self.diff_viewer_widget:
+                if hasattr(self.diff_viewer_widget, 'apply_font_to_widgets'):
+                    self.diff_viewer_widget.apply_font_to_widgets(text_font_tuple)
+                else:
+                    # Fallback to direct application
+                    if hasattr(self, 'diff_input_tabs'):
+                        for tab in self.diff_input_tabs:
+                            if hasattr(tab, 'text'):
+                                tab.text.configure(font=text_font_tuple)
+                    
+                    if hasattr(self, 'diff_output_tabs'):
+                        for tab in self.diff_output_tabs:
+                            if hasattr(tab, 'text'):
+                                tab.text.configure(font=text_font_tuple)
+            
+            # Apply to any other text widgets that might exist
+            self.apply_font_to_tool_widgets(text_font_tuple)
+            
+            self.logger.info(f"Applied text font: {text_font_family} {text_font_size}pt to all text widgets")
+            
+        except Exception as e:
+            self.logger.error(f"Error applying font settings: {e}")
+    
+    def apply_font_to_ai_tools(self, font_tuple):
+        """Apply font to AI Tools text areas."""
+        try:
+            # Check if AI Tools widget exists and has the apply_font_to_widgets method
+            if hasattr(self, 'ai_tools_widget') and self.ai_tools_widget:
+                if hasattr(self.ai_tools_widget, 'apply_font_to_widgets'):
+                    self.ai_tools_widget.apply_font_to_widgets(font_tuple)
+                else:
+                    # Fallback to manual application
+                    for provider_name, widgets in self.ai_tools_widget.ai_widgets.items():
+                        for widget_name, widget in widgets.items():
+                            if isinstance(widget, tk.Text):
+                                try:
+                                    widget.configure(font=font_tuple)
+                                except:
+                                    pass
+                
+                self.logger.debug("Applied font to AI Tools text areas")
+        except Exception as e:
+            self.logger.debug(f"Could not apply font to AI Tools: {e}")
+    
+    def apply_font_to_tool_widgets(self, font_tuple):
+        """Apply font to other tool text widgets."""
+        try:
+            # Apply to any Text widgets in the tool frames
+            for widget_name in dir(self):
+                widget = getattr(self, widget_name)
+                
+                # Check for text widgets by common naming patterns
+                if (widget_name.endswith('_text') or 
+                    widget_name.endswith('_entry') or 
+                    'text' in widget_name.lower()):
+                    
+                    if hasattr(widget, 'configure'):
+                        try:
+                            # Try to configure font - will work for Text, Entry, etc.
+                            widget.configure(font=font_tuple)
+                        except:
+                            pass  # Skip if widget doesn't support font
+            
+            # Recursively apply to child widgets in frames
+            self.apply_font_to_child_widgets(self, font_tuple)
+            
+        except Exception as e:
+            self.logger.debug(f"Could not apply font to some tool widgets: {e}")
+    
+    def apply_font_to_child_widgets(self, parent, font_tuple):
+        """Recursively apply font to child text widgets."""
+        try:
+            for child in parent.winfo_children():
+                # Apply to Text widgets
+                if isinstance(child, (tk.Text, tk.Entry)):
+                    try:
+                        child.configure(font=font_tuple)
+                    except:
+                        pass
+                
+                # Recursively check children
+                if hasattr(child, 'winfo_children'):
+                    self.apply_font_to_child_widgets(child, font_tuple)
+                    
+        except Exception as e:
+            pass  # Silently continue if there are issues
+    
+    def setup_context_menus(self):
+        """Setup right-click context menus for all text widgets in the application."""
+        if not CONTEXT_MENU_AVAILABLE:
+            self.logger.warning("Context menu module not available")
+            return
+        
+        try:
+            self.logger.info("Setting up context menus for text widgets...")
+            
+            # Add context menus to input tabs
+            for i, tab in enumerate(self.input_tabs):
+                if hasattr(tab, 'text'):
+                    add_context_menu(tab.text)
+                    self.logger.debug(f"Added context menu to input tab {i+1}")
+            
+            # Add context menus to output tabs
+            for i, tab in enumerate(self.output_tabs):
+                if hasattr(tab, 'text'):
+                    add_context_menu(tab.text)
+                    self.logger.debug(f"Added context menu to output tab {i+1}")
+            
+            # Add context menus to diff viewer tabs if available
+            if hasattr(self, 'diff_input_tabs'):
+                for i, tab in enumerate(self.diff_input_tabs):
+                    if hasattr(tab, 'text'):
+                        add_context_menu(tab.text)
+                        self.logger.debug(f"Added context menu to diff input tab {i+1}")
+            
+            if hasattr(self, 'diff_output_tabs'):
+                for i, tab in enumerate(self.diff_output_tabs):
+                    if hasattr(tab, 'text'):
+                        add_context_menu(tab.text)
+                        self.logger.debug(f"Added context menu to diff output tab {i+1}")
+            
+            # Add context menus to filter entries
+            if hasattr(self, 'input_filter_entry'):
+                add_context_menu(self.input_filter_entry)
+                self.logger.debug("Added context menu to input filter entry")
+            
+            if hasattr(self, 'output_filter_entry'):
+                add_context_menu(self.output_filter_entry)
+                self.logger.debug("Added context menu to output filter entry")
+            
+            # Add context menus to diff viewer filter entries if available
+            if hasattr(self, 'diff_viewer_widget'):
+                if hasattr(self.diff_viewer_widget, 'input_filter_entry'):
+                    add_context_menu(self.diff_viewer_widget.input_filter_entry)
+                    self.logger.debug("Added context menu to diff viewer input filter")
+                if hasattr(self.diff_viewer_widget, 'output_filter_entry'):
+                    add_context_menu(self.diff_viewer_widget.output_filter_entry)
+                    self.logger.debug("Added context menu to diff viewer output filter")
+            
+            # Add context menus to any other text widgets in tool settings
+            if hasattr(self, 'tool_settings_frame'):
+                add_context_menu_to_children(self.tool_settings_frame)
+                self.logger.debug("Added context menus to tool settings widgets")
+            
+            self.logger.info("Context menus setup complete")
+            
+        except Exception as e:
+            self.logger.error(f"Error setting up context menus: {e}")
+
+    def open_font_settings(self):
+        """Open font settings dialog."""
+        if hasattr(self, 'font_settings_window') and self.font_settings_window and self.font_settings_window.winfo_exists():
+            self.font_settings_window.lift()
+            return
+        
+        self.font_settings_window = tk.Toplevel(self)
+        self.font_settings_window.title("Font Settings")
+        self.font_settings_window.geometry("750x650")
+        self.font_settings_window.minsize(700, 600)
+        self.font_settings_window.transient(self)
+        self.font_settings_window.grab_set()
+        
+        def on_dialog_close():
+            # Clean up the dialog
+            self.font_settings_window.destroy()
+            self.font_settings_window = None
+        
+        # Create scrollable main frame
+        canvas = tk.Canvas(self.font_settings_window)
+        scrollbar = ttk.Scrollbar(self.font_settings_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+        scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=10)
+        
+        # Current font settings
+        font_settings = self.settings.get("font_settings", {})
+        
+        # Handle legacy format
+        if "family" in font_settings:
+            text_font_settings = {
+                "family": font_settings.get("family", "Source Code Pro"),
+                "size": font_settings.get("size", 11)
+            }
+        else:
+            text_font_settings = font_settings.get("text_font", {"family": "Source Code Pro", "size": 11})
+        
+        # === INPUT/OUTPUT TEXT FONTS (MONOSPACE) ===
+        text_frame = ttk.LabelFrame(scrollable_frame, text="Input/Output Text Font (Monospace)")
+        text_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        # Text font family
+        ttk.Label(text_frame, text="Font Family:", font=("TkDefaultFont", 9, "bold")).pack(anchor=tk.W, padx=5, pady=(10, 5))
+        
+        text_font_frame = ttk.Frame(text_frame)
+        text_font_frame.pack(fill=tk.X, padx=5, pady=(0, 10))
+        
+        self.text_font_var = tk.StringVar(value=text_font_settings.get("family", "Source Code Pro"))
+        monospace_fonts = self.get_monospace_fonts()
+        
+        text_font_combo = ttk.Combobox(text_font_frame, textvariable=self.text_font_var, values=monospace_fonts, width=40)
+        text_font_combo.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Placeholder for buttons (will be defined after preview functions)
+        self.text_font_buttons_frame = text_font_frame
+        
+        # Text font size
+        ttk.Label(text_frame, text="Font Size:", font=("TkDefaultFont", 9, "bold")).pack(anchor=tk.W, padx=5, pady=(5, 5))
+        
+        text_size_frame = ttk.Frame(text_frame)
+        text_size_frame.pack(fill=tk.X, padx=5, pady=(0, 10))
+        
+        self.text_size_var = tk.StringVar(value=str(text_font_settings.get("size", 11)))
+        text_size_spinbox = ttk.Spinbox(text_size_frame, from_=8, to=24, width=10, textvariable=self.text_size_var)
+        text_size_spinbox.pack(side=tk.LEFT)
+        
+
+        
+        # === PREVIEW ===
+        preview_frame = ttk.LabelFrame(scrollable_frame, text="Preview")
+        preview_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        # Text font preview
+        ttk.Label(preview_frame, text="Input/Output Text Preview:", font=("TkDefaultFont", 9, "bold")).pack(anchor=tk.W, padx=5, pady=(10, 5))
+        
+        self.text_preview = tk.Text(preview_frame, height=6, wrap=tk.WORD)
+        self.text_preview.pack(fill=tk.X, padx=5, pady=(0, 10))
+        
+        text_sample = """def hello_world():
+    print("Hello, World!")
+    return "Success"
+
+# ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz
+# 0123456789 !@#$%^&*()_+-=[]{}|;:,.<>?"""
+        
+        self.text_preview.insert("1.0", text_sample)
+        
+
+        
+        # Update preview functions
+        def update_text_preview(*args):
+            try:
+                family = self.text_font_var.get()
+                size = int(self.text_size_var.get())
+                self.text_preview.configure(font=(family, size))
+            except:
+                pass
+        
+
+        
+        # Bind preview updates
+        self.text_font_var.trace_add("write", update_text_preview)
+        self.text_size_var.trace_add("write", update_text_preview)
+        
+        # Now add the Source Code Pro buttons (after preview functions are defined)
+        def select_source_code_pro():
+            self.text_font_var.set("Source Code Pro")
+            update_text_preview()
+        
+        ttk.Button(self.text_font_buttons_frame, text="Use Source Code Pro", command=select_source_code_pro).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Download Source Code Pro button
+        def download_source_code_pro():
+            import webbrowser
+            webbrowser.open("https://fonts.google.com/specimen/Source+Code+Pro")
+        
+        ttk.Button(self.text_font_buttons_frame, text="Download", command=download_source_code_pro).pack(side=tk.LEFT)
+        
+        # Initial preview
+        update_text_preview()
+        
+        # === FONT INFO ===
+        info_frame = ttk.LabelFrame(scrollable_frame, text="Font Information")
+        info_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        current_text_font, current_text_size = self.get_best_font("text")
+        
+        info_text = f"Currently using:\n"
+        info_text += f"• Text: {current_text_font} {current_text_size}pt\n\n"
+        
+        # Check if Source Code Pro is actually installed
+        available_fonts = self.get_system_fonts()
+        if "Source Code Pro" in available_fonts:
+            info_text += "✅ Source Code Pro: Installed and available\n"
+        else:
+            info_text += "⚠️ Source Code Pro: Not installed (click Download to get it)\n"
+        
+        info_text += "License: SIL Open Font License (commercial use allowed)"
+        
+        ttk.Label(info_frame, text=info_text, foreground="blue").pack(anchor=tk.W, padx=5, pady=10)
+        
+        # === BUTTONS ===
+        button_frame = ttk.Frame(scrollable_frame)
+        button_frame.pack(fill=tk.X, padx=10, pady=(0, 20))
+        
+        def apply_font_settings():
+            try:
+                text_family = self.text_font_var.get()
+                text_size = int(self.text_size_var.get())
+                
+                # Update settings
+                self.settings["font_settings"] = {
+                    "text_font": {
+                        "family": text_family,
+                        "size": text_size,
+                        "fallback_family": "Consolas",
+                        "fallback_family_mac": "Monaco",
+                        "fallback_family_linux": "DejaVu Sans Mono"
+                    }
+                }
+                
+                # Apply to widgets
+                self.apply_font_to_text_widgets()
+                
+                # Save settings
+                self.save_settings()
+                
+                if self.dialog_manager:
+                    self.dialog_manager.show_info("Font Settings", 
+                        f"Font applied:\n• Text: {text_family} {text_size}pt", "success")
+                else:
+                    messagebox.showinfo("Font Settings", 
+                        f"Font applied:\n• Text: {text_family} {text_size}pt")
+                
+            except Exception as e:
+                if self.dialog_manager:
+                    self.dialog_manager.show_error("Error", f"Error applying font settings: {e}")
+                else:
+                    messagebox.showerror("Error", f"Error applying font settings: {e}")
+        
+        def reset_font_settings():
+            if self.dialog_manager and self.dialog_manager.ask_yes_no("Reset Fonts", "Reset font settings to defaults?", "confirmation") or \
+               not self.dialog_manager and messagebox.askyesno("Reset Fonts", "Reset font settings to defaults?"):
+                self.text_font_var.set("Source Code Pro")
+                self.text_size_var.set("11")
+                update_text_preview()
+        
+        ttk.Button(button_frame, text="Apply", command=apply_font_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Reset to Defaults", command=reset_font_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Cancel", command=on_dialog_close).pack(side=tk.RIGHT)
+        
+        # Mouse wheel scrolling with safe canvas reference
+        
+    def open_dialog_settings(self):
+        """Open dialog settings configuration window."""
+        if hasattr(self, 'dialog_settings_window') and self.dialog_settings_window and self.dialog_settings_window.winfo_exists():
+            self.dialog_settings_window.lift()
+            return
+        
+        self.dialog_settings_window = tk.Toplevel(self)
+        self.dialog_settings_window.title("Dialog Settings")
+        self.dialog_settings_window.geometry("650x550")
+        self.dialog_settings_window.minsize(600, 500)
+        self.dialog_settings_window.transient(self)
+        self.dialog_settings_window.grab_set()
+        
+        def on_dialog_close():
+            # Clean up the dialog
+            self.dialog_settings_window.destroy()
+            self.dialog_settings_window = None
+        
+        # Create scrollable main frame
+        canvas = tk.Canvas(self.dialog_settings_window)
+        scrollbar = ttk.Scrollbar(self.dialog_settings_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+        scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=10)
+        
+        # Current dialog settings
+        dialog_settings = self.settings.get("dialog_settings", {})
+        
+        # Store checkbox variables for each category
+        self.dialog_checkboxes = {}
+        
+        # === HEADER ===
+        header_frame = ttk.Frame(scrollable_frame)
+        header_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        header_text = "Configure which notification and confirmation dialogs are shown throughout the application."
+        ttk.Label(header_frame, text=header_text, wraplength=580, justify=tk.LEFT).pack(anchor=tk.W)
+        
+        # === NOTIFICATION DIALOGS ===
+        notifications_frame = ttk.LabelFrame(scrollable_frame, text="Notification Dialogs")
+        notifications_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        # Success notifications
+        success_frame = ttk.Frame(notifications_frame)
+        success_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        
+        success_settings = dialog_settings.get("success", {"enabled": True})
+        self.dialog_checkboxes["success"] = tk.BooleanVar(value=success_settings.get("enabled", True))
+        
+        success_checkbox = ttk.Checkbutton(
+            success_frame, 
+            text="Success Notifications", 
+            variable=self.dialog_checkboxes["success"],
+            command=lambda: self._on_dialog_setting_changed("success")
+        )
+        success_checkbox.pack(anchor=tk.W)
+        
+        success_desc = "Show notifications when operations complete successfully"
+        ttk.Label(success_frame, text=success_desc, foreground="gray", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0))
+        
+        success_examples = "Examples: \"File saved successfully\", \"Settings applied\", \"Export complete\""
+        ttk.Label(success_frame, text=success_examples, foreground="blue", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0), pady=(2, 0))
+        
+        # Warning notifications
+        warning_frame = ttk.Frame(notifications_frame)
+        warning_frame.pack(fill=tk.X, padx=10, pady=(10, 10))
+        
+        warning_settings = dialog_settings.get("warning", {"enabled": True})
+        self.dialog_checkboxes["warning"] = tk.BooleanVar(value=warning_settings.get("enabled", True))
+        
+        warning_checkbox = ttk.Checkbutton(
+            warning_frame, 
+            text="Warning Notifications", 
+            variable=self.dialog_checkboxes["warning"],
+            command=lambda: self._on_dialog_setting_changed("warning")
+        )
+        warning_checkbox.pack(anchor=tk.W)
+        
+        warning_desc = "Show warnings for potential issues or invalid inputs"
+        ttk.Label(warning_frame, text=warning_desc, foreground="gray", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0))
+        
+        warning_examples = "Examples: \"No data specified\", \"Invalid input detected\", \"Feature unavailable\""
+        ttk.Label(warning_frame, text=warning_examples, foreground="blue", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0), pady=(2, 0))
+        
+        # === CONFIRMATION DIALOGS ===
+        confirmations_frame = ttk.LabelFrame(scrollable_frame, text="Confirmation Dialogs")
+        confirmations_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        confirmation_frame = ttk.Frame(confirmations_frame)
+        confirmation_frame.pack(fill=tk.X, padx=10, pady=(10, 10))
+        
+        confirmation_settings = dialog_settings.get("confirmation", {"enabled": True})
+        self.dialog_checkboxes["confirmation"] = tk.BooleanVar(value=confirmation_settings.get("enabled", True))
+        
+        confirmation_checkbox = ttk.Checkbutton(
+            confirmation_frame, 
+            text="Confirmation Dialogs", 
+            variable=self.dialog_checkboxes["confirmation"],
+            command=lambda: self._on_dialog_setting_changed("confirmation")
+        )
+        confirmation_checkbox.pack(anchor=tk.W)
+        
+        confirmation_desc = "Ask for confirmation before destructive or irreversible actions"
+        ttk.Label(confirmation_frame, text=confirmation_desc, foreground="gray", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0))
+        
+        confirmation_examples = "Examples: \"Clear all tabs?\", \"Delete entry?\", \"Reset settings?\""
+        ttk.Label(confirmation_frame, text=confirmation_examples, foreground="blue", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0), pady=(2, 0))
+        
+        confirmation_note = "Note: When disabled, actions will proceed automatically with default choices"
+        ttk.Label(confirmation_frame, text=confirmation_note, foreground="orange", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0), pady=(2, 0))
+        
+        # === SYSTEM MESSAGES ===
+        system_frame = ttk.LabelFrame(scrollable_frame, text="System Messages")
+        system_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        error_frame = ttk.Frame(system_frame)
+        error_frame.pack(fill=tk.X, padx=10, pady=(10, 10))
+        
+        # Error dialogs (always enabled, cannot be disabled)
+        error_checkbox = ttk.Checkbutton(
+            error_frame, 
+            text="Error Messages", 
+            state="disabled"
+        )
+        error_checkbox.pack(anchor=tk.W)
+        # Set checkbox to checked and disabled
+        error_var = tk.BooleanVar(value=True)
+        error_checkbox.configure(variable=error_var)
+        
+        error_desc = "Critical error messages (cannot be disabled for safety)"
+        ttk.Label(error_frame, text=error_desc, foreground="gray", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0))
+        
+        error_examples = "Examples: \"File not found\", \"Network error\", \"Invalid configuration\""
+        ttk.Label(error_frame, text=error_examples, foreground="blue", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0), pady=(2, 0))
+        
+        error_note = "Error dialogs are always shown to ensure you're informed of critical issues"
+        ttk.Label(error_frame, text=error_note, foreground="red", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0), pady=(2, 0))
+        
+        # === INFORMATION ===
+        info_frame = ttk.LabelFrame(scrollable_frame, text="Information")
+        info_frame.pack(fill=tk.X, padx=10, pady=(0, 15))
+        
+        info_text = "• Disabled dialogs will be logged to the application log for debugging\n"
+        info_text += "• Changes apply immediately without requiring application restart\n"
+        info_text += "• Settings are automatically saved when you click Apply"
+        
+        ttk.Label(info_frame, text=info_text, foreground="blue", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=10, pady=10)
+        
+        # === BUTTONS ===
+        button_frame = ttk.Frame(scrollable_frame)
+        button_frame.pack(fill=tk.X, padx=10, pady=(0, 20))
+        
+        def apply_dialog_settings():
+            try:
+                # Update dialog settings
+                new_dialog_settings = {}
+                
+                # Get default settings structure
+                default_settings = self._get_default_settings()
+                default_dialog_settings = default_settings["dialog_settings"]
+                
+                # Update each category
+                for category in ["success", "confirmation", "warning", "error"]:
+                    if category in default_dialog_settings:
+                        new_dialog_settings[category] = default_dialog_settings[category].copy()
+                        
+                        # Update enabled status from checkboxes (except for error which is always enabled)
+                        if category != "error" and category in self.dialog_checkboxes:
+                            new_dialog_settings[category]["enabled"] = self.dialog_checkboxes[category].get()
+                
+                # Update settings
+                self.settings["dialog_settings"] = new_dialog_settings
+                
+                # Apply to DialogManager immediately if it exists
+                if hasattr(self, 'dialog_manager') and self.dialog_manager:
+                    # Refresh DialogManager settings to apply changes immediately
+                    self.dialog_manager.refresh_settings()
+                    self.logger.info("DialogManager settings refreshed for immediate application")
+                
+                # Save settings to ensure persistence across sessions
+                self.save_settings()
+                self.logger.info("Dialog settings saved to persistent storage")
+                
+                # Show confirmation
+                enabled_categories = [cat for cat, var in self.dialog_checkboxes.items() if var.get()]
+                disabled_categories = [cat for cat, var in self.dialog_checkboxes.items() if not var.get()]
+                
+                message = "Dialog settings applied and saved successfully!\n\n"
+                if enabled_categories:
+                    message += f"Enabled: {', '.join(enabled_categories)}\n"
+                if disabled_categories:
+                    message += f"Disabled: {', '.join(disabled_categories)}\n"
+                message += "\nChanges are active immediately and will persist across application sessions."
+                
+                if self.dialog_manager:
+                    self.dialog_manager.show_info("Dialog Settings", message, "success")
+                else:
+                    messagebox.showinfo("Dialog Settings", message)
+                
+            except Exception as e:
+                error_msg = f"Error applying dialog settings: {e}"
+                self.logger.error(error_msg)
+                if self.dialog_manager:
+                    self.dialog_manager.show_error("Error", error_msg)
+                else:
+                    messagebox.showerror("Error", error_msg)
+        
+        def reset_dialog_settings():
+            if self.dialog_manager and self.dialog_manager.ask_yes_no("Reset Dialog Settings", 
+                                 "Reset all dialog settings to defaults?\n\n" +
+                                 "This will enable all notification and confirmation dialogs.", "confirmation") or \
+               not self.dialog_manager and messagebox.askyesno("Reset Dialog Settings", 
+                                 "Reset all dialog settings to defaults?\n\n" +
+                                 "This will enable all notification and confirmation dialogs."):
+                
+                self.logger.info("Resetting dialog settings to defaults")
+                
+                # Reset all checkboxes to enabled (except error which is always enabled)
+                for category, var in self.dialog_checkboxes.items():
+                    var.set(True)
+                    # Apply real-time updates for each category
+                    self._on_dialog_setting_changed(category)
+                
+                # Apply the reset settings immediately and save
+                apply_dialog_settings()
+        
+        ttk.Button(button_frame, text="Apply", command=apply_dialog_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Reset to Defaults", command=reset_dialog_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Cancel", command=on_dialog_close).pack(side=tk.RIGHT)
+        
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            try:
+                if canvas.winfo_exists():
+                    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            except tk.TclError:
+                # Canvas has been destroyed, ignore the event
+                pass
+        
+        # Bind mouse wheel to canvas and scrollable frame
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
+        
+        # Also bind to the dialog settings window to catch events
+        self.dialog_settings_window.bind("<MouseWheel>", _on_mousewheel)
+        
+        self.dialog_settings_window.protocol("WM_DELETE_WINDOW", on_dialog_close)
+
+    def _on_dialog_setting_changed(self, category):
+        """Handle real-time dialog setting changes when checkboxes are toggled."""
+        if not hasattr(self, 'dialog_checkboxes') or category not in self.dialog_checkboxes:
+            return
+            
+        try:
+            # Get the new enabled status
+            enabled = self.dialog_checkboxes[category].get()
+            
+            # Update DialogManager immediately for real-time effect
+            if hasattr(self, 'dialog_manager') and self.dialog_manager:
+                success = self.dialog_manager.update_category_setting(category, enabled)
+                if success:
+                    self.logger.info(f"Real-time update: {category} dialogs {'enabled' if enabled else 'disabled'}")
+                else:
+                    self.logger.warning(f"Failed to update {category} dialog setting in real-time")
+            
+            # Update settings in memory (but don't save yet - wait for Apply button)
+            if "dialog_settings" not in self.settings:
+                self.settings["dialog_settings"] = self._get_default_settings()["dialog_settings"]
+            
+            if category in self.settings["dialog_settings"]:
+                self.settings["dialog_settings"][category]["enabled"] = enabled
+                
+        except Exception as e:
+            self.logger.error(f"Error handling real-time dialog setting change for {category}: {e}")
+
+    def create_menu_bar(self):
+        """Creates the menu bar with File, Settings, and Help menus."""
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+        
+        # Initialize export path variable
+        self.export_path_var = tk.StringVar(value=self.settings.get("export_path", ""))
+        
+        # File Menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Export Location", command=self.browse_export_path)
+        file_menu.add_separator()
+        
+        # Export Selected Output submenu
+        export_output_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Export Selected Output as", menu=export_output_menu)
+        export_output_menu.add_command(label="CSV", command=lambda: self.export_file("csv"))
+        export_output_menu.add_command(label="PDF", command=lambda: self.export_file("pdf"))
+        export_output_menu.add_command(label="TXT", command=lambda: self.export_file("txt"))
+        export_output_menu.add_command(label="DOCX", command=lambda: self.export_file("docx"))
+        
+        # Export Selected Input submenu
+        export_input_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Export Selected Input as", menu=export_input_menu)
+        export_input_menu.add_command(label="CSV", command=lambda: self.export_input_file("csv"))
+        export_input_menu.add_command(label="PDF", command=lambda: self.export_input_file("pdf"))
+        export_input_menu.add_command(label="TXT", command=lambda: self.export_input_file("txt"))
+        export_input_menu.add_command(label="DOCX", command=lambda: self.export_input_file("docx"))
+        
+        file_menu.add_separator()
+        
+        # Settings Backup and Recovery submenu
+        if DATABASE_SETTINGS_AVAILABLE and hasattr(self, 'db_settings_manager'):
+            backup_menu = tk.Menu(file_menu, tearoff=0)
+            file_menu.add_cascade(label="Settings Backup & Recovery", menu=backup_menu)
+            
+            # Backup operations
+            backup_menu.add_command(label="Create Manual Backup", command=self.create_manual_backup)
+            backup_menu.add_command(label="View Backup History", command=self.show_backup_history)
+            backup_menu.add_separator()
+            
+            # Import/Export operations
+            backup_menu.add_command(label="Export Settings to JSON...", command=self.export_settings_to_json)
+            backup_menu.add_command(label="Import Settings from JSON...", command=self.import_settings_from_json)
+            backup_menu.add_separator()
+            
+            # Recovery operations
+            backup_menu.add_command(label="Restore from Backup...", command=self.restore_from_backup_dialog)
+            backup_menu.add_command(label="Repair Database", command=self.repair_database_dialog)
+            backup_menu.add_separator()
+            
+            # Validation and maintenance
+            backup_menu.add_command(label="Validate Settings Integrity", command=self.validate_settings_integrity_dialog)
+            backup_menu.add_command(label="Cleanup Old Backups", command=self.cleanup_old_backups_dialog)
+        
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.on_closing)
+        
+        # Settings Menu
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        settings_menu.add_command(label="Font Settings...", command=self.open_font_settings)
+        settings_menu.add_command(label="Dialog Settings...", command=self.open_dialog_settings)
+        settings_menu.add_command(label="Performance Settings...", command=self.show_performance_settings)
+        
+        # Add Retention Settings if database is available
+        if DATABASE_SETTINGS_AVAILABLE and hasattr(self, 'db_settings_manager'):
+            settings_menu.add_command(label="Retention Settings...", command=self.open_retention_settings)
+        
+        settings_menu.add_separator()
+        settings_menu.add_command(label="Console Log", command=self.show_console_log)
+        
+        # Widgets Menu
+        widgets_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Widgets", menu=widgets_menu)
+        
+        # Add cURL Tool if available
+        if CURL_TOOL_MODULE_AVAILABLE:
+            widgets_menu.add_command(
+                label="cURL Tool", 
+                command=self.open_curl_tool_window,
+                accelerator="Ctrl+U"
+            )
+        
+        # Add List Comparator
+        widgets_menu.add_command(
+            label="List Comparator",
+            command=self.open_list_comparator_window
+        )
+        
+        # Help Menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="GitHub", command=lambda: webbrowser.open_new("https://github.com/matbanik/Pomera-AI-Commander"))
+        help_menu.add_command(label="Report Issue", command=self.open_report_issue)
+        help_menu.add_command(label="Ask AI", command=self.open_ai_tools)
+
+    def open_report_issue(self):
+        """Opens the GitHub issues page in the default browser."""
+        try:
+            webbrowser.open_new("https://github.com/matbanik/Pomera-AI-Commander/issues/new")
+            self.logger.info("Opened GitHub issues page")
+        except Exception as e:
+            self.logger.error(f"Failed to open GitHub issues page: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error(
+                    "Browser Error",
+                    f"Failed to open GitHub issues page: {e}",
+                    "tool_operation"
+                )
+            else:
+                messagebox.showerror("Browser Error", f"Failed to open GitHub issues page: {e}")
+
+    def open_ai_tools(self):
+        """Opens the AI Tools from the Help menu."""
+        try:
+            if AI_TOOLS_AVAILABLE:
+                self.select_tool("AI Tools")
+                self.logger.info("Switched to AI Tools from Help menu")
+            else:
+                self.logger.warning("AI Tools not available")
+                if self.dialog_manager:
+                    self.dialog_manager.show_warning(
+                        "AI Tools Unavailable",
+                        "AI Tools functionality is not available. Please ensure the ai_tools.py module is installed.",
+                        "tool_validation"
+                    )
+                else:
+                    messagebox.showwarning("AI Tools Unavailable", "AI Tools functionality is not available. Please ensure the ai_tools.py module is installed.")
+        except Exception as e:
+            self.logger.error(f"Failed to open AI Tools: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error(
+                    "AI Tools Error",
+                    f"Failed to open AI Tools: {e}",
+                    "tool_operation"
+                )
+            else:
+                messagebox.showerror("AI Tools Error", f"Failed to open AI Tools: {e}")
+
+    def create_input_widgets(self, parent):
+        """Creates widgets for the input text section."""
+        input_frame = ttk.Frame(parent)
+        input_frame.grid(row=0, column=0, rowspan=2, padx=(0, 5), sticky="nsew")
+        input_frame.grid_rowconfigure(1, weight=1)
+        input_frame.grid_columnconfigure(0, weight=1)
+
+        title_row = ttk.Frame(input_frame)
+        title_row.grid(row=0, column=0, sticky="w")
+        ttk.Label(title_row, text="Input", font=("Helvetica", 12, "bold")).pack(side=tk.LEFT)
+        
+        # Create load from file button
+        load_file_btn = ttk.Button(title_row, text="📁", command=self.load_file_to_input, width=3)
+        load_file_btn.pack(side=tk.LEFT, padx=(10, 0))
+        self.Tooltip(load_file_btn, "Load from File")
+        
+        # Create erase button with better icon and tooltip
+        erase_input_btn = ttk.Button(title_row, text="⌫", command=self.clear_all_input_tabs, width=3)
+        erase_input_btn.pack(side=tk.LEFT, padx=(5, 0))
+        self.Tooltip(erase_input_btn, "Erase Tabs")
+        
+        self.input_notebook = ttk.Notebook(input_frame)
+        self.input_notebook.grid(row=1, column=0, sticky="nsew")
+        self.input_tabs = []
+        for i in range(AppConfig.TAB_COUNT):
+            # Use optimized components when available
+            if EFFICIENT_LINE_NUMBERS_AVAILABLE:
+                tab = OptimizedTextWithLineNumbers(self.input_notebook)
+            else:
+                tab = TextWithLineNumbers(self.input_notebook)
+            
+            # Apply font settings
+            font_family, font_size = self.get_best_font()
+            tab.text.configure(font=(font_family, font_size))
+            
+            # Use EventConsolidator if available, otherwise fall back to original bindings
+            if hasattr(self, 'event_consolidator') and self.event_consolidator:
+                # Register with EventConsolidator for consolidated event handling
+                # This replaces multiple event handlers (<<Modified>>, <KeyRelease>, <Button-1>)
+                # with a single consolidated handler per widget
+                widget_id = f"input_tab_{i}"
+                self.event_consolidator.register_text_widget(
+                    widget_id, 
+                    tab.text, 
+                    lambda wid, idx=i: self._consolidated_input_changed(wid, idx)
+                )
+                # Still bind tab content changed for label updates (not handled by consolidator)
+                tab.text.bind("<<Modified>>", self.on_tab_content_changed, add=True)
+                self.logger.debug(f"Registered input tab {i} with EventConsolidator (widget_id: {widget_id})")
+            else:
+                # Fallback to original event bindings when EventConsolidator is not available
+                tab.text.bind("<KeyRelease>", self.on_input_changed)
+                tab.text.bind("<<Modified>>", self.on_tab_content_changed)
+                self.logger.debug(f"Using legacy event bindings for input tab {i}")
+            
+            tab.text.tag_configure("yellow_highlight", background="yellow")
+            self.input_tabs.append(tab)
+            self.input_notebook.add(tab, text=f"{i+1}:")
+        self.input_notebook.bind("<<NotebookTabChanged>>", self.on_input_tab_change)
+
+        # Create status bar frame
+        status_frame = ttk.Frame(input_frame)
+        status_frame.grid(row=2, column=0, sticky="ew")
+        status_frame.grid_columnconfigure(0, weight=1)
+        
+        self.input_status_bar = ttk.Label(status_frame, text="Bytes: 0 | Word: 0 | Sentence: 0 | Line: 0 | Tokens: 0")
+        self.input_status_bar.grid(row=0, column=0, sticky="w")
+        
+        # Create line filter frame
+        filter_frame = ttk.Frame(input_frame)
+        filter_frame.grid(row=3, column=0, sticky="ew", pady=(2, 0))
+        filter_frame.grid_columnconfigure(1, weight=1)
+        
+        ttk.Label(filter_frame, text="Line Filter:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        self.input_filter_var = tk.StringVar()
+        self.input_filter_entry = ttk.Entry(filter_frame, textvariable=self.input_filter_var, width=30)
+        self.input_filter_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5))
+        self.input_filter_var.trace_add("write", self.on_input_filter_changed)
+        self.Tooltip(self.input_filter_entry, "Filter lines containing this text (case-insensitive)")
+        
+        # Clear filter button
+        clear_input_filter_btn = ttk.Button(filter_frame, text="✖", command=self.clear_input_filter, width=3)
+        clear_input_filter_btn.grid(row=0, column=2, padx=(0, 5))
+        self.Tooltip(clear_input_filter_btn, "Clear Filter")
+        
+        # Store original content for filtering
+        self.input_original_content = [""] * AppConfig.TAB_COUNT
+        
+        # Performance status is now in window title
+
+    def create_output_widgets(self, parent):
+        """Creates widgets for the output text section."""
+        output_frame = ttk.Frame(parent)
+        output_frame.grid(row=0, column=1, rowspan=2, padx=(5, 0), sticky="nsew")
+        output_frame.grid_rowconfigure(1, weight=1)
+        output_frame.grid_columnconfigure(0, weight=1)
+
+        title_row = ttk.Frame(output_frame)
+        title_row.grid(row=0, column=0, sticky="w")
+        ttk.Label(title_row, text="Output", font=("Helvetica", 12, "bold")).pack(side=tk.LEFT)
+        
+        # Create dropdown for "Send to Input"
+        self.send_to_input_var = tk.StringVar(value="Send to Input")
+        send_to_input_menu = ttk.Menubutton(title_row, textvariable=self.send_to_input_var, direction="below")
+        send_to_input_menu.pack(side=tk.LEFT, padx=(10, 6))
+        
+        # Create the dropdown menu
+        dropdown_menu = tk.Menu(send_to_input_menu, tearoff=0)
+        send_to_input_menu.config(menu=dropdown_menu)
+        for i in range(AppConfig.TAB_COUNT):
+            dropdown_menu.add_command(label=f"Tab {i+1}", command=lambda tab=i: self.copy_to_specific_input_tab(tab, None))
+        
+        # Create copy to clipboard button with better icon and tooltip
+        copy_btn = ttk.Button(title_row, text="⎘", command=self.copy_to_clipboard, width=3)
+        copy_btn.pack(side=tk.LEFT, padx=(0, 6))
+        self.Tooltip(copy_btn, "Copy to Clipboard")
+        
+        # Add cancel button for async operations (initially hidden)
+        if ASYNC_PROCESSING_AVAILABLE:
+            self.cancel_async_button = ttk.Button(title_row, text="❌", command=self.cancel_current_async_processing, width=3)
+            # Initially hidden - will be shown during async operations
+        
+        # Create erase button with better icon and tooltip
+        erase_output_btn = ttk.Button(title_row, text="⌫", command=self.clear_all_output_tabs, width=3)
+        erase_output_btn.pack(side=tk.LEFT)
+        self.Tooltip(erase_output_btn, "Erase Tabs")
+
+        self.output_notebook = ttk.Notebook(output_frame)
+        self.output_notebook.grid(row=1, column=0, sticky="nsew")
+        self.output_tabs = []
+        for i in range(AppConfig.TAB_COUNT):
+            # Use optimized components when available
+            if EFFICIENT_LINE_NUMBERS_AVAILABLE:
+                tab = OptimizedTextWithLineNumbers(self.output_notebook)
+            else:
+                tab = TextWithLineNumbers(self.output_notebook)
+            
+            # Apply font settings
+            font_family, font_size = self.get_best_font()
+            tab.text.configure(font=(font_family, font_size))
+            
+            tab.text.config(state="disabled")
+            tab.text.bind("<<Modified>>", self.on_tab_content_changed)
+            tab.text.tag_configure("pink_highlight", background="pink")
+            self.output_tabs.append(tab)
+            self.output_notebook.add(tab, text=f"{i+1}:")
+        self.output_notebook.bind("<<NotebookTabChanged>>", self.on_output_tab_change)
+
+        self.output_status_bar = ttk.Label(output_frame, text="Bytes: 0 | Word: 0 | Sentence: 0 | Line: 0 | Tokens: 0")
+        self.output_status_bar.grid(row=2, column=0, sticky="ew")
+        
+        # Create line filter frame
+        output_filter_frame = ttk.Frame(output_frame)
+        output_filter_frame.grid(row=3, column=0, sticky="ew", pady=(2, 0))
+        output_filter_frame.grid_columnconfigure(1, weight=1)
+        
+        ttk.Label(output_filter_frame, text="Line Filter:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        self.output_filter_var = tk.StringVar()
+        self.output_filter_entry = ttk.Entry(output_filter_frame, textvariable=self.output_filter_var, width=30)
+        self.output_filter_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5))
+        self.output_filter_var.trace_add("write", self.on_output_filter_changed)
+        self.Tooltip(self.output_filter_entry, "Filter lines containing this text (case-insensitive)")
+        
+        # Clear filter button
+        clear_output_filter_btn = ttk.Button(output_filter_frame, text="✖", command=self.clear_output_filter, width=3)
+        clear_output_filter_btn.grid(row=0, column=2, padx=(0, 5))
+        self.Tooltip(clear_output_filter_btn, "Clear Filter")
+        
+        # Store original content for filtering
+        self.output_original_content = [""] * AppConfig.TAB_COUNT
+    
+    def register_tabs_with_visibility_system(self):
+        """
+        Register all tabs with the visibility monitor and statistics update manager.
+        
+        This enables visibility-aware statistics updates that skip hidden tabs,
+        inactive components, and minimized windows.
+        """
+        if not hasattr(self, 'visibility_monitor') or not self.visibility_monitor:
+            self.logger.debug("Visibility monitor not available - skipping tab registration")
+            return
+        
+        if not hasattr(self, 'statistics_update_manager') or not self.statistics_update_manager:
+            self.logger.debug("Statistics update manager not available - skipping tab registration")
+            return
+        
+        # Get currently active tabs
+        active_input_index = self.input_notebook.index(self.input_notebook.select())
+        active_output_index = self.output_notebook.index(self.output_notebook.select())
+        
+        # Register input tabs
+        for i, tab in enumerate(self.input_tabs):
+            component_id = f"input_tab_{i}"
+            tab_id = f"input_notebook_tab_{i}"
+            
+            # Determine initial visibility state
+            is_active = (i == active_input_index)
+            initial_state = VisibilityState.VISIBLE_ACTIVE if is_active else VisibilityState.HIDDEN
+            
+            # Register with visibility monitor
+            self.visibility_monitor.register_component(
+                component_id=component_id,
+                widget=tab.text,
+                tab_id=tab_id,
+                initial_state=initial_state
+            )
+            
+            # Register with statistics update manager
+            self.statistics_update_manager.register_component(
+                component_id=component_id,
+                widget=tab.text,
+                initial_visibility=initial_state
+            )
+            
+            self.logger.debug(f"Registered {component_id} with visibility system (active: {is_active})")
+        
+        # Register output tabs
+        for i, tab in enumerate(self.output_tabs):
+            component_id = f"output_tab_{i}"
+            tab_id = f"output_notebook_tab_{i}"
+            
+            # Determine initial visibility state
+            is_active = (i == active_output_index)
+            initial_state = VisibilityState.VISIBLE_ACTIVE if is_active else VisibilityState.HIDDEN
+            
+            # Register with visibility monitor
+            self.visibility_monitor.register_component(
+                component_id=component_id,
+                widget=tab.text,
+                tab_id=tab_id,
+                initial_state=initial_state
+            )
+            
+            # Register with statistics update manager
+            self.statistics_update_manager.register_component(
+                component_id=component_id,
+                widget=tab.text,
+                initial_visibility=initial_state
+            )
+            
+            self.logger.debug(f"Registered {component_id} with visibility system (active: {is_active})")
+        
+        # Register status bars as components
+        self.visibility_monitor.register_component(
+            component_id="input_status_bar",
+            widget=self.input_status_bar,
+            initial_state=VisibilityState.VISIBLE_ACTIVE
+        )
+        
+        self.visibility_monitor.register_component(
+            component_id="output_status_bar",
+            widget=self.output_status_bar,
+            initial_state=VisibilityState.VISIBLE_ACTIVE
+        )
+        
+        self.logger.info(f"Registered {len(self.input_tabs) + len(self.output_tabs)} tabs with visibility system")
+
+    def clear_all_input_tabs(self):
+        """Asks for confirmation and clears all input tab contents."""
+        if self.dialog_manager and self.dialog_manager.ask_yes_no("Confirm", "Clear all Input tabs? This cannot be undone.", "confirmation") or \
+           not self.dialog_manager and messagebox.askyesno("Confirm", "Clear all Input tabs? This cannot be undone."):
+            for tab in self.input_tabs:
+                tab.text.delete("1.0", tk.END)
+            if hasattr(self, 'diff_input_tabs'):
+                for tab in self.diff_input_tabs:
+                    tab.text.delete("1.0", tk.END)
+            
+            # Clear original content storage
+            if hasattr(self, 'input_original_content'):
+                self.input_original_content = [""] * AppConfig.TAB_COUNT
+
+    def load_file_to_input(self):
+        """Load file content into the current active input tab."""
+        try:
+            # Get the current active tab
+            current_tab_index = self.input_notebook.index(self.input_notebook.select())
+            current_tab = self.input_tabs[current_tab_index]
+            
+            # Open file dialog
+            file_path = filedialog.askopenfilename(
+                title="Load File Content",
+                filetypes=[
+                    ("Text files", "*.txt"),
+                    ("JSON files", "*.json"),
+                    ("XML files", "*.xml"),
+                    ("CSV files", "*.csv"),
+                    ("Python files", "*.py"),
+                    ("JavaScript files", "*.js"),
+                    ("HTML files", "*.html"),
+                    ("All files", "*.*")
+                ]
+            )
+            
+            if file_path:
+                # Show confirmation dialog
+                file_name = os.path.basename(file_path)
+                tab_number = current_tab_index + 1
+                
+                confirm_message = f"Load content from '{file_name}' into Tab {tab_number}?\n\n"
+                confirm_message += "• The file will NOT be modified\n"
+                confirm_message += "• Content will be copied into the tab\n"
+                confirm_message += "• Any existing content in the tab will be replaced"
+                
+                if self.dialog_manager and self.dialog_manager.ask_yes_no("Confirm Load", confirm_message, "confirmation") or \
+                   not self.dialog_manager and messagebox.askyesno("Confirm Load", confirm_message):
+                    # Read file content
+                    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                        content = f.read()
+                    
+                    # Clear current tab and insert content
+                    current_tab.text.delete("1.0", tk.END)
+                    current_tab.text.insert("1.0", content)
+                    
+                    # Update tab title to show file name
+                    self.input_notebook.tab(current_tab_index, text=f"{tab_number}: {file_name}")
+                    
+                    # Show success message
+                    if self.dialog_manager:
+                        self.dialog_manager.show_info(
+                            "File Loaded", 
+                            f"Content from '{file_name}' has been loaded into Tab {tab_number}.\n\n"
+                            f"The original file remains unchanged.", "success")
+                    else:
+                        messagebox.showinfo(
+                            "File Loaded", 
+                            f"Content from '{file_name}' has been loaded into Tab {tab_number}.\n\n"
+                            f"The original file remains unchanged.")
+                    
+                    self.logger.info(f"Loaded file content from {file_path} into input tab {tab_number}")
+                    
+                    # Apply tool if not manual processing
+                    if self.tool_var.get() not in self.manual_process_tools:
+                        self.apply_tool()
+        
+        except Exception as e:
+            self.logger.error(f"Failed to load file: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to load file:\n\n{str(e)}")
+            else:
+                messagebox.showerror("Error", f"Failed to load file:\n\n{str(e)}")
+            
+            # Clear any active filter
+            if hasattr(self, 'input_filter_var'):
+                self.input_filter_var.set("")
+            
+            self.update_tab_labels()
+            self.save_settings()
+            self.after(10, self.update_all_stats)
+
+    def clear_all_output_tabs(self):
+        """Asks for confirmation and clears all output tab contents."""
+        if self.dialog_manager and self.dialog_manager.ask_yes_no("Confirm", "Clear all Output tabs? This cannot be undone.", "confirmation") or \
+           not self.dialog_manager and messagebox.askyesno("Confirm", "Clear all Output tabs? This cannot be undone."):
+            for tab in self.output_tabs:
+                tab.text.config(state="normal")
+                tab.text.delete("1.0", tk.END)
+                tab.text.config(state="disabled")
+            if hasattr(self, 'diff_output_tabs'):
+                for tab in self.diff_output_tabs:
+                    tab.text.delete("1.0", tk.END)
+            
+            # Clear original content storage
+            if hasattr(self, 'output_original_content'):
+                self.output_original_content = [""] * AppConfig.TAB_COUNT
+            
+            # Clear any active filter
+            if hasattr(self, 'output_filter_var'):
+                self.output_filter_var.set("")
+            
+            self.update_tab_labels()
+            self.save_settings()
+            self.after(10, self.update_all_stats)
+
+    def on_input_filter_changed(self, *args):
+        """Handle changes to the input line filter."""
+        self.apply_input_filter()
+    
+    def on_output_filter_changed(self, *args):
+        """Handle changes to the output line filter."""
+        self.apply_output_filter()
+    
+    def apply_input_filter(self):
+        """Apply line filter to the current input tab."""
+        try:
+            current_tab_index = self.input_notebook.index(self.input_notebook.select())
+            current_tab = self.input_tabs[current_tab_index]
+            filter_text = self.input_filter_var.get().lower()
+            
+            # Store original content if not already stored
+            if not self.input_original_content[current_tab_index]:
+                self.input_original_content[current_tab_index] = current_tab.text.get("1.0", tk.END)
+            
+            original_content = self.input_original_content[current_tab_index]
+            
+            if not filter_text:
+                # No filter, show original content if we have it
+                if original_content and original_content.strip():
+                    current_tab.text.delete("1.0", tk.END)
+                    current_tab.text.insert("1.0", original_content)
+                # If no original content, keep current content unchanged
+            else:
+                # Apply filter
+                lines = original_content.split('\n')
+                filtered_lines = [line for line in lines if filter_text in line.lower()]
+                filtered_content = '\n'.join(filtered_lines)
+                
+                current_tab.text.delete("1.0", tk.END)
+                current_tab.text.insert("1.0", filtered_content)
+            
+            self.after(10, self.update_all_stats)
+        except Exception as e:
+            self.logger.error(f"Error applying input filter: {e}")
+    
+    def apply_output_filter(self):
+        """Apply line filter to the current output tab."""
+        try:
+            current_tab_index = self.output_notebook.index(self.output_notebook.select())
+            current_tab = self.output_tabs[current_tab_index]
+            filter_text = self.output_filter_var.get().strip()
+            
+            # Enable text widget temporarily
+            current_tab.text.config(state="normal")
+            
+            # Get current content from the widget
+            current_content = current_tab.text.get("1.0", tk.END)
+            
+            if not filter_text:
+                # No filter - if we have stored original content, restore it
+                # Otherwise, keep current content unchanged
+                stored_original = self.output_original_content[current_tab_index]
+                if stored_original and stored_original.strip():
+                    current_tab.text.delete("1.0", tk.END)
+                    current_tab.text.insert("1.0", stored_original)
+                    # Clear the stored content since we're no longer filtering
+                    self.output_original_content[current_tab_index] = ""
+                # If no stored content, don't change anything - keep current content
+            else:
+                # We want to filter - check if we need to store original content
+                stored_original = self.output_original_content[current_tab_index]
+                
+                if not stored_original:
+                    # First time filtering - store current content as original
+                    self.output_original_content[current_tab_index] = current_content
+                    content_to_filter = current_content
+                else:
+                    # Already filtering - use stored original
+                    content_to_filter = stored_original
+                
+                # Apply filter
+                lines = content_to_filter.split('\n')
+                filtered_lines = [line for line in lines if filter_text.lower() in line.lower()]
+                filtered_content = '\n'.join(filtered_lines)
+                
+                current_tab.text.delete("1.0", tk.END)
+                current_tab.text.insert("1.0", filtered_content)
+            
+            # Disable the text widget again
+            current_tab.text.config(state="disabled")
+            self.after(10, self.update_all_stats)
+            
+        except Exception as e:
+            self.logger.error(f"Error applying output filter: {e}")
+    
+    def clear_input_filter(self):
+        """Clear the input line filter."""
+        self.input_filter_var.set("")
+    
+    def clear_output_filter(self):
+        """Clear the output line filter."""
+        self.output_filter_var.set("")
+    
+    def clear_all_filters(self):
+        """Clear both input and output line filters safely."""
+        # Just clear the stored filter content, don't clear the filter fields
+        # This prevents the content erasure issue while still clearing filter state
+        try:
+            current_tab_index = self.output_notebook.index(self.output_notebook.select())
+            self.output_original_content[current_tab_index] = ""
+        except:
+            pass
+        
+        # Clear the filter fields silently
+        if hasattr(self, 'input_filter_var'):
+            self.input_filter_var.set("")
+        if hasattr(self, 'output_filter_var'):
+            self.output_filter_var.set("")
+    
+    def store_original_input_content(self, tab_index):
+        """Store the original content of an input tab before filtering."""
+        if tab_index < len(self.input_tabs):
+            self.input_original_content[tab_index] = self.input_tabs[tab_index].text.get("1.0", tk.END)
+    
+    def store_original_output_content(self, tab_index):
+        """Store the original content of an output tab before filtering."""
+        if tab_index < len(self.output_tabs):
+            self.output_original_content[tab_index] = self.output_tabs[tab_index].text.get("1.0", tk.END)
+    
+    def force_update_original_output_content(self):
+        """Force update the original content from the current text widget content."""
+        try:
+            current_tab_index = self.output_notebook.index(self.output_notebook.select())
+            current_tab = self.output_tabs[current_tab_index]
+            current_tab.text.config(state="normal")
+            current_content = current_tab.text.get("1.0", tk.END)
+            current_tab.text.config(state="disabled")
+            self.output_original_content[current_tab_index] = current_content
+        except Exception as e:
+            self.logger.error(f"Error updating original output content: {e}")
+    
+    def debug_output_content(self):
+        """Debug method to check what content is stored."""
+        try:
+            current_tab_index = self.output_notebook.index(self.output_notebook.select())
+            stored_content = self.output_original_content[current_tab_index]
+            current_tab = self.output_tabs[current_tab_index]
+            current_tab.text.config(state="normal")
+            widget_content = current_tab.text.get("1.0", tk.END)
+            current_tab.text.config(state="disabled")
+            
+            print(f"DEBUG - Tab {current_tab_index}:")
+            print(f"Stored original: {repr(stored_content[:100])}")
+            print(f"Widget content: {repr(widget_content[:100])}")
+            print(f"Filter text: {repr(self.output_filter_var.get())}")
+        except Exception as e:
+            print(f"Debug error: {e}")
+
+    def create_tool_widgets(self, parent):
+        """Creates widgets for the tool selection and settings section."""
+        self.tool_var = tk.StringVar(value=self.settings.get("selected_tool", "Case Tool"))
+        
+        self.tool_options = [
+            "AI Tools", "Base64 Encoder/Decoder", "Case Tool", "Cron Tool", "Diff Viewer",
+            "Email Extraction Tool", "Email Header Analyzer", "Find & Replace Text", "Folder File Reporter", "Generator Tools",
+            "HTML Extraction Tool", "JSON/XML Tool", "Sorter Tools", "Translator Tools",
+            "URL Parser", "URL and Link Extractor", "Word Frequency Counter"
+        ]
+        self.filtered_tool_options = self.tool_options.copy()
+        
+        # Create custom dropdown that opens upwards
+        self.tool_menu = ttk.Menubutton(parent, textvariable=self.tool_var, direction="above", width=25)
+        self.tool_menu.pack(side=tk.LEFT, padx=5)
+        
+        # Create the dropdown menu
+        self.tool_dropdown_menu = tk.Menu(self.tool_menu, tearoff=0)
+        self.tool_menu.config(menu=self.tool_dropdown_menu)
+        
+        # Populate the dropdown menu with all tools
+        self.update_tool_dropdown_menu()
+
+        self.tool_settings_frame = ttk.Frame(parent)
+        self.tool_settings_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        self.update_tool_settings_ui()
+
+    def update_tool_dropdown_menu(self):
+        """Updates the tool dropdown menu with all available tools."""
+        # Clear existing menu items
+        self.tool_dropdown_menu.delete(0, tk.END)
+        
+        # Add all tool options to the menu
+        for tool in self.tool_options:
+            self.tool_dropdown_menu.add_command(
+                label=tool, 
+                command=lambda t=tool: self.select_tool(t)
+            )
+
+    def select_tool(self, tool_name):
+        """Selects a tool from the dropdown menu."""
+        self.tool_var.set(tool_name)
+        self.on_tool_selected()
+
+    def show_console_log(self):
+        """Shows the console log in a separate window."""
+        if self.console_window is not None and self.console_window.winfo_exists():
+            self.console_window.lift()
+            return
+            
+        self.console_window = tk.Toplevel(self)
+        self.console_window.title("Console Log")
+        self.console_window.geometry("800x400")
+        
+        # Create frame for controls
+        control_frame = ttk.Frame(self.console_window)
+        control_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Debug level dropdown
+        ttk.Label(control_frame, text="Log Level:").pack(side=tk.LEFT)
+        debug_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        self.log_level_combo = ttk.Combobox(control_frame, textvariable=self.log_level, values=debug_levels, state="readonly")
+        self.log_level_combo.pack(side=tk.LEFT, padx=(5, 0))
+        self.log_level_combo.bind("<<ComboboxSelected>>", self.update_log_level)
+        
+        # Console log text widget
+        self.console_log = scrolledtext.ScrolledText(self.console_window, wrap=tk.WORD, state="disabled", undo=True)
+        
+        # Apply current font settings to console
+        text_font_family, text_font_size = self.get_best_font("text")
+        self.console_log.configure(font=(text_font_family, text_font_size))
+        
+        self.console_log.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        class TextHandler(logging.Handler):
+            def __init__(self, text_widget):
+                logging.Handler.__init__(self)
+                self.text_widget = text_widget
+
+            def emit(self, record):
+                msg = self.format(record)
+                def append():
+                    if self.text_widget.winfo_exists():
+                        self.text_widget.configure(state='normal')
+                        self.text_widget.insert(tk.END, msg + '\n')
+                        self.text_widget.configure(state='disabled')
+                        self.text_widget.yview(tk.END)
+                self.text_widget.after(0, append)
+
+        # Remove existing text handler if it exists
+        for handler in self.logger.handlers[:]:
+            if isinstance(handler, type(self).TextHandler if hasattr(type(self), 'TextHandler') else type(None)):
+                self.logger.removeHandler(handler)
+        
+        text_handler = TextHandler(self.console_log)
+        text_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        self.logger.addHandler(text_handler)
+
+    def open_curl_tool_window(self):
+        """Opens the cURL Tool in a separate window."""
+        if not CURL_TOOL_MODULE_AVAILABLE:
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", "cURL Tool module is not available.")
+            else:
+                messagebox.showerror("Error", "cURL Tool module is not available.")
+            return
+            
+        if self.curl_tool_window is not None and self.curl_tool_window.winfo_exists():
+            self.curl_tool_window.lift()
+            return
+            
+        self.curl_tool_window = tk.Toplevel(self)
+        self.curl_tool_window.title("cURL Tool")
+        self.curl_tool_window.geometry("1000x700")
+        
+        # Configure window grid
+        self.curl_tool_window.grid_columnconfigure(0, weight=1)
+        self.curl_tool_window.grid_rowconfigure(0, weight=1)
+        
+        try:
+            # Create the cURL tool widget with callback to send to input tabs
+            self.curl_tool_widget = CurlToolWidget(
+                self.curl_tool_window, 
+                logger=self.logger,
+                send_to_input_callback=self.send_content_to_input_tab,
+                dialog_manager=self.dialog_manager
+            )
+            
+            # Add context menus to cURL tool widgets
+            if CONTEXT_MENU_AVAILABLE:
+                add_context_menu_to_children(self.curl_tool_window)
+                self.logger.debug("Added context menus to cURL tool widgets")
+            
+            # Handle window closing
+            def on_curl_window_close():
+                self.curl_tool_window.destroy()
+                self.curl_tool_window = None
+                
+            self.curl_tool_window.protocol("WM_DELETE_WINDOW", on_curl_window_close)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create cURL Tool: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to open cURL Tool: {str(e)}")
+            else:
+                messagebox.showerror("Error", f"Failed to open cURL Tool: {str(e)}")
+            self.curl_tool_window.destroy()
+            self.curl_tool_window = None
+
+    def open_list_comparator_window(self):
+        """Opens the List Comparator in a separate window."""
+        if not LIST_COMPARATOR_MODULE_AVAILABLE:
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", "List Comparator module is not available.")
+            else:
+                messagebox.showerror("Error", "List Comparator module is not available.")
+            return
+        
+        # Check if window already exists and bring it to front
+        if self.list_comparator_window is not None and self.list_comparator_window.winfo_exists():
+            self.list_comparator_window.lift()
+            return
+            
+        try:
+            # Create a new window for the List Comparator
+            self.list_comparator_window = tk.Toplevel(self)
+            self.list_comparator_window.title("Advanced List Comparison Tool")
+            self.list_comparator_window.geometry("1200x800")
+            
+            comparator_app = DiffApp(
+                self.list_comparator_window, 
+                dialog_manager=self.dialog_manager,
+                send_to_input_callback=self.send_content_to_input_tab
+            )
+            
+            # Handle window closing
+            def on_comparator_window_close():
+                self.list_comparator_window.destroy()
+                self.list_comparator_window = None
+                
+            self.list_comparator_window.protocol("WM_DELETE_WINDOW", on_comparator_window_close)
+            
+            self.logger.info("List Comparator opened successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to open List Comparator: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to open List Comparator: {str(e)}")
+            else:
+                messagebox.showerror("Error", f"Failed to open List Comparator: {str(e)}")
+
+
+    
+    def show_performance_settings(self):
+        """Shows the performance settings configuration dialog."""
+        if hasattr(self, 'performance_settings_window') and self.performance_settings_window and self.performance_settings_window.winfo_exists():
+            self.performance_settings_window.lift()
+            return
+        
+        self.performance_settings_window = tk.Toplevel(self)
+        self.performance_settings_window.title("Performance Settings")
+        self.performance_settings_window.geometry("600x700")
+        self.performance_settings_window.resizable(True, True)
+        self.performance_settings_window.transient(self)
+        self.performance_settings_window.grab_set()
+        
+        # Create main frame with scrollbar
+        main_frame = ttk.Frame(self.performance_settings_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Create canvas and scrollbar for scrolling
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Get current performance settings
+        perf_settings = self.settings.get("performance_settings", {})
+        
+        # Performance Mode Section
+        mode_frame = ttk.LabelFrame(scrollable_frame, text="Performance Mode", padding="10")
+        mode_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.perf_mode_var = tk.StringVar(value=perf_settings.get("mode", "automatic"))
+        ttk.Label(mode_frame, text="Performance optimization mode:").pack(anchor=tk.W)
+        
+        mode_options = [
+            ("Automatic", "automatic", "Automatically enable optimizations based on content size"),
+            ("Always On", "always_on", "Always use performance optimizations"),
+            ("Always Off", "always_off", "Disable all performance optimizations")
+        ]
+        
+        for text, value, description in mode_options:
+            frame = ttk.Frame(mode_frame)
+            frame.pack(fill=tk.X, pady=2)
+            ttk.Radiobutton(frame, text=text, variable=self.perf_mode_var, value=value).pack(side=tk.LEFT)
+            ttk.Label(frame, text=f"- {description}", foreground="gray").pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Async Processing Section
+        async_frame = ttk.LabelFrame(scrollable_frame, text="Async Processing", padding="10")
+        async_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        async_settings = perf_settings.get("async_processing", {})
+        
+        self.async_enabled_var = tk.BooleanVar(value=async_settings.get("enabled", True))
+        ttk.Checkbutton(async_frame, text="Enable async processing for large content", 
+                       variable=self.async_enabled_var).pack(anchor=tk.W)
+        
+        # Threshold setting
+        threshold_frame = ttk.Frame(async_frame)
+        threshold_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Label(threshold_frame, text="Async threshold (KB):").pack(side=tk.LEFT)
+        self.async_threshold_var = tk.StringVar(value=str(async_settings.get("threshold_kb", 10)))
+        threshold_spinbox = ttk.Spinbox(threshold_frame, from_=1, to=1000, width=10, 
+                                       textvariable=self.async_threshold_var)
+        threshold_spinbox.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Max workers setting
+        workers_frame = ttk.Frame(async_frame)
+        workers_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Label(workers_frame, text="Max worker threads:").pack(side=tk.LEFT)
+        self.async_workers_var = tk.StringVar(value=str(async_settings.get("max_workers", 2)))
+        workers_spinbox = ttk.Spinbox(workers_frame, from_=1, to=8, width=10, 
+                                     textvariable=self.async_workers_var)
+        workers_spinbox.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Caching Section
+        cache_frame = ttk.LabelFrame(scrollable_frame, text="Caching", padding="10")
+        cache_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        cache_settings = perf_settings.get("caching", {})
+        
+        self.cache_enabled_var = tk.BooleanVar(value=cache_settings.get("enabled", True))
+        ttk.Checkbutton(cache_frame, text="Enable intelligent caching", 
+                       variable=self.cache_enabled_var).pack(anchor=tk.W)
+        
+        # Cache size settings
+        cache_sizes = [
+            ("Stats cache size:", "stats_cache_size", 1000),
+            ("Regex cache size:", "regex_cache_size", 100),
+            ("Processing cache size:", "processing_cache_size", 500)
+        ]
+        
+        self.cache_size_vars = {}
+        for label, key, default in cache_sizes:
+            frame = ttk.Frame(cache_frame)
+            frame.pack(fill=tk.X, pady=(5, 0))
+            ttk.Label(frame, text=label).pack(side=tk.LEFT)
+            var = tk.StringVar(value=str(cache_settings.get(key, default)))
+            self.cache_size_vars[key] = var
+            spinbox = ttk.Spinbox(frame, from_=10, to=10000, width=10, textvariable=var)
+            spinbox.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Content cache size (MB)
+        content_frame = ttk.Frame(cache_frame)
+        content_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Label(content_frame, text="Content cache size (MB):").pack(side=tk.LEFT)
+        self.content_cache_var = tk.StringVar(value=str(cache_settings.get("content_cache_size_mb", 50)))
+        content_spinbox = ttk.Spinbox(content_frame, from_=1, to=1000, width=10, 
+                                     textvariable=self.content_cache_var)
+        content_spinbox.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Memory Management Section
+        memory_frame = ttk.LabelFrame(scrollable_frame, text="Memory Management", padding="10")
+        memory_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        memory_settings = perf_settings.get("memory_management", {})
+        
+        self.memory_enabled_var = tk.BooleanVar(value=memory_settings.get("enabled", True))
+        ttk.Checkbutton(memory_frame, text="Enable advanced memory management", 
+                       variable=self.memory_enabled_var).pack(anchor=tk.W)
+        
+        memory_options = [
+            ("GC optimization", "gc_optimization", True),
+            ("Memory pool", "memory_pool", True),
+            ("Memory leak detection", "leak_detection", True)
+        ]
+        
+        self.memory_option_vars = {}
+        for text, key, default in memory_options:
+            var = tk.BooleanVar(value=memory_settings.get(key, default))
+            self.memory_option_vars[key] = var
+            ttk.Checkbutton(memory_frame, text=text, variable=var).pack(anchor=tk.W, padx=(20, 0))
+        
+        # Memory threshold
+        mem_threshold_frame = ttk.Frame(memory_frame)
+        mem_threshold_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Label(mem_threshold_frame, text="Memory threshold (MB):").pack(side=tk.LEFT)
+        self.memory_threshold_var = tk.StringVar(value=str(memory_settings.get("memory_threshold_mb", 500)))
+        mem_threshold_spinbox = ttk.Spinbox(mem_threshold_frame, from_=100, to=2000, width=10, 
+                                           textvariable=self.memory_threshold_var)
+        mem_threshold_spinbox.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # UI Optimizations Section
+        ui_frame = ttk.LabelFrame(scrollable_frame, text="UI Optimizations", padding="10")
+        ui_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ui_settings = perf_settings.get("ui_optimizations", {})
+        
+        self.ui_enabled_var = tk.BooleanVar(value=ui_settings.get("enabled", True))
+        ttk.Checkbutton(ui_frame, text="Enable UI optimizations", 
+                       variable=self.ui_enabled_var).pack(anchor=tk.W)
+        
+        ui_options = [
+            ("Efficient line numbers", "efficient_line_numbers", True),
+            ("Progressive search", "progressive_search", True),
+            ("Lazy updates", "lazy_updates", True)
+        ]
+        
+        self.ui_option_vars = {}
+        for text, key, default in ui_options:
+            var = tk.BooleanVar(value=ui_settings.get(key, default))
+            self.ui_option_vars[key] = var
+            ttk.Checkbutton(ui_frame, text=text, variable=var).pack(anchor=tk.W, padx=(20, 0))
+        
+        # Debounce delay
+        debounce_frame = ttk.Frame(ui_frame)
+        debounce_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Label(debounce_frame, text="Debounce delay (ms):").pack(side=tk.LEFT)
+        self.debounce_var = tk.StringVar(value=str(ui_settings.get("debounce_delay_ms", 300)))
+        debounce_spinbox = ttk.Spinbox(debounce_frame, from_=50, to=2000, width=10, 
+                                      textvariable=self.debounce_var)
+        debounce_spinbox.pack(side=tk.LEFT, padx=(10, 0))
+        
+
+        
+        # Define dialog close function first
+        def on_dialog_close():
+            self.performance_settings_window.destroy()
+        
+        # Buttons
+        button_frame = ttk.Frame(scrollable_frame)
+        button_frame.pack(fill=tk.X, pady=(20, 0))
+        
+        ttk.Button(button_frame, text="Apply", command=self.apply_performance_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Reset to Defaults", command=self.reset_performance_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Cancel", command=on_dialog_close).pack(side=tk.RIGHT)
+        
+        # Enable mouse wheel scrolling with safe canvas reference
+        def _on_mousewheel(event):
+            try:
+                if canvas.winfo_exists():
+                    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            except tk.TclError:
+                # Canvas has been destroyed, ignore the event
+                pass
+        
+        # Bind to the canvas and scrollable frame instead of globally
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
+        self.performance_settings_window.bind("<MouseWheel>", _on_mousewheel)
+        
+        self.performance_settings_window.protocol("WM_DELETE_WINDOW", on_dialog_close)
+    
+    def apply_performance_settings(self):
+        """Apply the performance settings from the dialog."""
+        try:
+            # Collect all settings from the UI
+            performance_settings = {
+                "mode": self.perf_mode_var.get(),
+                "async_processing": {
+                    "enabled": self.async_enabled_var.get(),
+                    "threshold_kb": int(self.async_threshold_var.get()),
+                    "max_workers": int(self.async_workers_var.get()),
+                    "chunk_size_kb": 50  # Keep existing default
+                },
+                "caching": {
+                    "enabled": self.cache_enabled_var.get(),
+                    "stats_cache_size": int(self.cache_size_vars["stats_cache_size"].get()),
+                    "regex_cache_size": int(self.cache_size_vars["regex_cache_size"].get()),
+                    "content_cache_size_mb": int(self.content_cache_var.get()),
+                    "processing_cache_size": int(self.cache_size_vars["processing_cache_size"].get())
+                },
+                "memory_management": {
+                    "enabled": self.memory_enabled_var.get(),
+                    "gc_optimization": self.memory_option_vars["gc_optimization"].get(),
+                    "memory_pool": self.memory_option_vars["memory_pool"].get(),
+                    "leak_detection": self.memory_option_vars["leak_detection"].get(),
+                    "memory_threshold_mb": int(self.memory_threshold_var.get())
+                },
+                "ui_optimizations": {
+                    "enabled": self.ui_enabled_var.get(),
+                    "efficient_line_numbers": self.ui_option_vars["efficient_line_numbers"].get(),
+                    "progressive_search": self.ui_option_vars["progressive_search"].get(),
+                    "debounce_delay_ms": int(self.debounce_var.get()),
+                    "lazy_updates": self.ui_option_vars["lazy_updates"].get()
+                },
+
+            }
+            
+            # Update settings
+            self.settings["performance_settings"] = performance_settings
+            self.save_settings()
+            
+            # Apply settings to running components
+            self._apply_performance_settings_to_components(performance_settings)
+            
+
+            
+            # Show confirmation
+            if self.dialog_manager:
+                self.dialog_manager.show_info("Performance Settings", 
+                                  "Performance settings applied successfully!\n\n"
+                                  "Some changes may require restarting the application to take full effect.", "success")
+            else:
+                messagebox.showinfo("Performance Settings", 
+                                  "Performance settings applied successfully!\n\n"
+                                  "Some changes may require restarting the application to take full effect.")
+            
+            # Close the dialog
+            self.performance_settings_window.destroy()
+            
+            self.logger.info("Performance settings updated and applied")
+            
+        except ValueError as e:
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Invalid Input", f"Please enter valid numeric values: {e}")
+            else:
+                messagebox.showerror("Invalid Input", f"Please enter valid numeric values: {e}")
+        except Exception as e:
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to apply performance settings: {e}")
+            else:
+                messagebox.showerror("Error", f"Failed to apply performance settings: {e}")
+            self.logger.error(f"Error applying performance settings: {e}")
+    
+    def reset_performance_settings(self):
+        """Reset performance settings to defaults."""
+        if self.dialog_manager and self.dialog_manager.ask_yes_no("Reset Settings", "Reset all performance settings to defaults?", "confirmation") or \
+           not self.dialog_manager and messagebox.askyesno("Reset Settings", "Reset all performance settings to defaults?"):
+            # Get default performance settings
+            default_settings = self._get_default_settings()
+            default_perf = default_settings["performance_settings"]
+            
+            # Update UI with defaults
+            self.perf_mode_var.set(default_perf["mode"])
+            
+            # Async processing
+            async_settings = default_perf["async_processing"]
+            self.async_enabled_var.set(async_settings["enabled"])
+            self.async_threshold_var.set(str(async_settings["threshold_kb"]))
+            self.async_workers_var.set(str(async_settings["max_workers"]))
+            
+            # Caching
+            cache_settings = default_perf["caching"]
+            self.cache_enabled_var.set(cache_settings["enabled"])
+            self.cache_size_vars["stats_cache_size"].set(str(cache_settings["stats_cache_size"]))
+            self.cache_size_vars["regex_cache_size"].set(str(cache_settings["regex_cache_size"]))
+            self.content_cache_var.set(str(cache_settings["content_cache_size_mb"]))
+            self.cache_size_vars["processing_cache_size"].set(str(cache_settings["processing_cache_size"]))
+            
+            # Memory management
+            memory_settings = default_perf["memory_management"]
+            self.memory_enabled_var.set(memory_settings["enabled"])
+            for key, var in self.memory_option_vars.items():
+                var.set(memory_settings[key])
+            self.memory_threshold_var.set(str(memory_settings["memory_threshold_mb"]))
+            
+            # UI optimizations
+            ui_settings = default_perf["ui_optimizations"]
+            self.ui_enabled_var.set(ui_settings["enabled"])
+            for key, var in self.ui_option_vars.items():
+                var.set(ui_settings[key])
+            self.debounce_var.set(str(ui_settings["debounce_delay_ms"]))
+            
+
+    
+    def _apply_performance_settings_to_components(self, performance_settings):
+        """Apply performance settings to running components."""
+        try:
+            # Update async processing settings
+            if ASYNC_PROCESSING_AVAILABLE and self.async_processor:
+                async_settings = performance_settings.get("async_processing", {})
+                if hasattr(self.async_processor, 'update_settings'):
+                    self.async_processor.update_settings({
+                        'max_workers': async_settings.get("max_workers", 2),
+                        'chunk_size_kb': async_settings.get("chunk_size_kb", 50)
+                    })
+            
+            # Update caching settings
+            if INTELLIGENT_CACHING_AVAILABLE:
+                cache_settings = performance_settings.get("caching", {})
+                
+                if self.smart_stats_calculator and hasattr(self.smart_stats_calculator, 'update_cache_size'):
+                    self.smart_stats_calculator.update_cache_size(cache_settings.get("stats_cache_size", 1000))
+                
+                if self.regex_cache and hasattr(self.regex_cache, 'update_cache_size'):
+                    self.regex_cache.update_cache_size(cache_settings.get("regex_cache_size", 100))
+                
+                if self.content_cache and hasattr(self.content_cache, 'update_cache_size'):
+                    self.content_cache.update_cache_size(cache_settings.get("content_cache_size_mb", 50) * 1024 * 1024)
+            
+
+            
+            # Update UI debounce delay
+            ui_settings = performance_settings.get("ui_optimizations", {})
+            AppConfig.DEBOUNCE_DELAY = ui_settings.get("debounce_delay_ms", 300)
+            
+            self.logger.info("Performance settings applied to running components")
+            
+        except Exception as e:
+            self.logger.warning(f"Some performance settings could not be applied: {e}")
+
+    def create_diff_viewer(self, parent):
+        """Creates the diff viewer widgets, initially hidden."""
+        if DIFF_VIEWER_MODULE_AVAILABLE:
+            # Use the new modular diff viewer with callback for tab updates
+            self.diff_viewer_widget = DiffViewerWidget(
+                parent, 
+                AppConfig.TAB_COUNT, 
+                self.logger,
+                parent_callback=self.on_diff_viewer_content_changed,
+                dialog_manager=self.dialog_manager
+            )
+            self.diff_frame = self.diff_viewer_widget.get_frame()
+            
+            # Set up references for backward compatibility
+            self.diff_input_notebook = self.diff_viewer_widget.input_notebook
+            self.diff_output_notebook = self.diff_viewer_widget.output_notebook
+            self.diff_input_tabs = self.diff_viewer_widget.input_tabs
+            self.diff_output_tabs = self.diff_viewer_widget.output_tabs
+            
+            # Set up references to statistics bars
+            self.diff_input_stats_bar = self.diff_viewer_widget.input_stats_bar
+            self.diff_output_stats_bar = self.diff_viewer_widget.output_stats_bar
+            
+            # Override the tab content change callback
+            self.diff_viewer_widget._on_tab_content_changed = self.on_tab_content_changed
+            
+            # Override the copy methods to use main app functionality
+            self.diff_viewer_widget.copy_to_clipboard = self.copy_to_clipboard
+            self.diff_viewer_widget.copy_to_specific_input_tab = lambda tab: self.copy_to_specific_input_tab(tab, None)
+            self.diff_viewer_widget.clear_all_input_tabs = self.clear_all_input_tabs
+            self.diff_viewer_widget.clear_all_output_tabs = self.clear_all_output_tabs
+            self.diff_viewer_widget.open_list_comparator = lambda: self.open_list_comparator_window()
+            
+            # Apply current font settings to diff viewer
+            try:
+                text_font_family, text_font_size = self.get_best_font("text")
+                text_font_tuple = (text_font_family, text_font_size)
+                self.diff_viewer_widget.apply_font_to_widgets(text_font_tuple)
+                self.logger.info(f"Applied font {text_font_tuple} to diff viewer")
+            except Exception as e:
+                self.logger.error(f"Error applying font to diff viewer: {e}")
+        else:
+            # Diff viewer module not available - create placeholder
+            self.logger.warning("Diff Viewer module not available")
+            self.diff_frame = ttk.Frame(parent, padding="10")
+            ttk.Label(self.diff_frame, text="Diff Viewer module not available", 
+                     font=("Helvetica", 12)).pack(pady=20)
+
+
+
+
+
+
+
+
+
+    def on_tool_selected(self, event=None):
+        """Handles the selection of a new tool from the dropdown."""
+        tool_name = self.tool_var.get()
+        self.settings["selected_tool"] = tool_name
+        self.logger.info(f"Tool selected: {tool_name}")
+
+        # Check if we're switching FROM Diff Viewer (before hiding it)
+        was_diff_viewer = hasattr(self, 'diff_frame') and self.diff_frame.winfo_viewable()
+
+        if tool_name == "Diff Viewer":
+            self.central_frame.grid_remove()
+            if DIFF_VIEWER_MODULE_AVAILABLE:
+                self.diff_viewer_widget.show()
+                self.load_diff_viewer_content()
+                # Update tab labels immediately after loading content
+                self.after(10, self.diff_viewer_widget.update_tab_labels)
+                self.diff_viewer_widget.run_comparison()
+            else:
+                # Show placeholder when module not available
+                self.diff_frame.grid(row=0, column=0, sticky="nsew", pady=5)
+            self.update_tool_settings_ui()
+        else:
+            # Sync diff viewer content before switching away
+            if was_diff_viewer:
+                self.logger.info("Switching FROM Diff Viewer - syncing content")
+                self.sync_diff_viewer_to_main_tabs()
+                # Don't save settings here - sync method already does it
+            
+            if DIFF_VIEWER_MODULE_AVAILABLE and hasattr(self, 'diff_viewer_widget'):
+                self.diff_viewer_widget.hide()
+            else:
+                self.diff_frame.grid_remove()
+            self.central_frame.grid()
+            
+            self.update_tool_settings_ui()
+
+            # Don't apply tool immediately after switching from Diff Viewer
+            # This prevents overwriting the synced content
+            if tool_name not in self.manual_process_tools and not was_diff_viewer:
+                self.apply_tool()
+            elif was_diff_viewer:
+                self.logger.info("Skipping apply_tool after Diff Viewer switch to preserve synced content")
+            
+        # Save settings (sync method already saved if switching from Diff Viewer)
+        if not was_diff_viewer:
+            self.save_settings()
+
+    def update_tool_settings_ui(self):
+        """Updates the UI to show settings for the currently selected tool."""
+        for widget in self.tool_settings_frame.winfo_children():
+            widget.destroy()
+
+        tool_name = self.tool_var.get()
+        tool_settings = self.settings["tool_settings"].get(tool_name, {})
+
+        if tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI"]:
+            self.create_ai_provider_widgets(self.tool_settings_frame, tool_name)
+        elif tool_name == "AI Tools":
+            self.create_ai_tools_widget(self.tool_settings_frame)
+        elif tool_name == "Case Tool":
+            if CASE_TOOL_MODULE_AVAILABLE and self.case_tool:
+                self.case_tool_ui = self.case_tool.create_ui(
+                    self.tool_settings_frame, 
+                    tool_settings,
+                    on_setting_change_callback=self.on_tool_setting_change,
+                    apply_tool_callback=self.apply_tool
+                )
+            else:
+                ttk.Label(self.tool_settings_frame, text="Case Tool module not available").pack()
+        elif tool_name == "Translator Tools":
+            self.create_translator_tools_widget(self.tool_settings_frame)
+        elif tool_name == "Base64 Encoder/Decoder":
+            self.create_base64_tools_widget(self.tool_settings_frame)
+        elif tool_name == "JSON/XML Tool":
+            self.create_jsonxml_tool_widget(self.tool_settings_frame)
+        elif tool_name == "Cron Tool":
+            self.create_cron_tool_widget(self.tool_settings_frame)
+        elif tool_name == "HTML Extraction Tool":
+            self.create_html_extraction_tool_widget(self.tool_settings_frame)
+        elif tool_name == "Sorter Tools":
+            self.create_sorter_tools_widget(self.tool_settings_frame)
+        elif tool_name == "Find & Replace Text":
+            if FIND_REPLACE_MODULE_AVAILABLE and self.find_replace_widget:
+                # Set up callback for settings changes
+                self.find_replace_widget.on_setting_change = self.on_tool_setting_change
+                # Set up callback for Replace All functionality
+                self.find_replace_widget.apply_tool_callback = self.apply_tool
+                # Set text widgets for the Find & Replace widget
+                self.find_replace_widget.set_text_widgets(
+                    self.input_tabs, self.output_tabs, 
+                    self.input_notebook, self.output_notebook
+                )
+                # Create the widgets
+                self.find_replace_widget.create_widgets(self.tool_settings_frame, tool_settings)
+            else:
+                # Find & Replace module not available
+                ttk.Label(self.tool_settings_frame, text="Find & Replace module not available").pack()
+        elif tool_name == "Generator Tools":
+            self.create_generator_tools_widget(self.tool_settings_frame)
+        elif tool_name == "URL and Link Extractor":
+            if URL_LINK_EXTRACTOR_MODULE_AVAILABLE and self.url_link_extractor:
+                tool_settings = self.settings["tool_settings"].get("URL and Link Extractor", {
+                    "extract_href": False,
+                    "extract_https": False,
+                    "extract_any_protocol": False,
+                    "extract_markdown": False,
+                    "filter_text": ""
+                })
+                self.url_link_extractor_ui = self.url_link_extractor.create_ui(
+                    self.tool_settings_frame, 
+                    tool_settings,
+                    on_setting_change_callback=self.on_tool_setting_change,
+                    apply_tool_callback=self.apply_tool
+                )
+            else:
+                ttk.Label(self.tool_settings_frame, text="URL and Link Extractor module not available").pack()
+        elif tool_name == "URL Parser":
+            if URL_PARSER_MODULE_AVAILABLE and self.url_parser:
+                tool_settings = self.settings["tool_settings"].get("URL Parser", {
+                    "ascii_decode": True
+                })
+                self.url_parser_ui = self.url_parser.create_ui(
+                    self.tool_settings_frame, 
+                    tool_settings,
+                    on_setting_change_callback=self.on_tool_setting_change,
+                    apply_tool_callback=self.apply_tool
+                )
+            else:
+                ttk.Label(self.tool_settings_frame, text="URL Parser module not available").pack()
+        elif tool_name == "Diff Viewer":
+            if DIFF_VIEWER_MODULE_AVAILABLE:
+                # Use the new modular settings widget
+                self.diff_settings_widget = DiffViewerSettingsWidget(
+                    self.tool_settings_frame, 
+                    self.diff_viewer_widget, 
+                    self.on_tool_setting_change
+                )
+            else:
+                # Module not available - show message
+                ttk.Label(self.tool_settings_frame, text="Diff Viewer module not available").pack(side=tk.LEFT, padx=10)
+        elif tool_name == "Email Extraction Tool":
+            if EMAIL_EXTRACTION_MODULE_AVAILABLE and self.email_extraction_tool:
+                tool_settings = self.settings["tool_settings"].get("Email Extraction Tool", {
+                    "omit_duplicates": False,
+                    "hide_counts": True,
+                    "sort_emails": False,
+                    "only_domain": False
+                })
+                self.email_extraction_ui = self.email_extraction_tool.create_ui(
+                    self.tool_settings_frame, 
+                    tool_settings,
+                    on_setting_change_callback=self.on_tool_setting_change,
+                    apply_tool_callback=self.apply_tool
+                )
+            else:
+                ttk.Label(self.tool_settings_frame, text="Email Extraction Tool module not available").pack()
+        elif tool_name == "Email Header Analyzer":
+            if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and self.email_header_analyzer:
+                tool_settings = self.settings["tool_settings"].get("Email Header Analyzer", {
+                    "show_timestamps": True,
+                    "show_delays": True,
+                    "show_authentication": True,
+                    "show_spam_score": True
+                })
+                self.email_header_analyzer_ui = self.email_header_analyzer.create_ui(
+                    self.tool_settings_frame, 
+                    tool_settings,
+                    on_setting_change_callback=self.on_tool_setting_change,
+                    apply_tool_callback=self.apply_tool
+                )
+            else:
+                ttk.Label(self.tool_settings_frame, text="Email Header Analyzer module not available").pack()
+        elif tool_name == "Folder File Reporter":
+            if FOLDER_FILE_REPORTER_MODULE_AVAILABLE and self.folder_file_reporter:
+                tool_settings = self.settings["tool_settings"].get("Folder File Reporter", {
+                    "last_input_folder": "",
+                    "last_output_folder": ""
+                })
+                self.folder_file_reporter.load_settings(tool_settings)
+                self.folder_file_reporter_ui = self.folder_file_reporter.create_ui(self.tool_settings_frame)
+            else:
+                ttk.Label(self.tool_settings_frame, text="Folder File Reporter module not available").pack()
+        elif tool_name == "Word Frequency Counter":
+            if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE and self.word_frequency_counter:
+                tool_settings = self.settings["tool_settings"].get("Word Frequency Counter", {})
+                self.word_frequency_counter_ui = self.word_frequency_counter.create_ui(
+                    self.tool_settings_frame, 
+                    tool_settings,
+                    on_setting_change_callback=self.on_tool_setting_change,
+                    apply_tool_callback=self.apply_tool
+                )
+            else:
+                ttk.Label(self.tool_settings_frame, text="Word Frequency Counter module not available").pack()
+
+
+
+
+
+
+    def create_ai_tools_widget(self, parent):
+        """Creates the AI Tools tabbed interface widget."""
+        if not AI_TOOLS_AVAILABLE:
+            ttk.Label(parent, text="AI Tools module not available").pack(padx=10, pady=10)
+            return
+        
+        # Create and pack the AI tools widget
+        self.ai_tools_widget = AIToolsWidget(parent, self, self.dialog_manager)
+        self.ai_tools_widget.pack(fill=tk.BOTH, expand=True)
+        
+        # Apply current font settings to AI tools
+        try:
+            text_font_family, text_font_size = self.get_best_font("text")
+            self.ai_tools_widget.apply_font_to_widgets((text_font_family, text_font_size))
+        except:
+            pass  # Continue if font application fails
+
+    def create_sorter_tools_widget(self, parent):
+        """Creates the Sorter Tools tabbed interface widget."""
+        if not SORTER_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Sorter Tools module not available").pack(padx=10, pady=10)
+            return
+        
+        # Create and pack the sorter tools widget
+        self.sorter_tools_widget = self.sorter_tools.create_widget(parent, self)
+        self.sorter_tools_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_generator_tools_widget(self, parent):
+        """Creates the Generator Tools tabbed interface widget."""
+        if not GENERATOR_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Generator Tools module not available").pack(padx=10, pady=10)
+            return
+        
+        # Create and pack the generator tools widget
+        self.generator_tools_widget = GeneratorToolsWidget(self.generator_tools)
+        self.generator_tools_widget_frame = self.generator_tools_widget.create_widget(parent, self)
+        self.generator_tools_widget_frame.pack(fill=tk.BOTH, expand=True)
+
+    def create_translator_tools_widget(self, parent):
+        """Creates the Translator Tools tabbed interface widget."""
+        if not TRANSLATOR_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Translator Tools module not available").pack(padx=10, pady=10)
+            return
+        
+        # Create and pack the translator tools widget
+        self.translator_tools_widget = self.translator_tools.create_widget(parent, self, self.dialog_manager)
+        self.translator_tools_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_base64_tools_widget(self, parent):
+        """Creates the Base64 Tools interface widget."""
+        if not BASE64_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Base64 Tools module not available").pack(padx=10, pady=10)
+            return
+        
+        # Create and pack the base64 tools widget
+        self.base64_tools_widget = Base64ToolsWidget(self.base64_tools)
+        self.base64_tools_widget_frame = self.base64_tools_widget.create_widget(parent, self)
+        self.base64_tools_widget_frame.pack(fill=tk.BOTH, expand=True)
+
+    def create_jsonxml_tool_widget(self, parent):
+        """Creates the JSON/XML Tool interface widget."""
+        if not JSONXML_TOOL_MODULE_AVAILABLE:
+            ttk.Label(parent, text="JSON/XML Tool module not available").pack(padx=10, pady=10)
+            return
+        
+        # Create the JSON/XML tool instance
+        self.jsonxml_tool = JSONXMLTool(self)
+        
+        # Get current settings
+        settings = self.settings["tool_settings"].get("JSON/XML Tool", {})
+        
+        # Create and pack the JSON/XML tool widget
+        self.jsonxml_tool_frame = self.jsonxml_tool.create_widgets(parent, settings)
+        self.jsonxml_tool_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Apply current font settings
+        try:
+            text_font_family, text_font_size = self.get_best_font("text")
+            self.jsonxml_tool.apply_font_to_widgets((text_font_family, text_font_size))
+        except:
+            pass  # Continue if font application fails
+
+    def create_cron_tool_widget(self, parent):
+        """Creates the Cron Tool interface widget."""
+        if not CRON_TOOL_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Cron Tool module not available").pack(padx=10, pady=10)
+            return
+        
+        # Create the Cron tool instance
+        self.cron_tool = CronTool(self)
+        
+        # Get current settings
+        settings = self.settings["tool_settings"].get("Cron Tool", {})
+        
+        # Create and pack the Cron tool widget
+        self.cron_tool_frame = self.cron_tool.create_widgets(parent, settings)
+        self.cron_tool_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Apply current font settings
+        try:
+            text_font_family, text_font_size = self.get_best_font("text")
+            self.cron_tool.apply_font_to_widgets((text_font_family, text_font_size))
+        except:
+            pass  # Continue if font application fails
+
+    def create_html_extraction_tool_widget(self, parent):
+        """Create and configure the HTML Extraction Tool widget."""
+        if not HTML_EXTRACTION_TOOL_MODULE_AVAILABLE:
+            return
+        
+        # Get current settings
+        settings = self.settings["tool_settings"].get("HTML Extraction Tool", {})
+        
+        # Create the HTML Extraction Tool UI
+        self.create_html_extraction_tool_ui(parent, settings)
+
+    def create_html_extraction_tool_ui(self, parent, settings):
+        """Create the HTML Extraction Tool user interface."""
+        from tools.html_tool import get_default_settings, get_settings_ui_config
+        
+        # Ensure we have default settings
+        default_settings = get_default_settings()
+        for key, value in default_settings.items():
+            if key not in settings:
+                settings[key] = value
+        
+        # Main frame
+        main_frame = ttk.Frame(parent)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Settings frame
+        settings_frame = ttk.LabelFrame(main_frame, text="HTML Extraction Settings", padding="5")
+        settings_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Get UI configuration
+        ui_config = get_settings_ui_config()
+        
+        # Store setting variables
+        self.html_tool_vars = {}
+        
+        # Separate UI elements by type for better layout
+        dropdown_configs = []
+        checkbox_configs = []
+        entry_configs = []
+        
+        for setting_key, config in ui_config.items():
+            if config["type"] == "dropdown":
+                dropdown_configs.append((setting_key, config))
+            elif config["type"] == "checkbox":
+                checkbox_configs.append((setting_key, config))
+            elif config["type"] == "entry":
+                entry_configs.append((setting_key, config))
+        
+        # Create a single row for dropdown and entry elements
+        if dropdown_configs or entry_configs:
+            controls_frame = ttk.Frame(settings_frame)
+            controls_frame.pack(fill=tk.X, pady=5)
+            
+            # Create dropdown elements (left side)
+            for setting_key, config in dropdown_configs:
+                ttk.Label(controls_frame, text=config["label"]).pack(side=tk.LEFT, padx=(0, 5))
+                
+                var = tk.StringVar(value=settings.get(setting_key, config["default"]))
+                self.html_tool_vars[setting_key] = var
+                
+                combo = ttk.Combobox(controls_frame, textvariable=var, state="readonly", width=20)
+                combo['values'] = [option[0] for option in config["options"]]
+                combo.pack(side=tk.LEFT, padx=(0, 20))
+                
+                # Set up change callback
+                var.trace('w', lambda *args, key=setting_key: self.on_html_tool_setting_change(key))
+            
+            # Create entry elements (right side of same row)
+            for setting_key, config in entry_configs:
+                ttk.Label(controls_frame, text=config["label"]).pack(side=tk.LEFT, padx=(0, 5))
+                
+                var = tk.StringVar(value=settings.get(setting_key, config["default"]))
+                self.html_tool_vars[setting_key] = var
+                
+                entry = ttk.Entry(controls_frame, textvariable=var, width=15)
+                entry.pack(side=tk.LEFT)
+                
+                # Set up change callback
+                var.trace('w', lambda *args, key=setting_key: self.on_html_tool_setting_change(key))
+        
+        # Create checkbox elements in 3 columns
+        if checkbox_configs:
+            checkbox_frame = ttk.Frame(settings_frame)
+            checkbox_frame.pack(fill=tk.X, pady=5)
+            
+            # Configure 3 columns with equal weight
+            checkbox_frame.grid_columnconfigure(0, weight=1)
+            checkbox_frame.grid_columnconfigure(1, weight=1)
+            checkbox_frame.grid_columnconfigure(2, weight=1)
+            
+            # Distribute checkboxes across 3 columns
+            for i, (setting_key, config) in enumerate(checkbox_configs):
+                column = i % 3
+                row = i // 3
+                
+                var = tk.BooleanVar(value=settings.get(setting_key, config["default"]))
+                self.html_tool_vars[setting_key] = var
+                
+                check = ttk.Checkbutton(checkbox_frame, text=config["label"], variable=var)
+                check.grid(row=row, column=column, sticky="w", padx=5, pady=2)
+                
+                # Set up change callback
+                var.trace('w', lambda *args, key=setting_key: self.on_html_tool_setting_change(key))
+        
+
+        
+        # Extract button
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=5)
+        
+        extract_button = ttk.Button(
+            button_frame, 
+            text="Extract", 
+            command=self.extract_html_content,
+            style="Accent.TButton"
+        )
+        extract_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Help text
+        help_text = ttk.Label(
+            button_frame,
+            text="Paste HTML content in input tab, select extraction method, then click Extract",
+            foreground="gray"
+        )
+        help_text.pack(side=tk.LEFT)
+
+    def on_html_tool_setting_change(self, setting_key):
+        """Handle HTML tool setting changes."""
+        if not hasattr(self, 'html_tool_vars'):
+            return
+        
+        # Update settings
+        if "HTML Extraction Tool" not in self.settings["tool_settings"]:
+            self.settings["tool_settings"]["HTML Extraction Tool"] = {}
+        
+        # Get the actual value based on setting type
+        var = self.html_tool_vars[setting_key]
+        if isinstance(var, tk.BooleanVar):
+            value = var.get()
+        elif isinstance(var, tk.StringVar):
+            # For dropdown, convert display value to internal value
+            display_value = var.get()
+            from tools.html_tool import get_settings_ui_config
+            ui_config = get_settings_ui_config()
+            if setting_key in ui_config and ui_config[setting_key]["type"] == "dropdown":
+                # Find the internal value for this display value
+                for option_display, option_value in ui_config[setting_key]["options"]:
+                    if option_display == display_value:
+                        value = option_value
+                        break
+                else:
+                    value = display_value
+            else:
+                value = display_value
+        else:
+            value = var.get()
+        
+        self.settings["tool_settings"]["HTML Extraction Tool"][setting_key] = value
+        self.save_settings()
+
+    def extract_html_content(self):
+        """Extract HTML content using the selected method."""
+        try:
+            # Get input text
+            active_input_tab = self.input_tabs[self.input_notebook.index(self.input_notebook.select())]
+            input_text = active_input_tab.text.get("1.0", tk.END).strip()
+            
+            if not input_text:
+                if self.dialog_manager:
+                    self.dialog_manager.show_warning("No Input", "Please paste HTML content in the input tab first.", "warning")
+                else:
+                    messagebox.showwarning("No Input", "Please paste HTML content in the input tab first.")
+                return
+            
+            # Process the HTML
+            if HTML_EXTRACTION_TOOL_MODULE_AVAILABLE and self.html_extraction_tool:
+                settings = self.settings["tool_settings"]["HTML Extraction Tool"]
+                result = self.html_extraction_tool.process_text(input_text, settings)
+                
+                # Update output
+                self.update_output_text(result)
+                
+                # Show success message
+                if self.dialog_manager:
+                    self.dialog_manager.show_info("Extraction Complete", "HTML content has been processed successfully.", "success")
+                else:
+                    messagebox.showinfo("Extraction Complete", "HTML content has been processed successfully.")
+            else:
+                error_msg = "HTML Extraction Tool is not available."
+                self.update_output_text(error_msg)
+                if self.dialog_manager:
+                    self.dialog_manager.show_error("Error", error_msg)
+                else:
+                    messagebox.showerror("Error", error_msg)
+                
+        except Exception as e:
+            error_msg = f"Error extracting HTML content: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            self.update_output_text(error_msg)
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", error_msg)
+            else:
+                messagebox.showerror("Error", error_msg)
+
+    def on_tool_setting_change(self, *args):
+        """
+        Handles changes in tool-specific settings.
+        Also saves the new settings.
+        """
+        tool_name = self.tool_var.get()
+        if tool_name not in self.settings["tool_settings"]:
+            self.settings["tool_settings"][tool_name] = {}
+        
+
+
+        if tool_name == "AI Tools":
+            # Settings are handled by the AIToolsWidget itself
+            pass
+        elif tool_name == "Case Tool":
+            if CASE_TOOL_MODULE_AVAILABLE and hasattr(self, 'case_tool_ui'):
+                current_settings = self.case_tool_ui.get_current_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+
+        elif tool_name == "Base64 Encoder/Decoder":
+            # Settings are handled by the Base64ToolsWidget itself
+            pass
+        elif tool_name == "JSON/XML Tool":
+            # Get current settings from the JSON/XML tool widget
+            if hasattr(self, 'jsonxml_tool') and self.jsonxml_tool:
+                current_settings = self.jsonxml_tool.get_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Cron Tool":
+            # Get current settings from the Cron tool widget
+            if hasattr(self, 'cron_tool') and self.cron_tool:
+                current_settings = self.cron_tool.get_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "HTML Extraction Tool":
+            # Settings are handled by the on_html_tool_setting_change method
+            pass
+        elif tool_name == "Sorter Tools":
+            # Settings are handled by the SorterToolsWidget itself
+            pass
+        elif tool_name == "Find & Replace Text":
+            if FIND_REPLACE_MODULE_AVAILABLE and self.find_replace_widget:
+                # Use the new Find & Replace widget's settings
+                settings = self.settings["tool_settings"][tool_name]
+                widget_settings = self.find_replace_widget.get_settings()
+                settings.update(widget_settings)
+            
+
+        elif tool_name == "Generator Tools":
+            # Settings are handled by the GeneratorToolsWidget itself
+            pass
+        elif tool_name == "URL and Link Extractor":
+            if URL_LINK_EXTRACTOR_MODULE_AVAILABLE and hasattr(self, 'url_link_extractor_ui'):
+                current_settings = self.url_link_extractor_ui.get_current_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Email Extraction Tool":
+            if EMAIL_EXTRACTION_MODULE_AVAILABLE and hasattr(self, 'email_extraction_ui'):
+                current_settings = self.email_extraction_ui.get_current_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Email Header Analyzer":
+            if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and hasattr(self, 'email_header_analyzer_ui'):
+                current_settings = self.email_header_analyzer_ui.get_current_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Folder File Reporter":
+            if FOLDER_FILE_REPORTER_MODULE_AVAILABLE and self.folder_file_reporter:
+                current_settings = self.folder_file_reporter.save_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "URL Parser":
+            if URL_PARSER_MODULE_AVAILABLE and hasattr(self, 'url_parser_ui'):
+                current_settings = self.url_parser_ui.get_current_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Diff Viewer":
+            if "Diff Viewer" not in self.settings["tool_settings"]:
+                self.settings["tool_settings"]["Diff Viewer"] = {}
+            if DIFF_VIEWER_MODULE_AVAILABLE and hasattr(self, 'diff_settings_widget'):
+                # Get settings from the new widget
+                widget_settings = self.diff_settings_widget.get_settings()
+                self.settings["tool_settings"]["Diff Viewer"].update(widget_settings)
+
+        if tool_name not in self.manual_process_tools:
+            self.apply_tool()
+        
+        self.save_settings()
+        self.after(10, self.update_all_stats)
+        
+    def browse_export_path(self):
+        """Opens a dialog to choose an export directory."""
+        path = filedialog.askdirectory(initialdir=self.export_path_var.get())
+        if path:
+            self.export_path_var.set(path)
+            self.settings["export_path"] = path
+            self.save_settings()
+            self.logger.info(f"Export path set to: {path}")
+
+    def update_log_level(self, event=None):
+        """Updates the logger's level based on the dropdown selection."""
+        level = self.log_level.get()
+        self.logger.setLevel(level)
+        self.settings["debug_level"] = level
+        self.save_settings()
+        self.logger.warning(f"Log level changed to {level}")
+
+    def update_stats(self, text_widget, status_bar):
+        """Calculates and updates the status bar for a given text widget."""
+        self._update_stats_impl(text_widget, status_bar)
+    
+    def _update_stats_impl(self, text_widget, status_bar):
+        """Internal implementation of statistics update with intelligent caching and progressive calculation."""
+        text = text_widget.get("1.0", tk.END)
+        text_length = len(text)
+        
+        # Determine widget ID for tracking
+        widget_id = self._get_widget_id_for_text_widget(text_widget)
+        
+        # Check if we should use progressive calculation for large content (>50,000 characters)
+        if text_length >= 50000 and hasattr(self, 'progressive_stats_calculator') and self.progressive_stats_calculator:
+            try:
+                # Cancel any existing calculation for this widget
+                if widget_id:
+                    cancelled_count = self.progressive_stats_calculator.cancel_calculation_for_widget(widget_id)
+                    if cancelled_count > 0:
+                        self.logger.debug(f"Cancelled {cancelled_count} existing calculation(s) for {widget_id}")
+                
+                # Show initial progress indicator
+                self._show_progress_indicator(status_bar, "Calculating...")
+                
+                # Define callbacks
+                def on_complete(stats):
+                    """Callback when progressive calculation completes."""
+                    try:
+                        # Update status bar with results
+                        if status_bar.winfo_exists():
+                            status_bar.config(text=stats.to_status_string())
+                            self._hide_progress_indicator(status_bar)
+                    except tk.TclError:
+                        # Widget may have been destroyed
+                        pass
+                
+                def on_progress(progress_info):
+                    """Callback for progress updates."""
+                    try:
+                        if status_bar.winfo_exists():
+                            # Only show indicator if calculation is taking longer than 100ms
+                            if progress_info.should_show_indicator:
+                                progress_text = f"Calculating... {progress_info.progress_percent:.0f}%"
+                                self._show_progress_indicator(status_bar, progress_text)
+                    except tk.TclError:
+                        # Widget may have been destroyed
+                        pass
+                
+                # Start progressive calculation
+                self.progressive_stats_calculator.calculate_progressive(
+                    text=text,
+                    callback=on_complete,
+                    progress_callback=on_progress,
+                    widget_id=widget_id
+                )
+                
+                return
+                
+            except Exception as e:
+                self.logger.warning(f"Progressive calculation failed, falling back: {e}")
+                self._hide_progress_indicator(status_bar)
+                # Fall through to standard calculation
+        
+        # Use intelligent caching if available (for smaller content or if progressive failed)
+        if INTELLIGENT_CACHING_AVAILABLE and hasattr(self, 'smart_stats_calculator'):
+            try:
+                stats = self.smart_stats_calculator.calculate_stats(text)
+                status_bar.config(text=stats.to_status_string())
+                return
+            except Exception as e:
+                self.logger.warning(f"Smart stats calculation failed, falling back to basic: {e}")
+        
+        # Fallback to optimized basic calculation
+        self._update_stats_basic(text, status_bar)
+    
+    def _update_stats_basic(self, text, status_bar):
+        """Optimized basic statistics calculation without regex where possible."""
+        # Strip text once and reuse
+        stripped_text = text.strip()
+        char_count = len(stripped_text)
+        
+        # Count lines efficiently
+        line_count = text.count('\n')
+        
+        # Optimized word counting - avoid regex for simple cases
+        if char_count == 0:
+            word_count = 0
+        else:
+            # Split on whitespace and filter empty strings
+            words = [word for word in stripped_text.split() if word]
+            word_count = len(words)
+        
+        # Optimized sentence counting - count sentence endings
+        sentence_count = 0
+        for char in stripped_text:
+            if char in '.!?':
+                sentence_count += 1
+        
+        # Token estimation (rough approximation)
+        token_count = max(1, round(char_count / 4))
+        
+        # Format bytes with K/M suffixes
+        byte_count = len(text.encode('utf-8'))
+        formatted_bytes = self._format_bytes(byte_count)
+        
+        status_bar.config(text=f"Bytes: {formatted_bytes} | Word: {word_count} | Sentence: {sentence_count} | Line: {line_count} | Tokens: {token_count}")
+    
+    def _get_widget_id_for_text_widget(self, text_widget):
+        """
+        Get a unique identifier for a text widget.
+        
+        Args:
+            text_widget: The text widget to identify
+            
+        Returns:
+            Widget identifier string or None if not found
+        """
+        # Check input tabs
+        for i, tab in enumerate(self.input_tabs):
+            if tab.text == text_widget:
+                return f"input_tab_{i}"
+        
+        # Check output tabs
+        for i, tab in enumerate(self.output_tabs):
+            if tab.text == text_widget:
+                return f"output_tab_{i}"
+        
+        # Check diff tabs if they exist
+        if hasattr(self, 'diff_input_tabs'):
+            for i, tab in enumerate(self.diff_input_tabs):
+                if tab.text == text_widget:
+                    return f"diff_input_tab_{i}"
+        
+        if hasattr(self, 'diff_output_tabs'):
+            for i, tab in enumerate(self.diff_output_tabs):
+                if tab.text == text_widget:
+                    return f"diff_output_tab_{i}"
+        
+        return None
+    
+    def _show_progress_indicator(self, status_bar, message="Calculating..."):
+        """
+        Show a progress indicator in the status bar.
+        
+        Args:
+            status_bar: The status bar label widget
+            message: Progress message to display
+        """
+        try:
+            # Store original text if not already stored
+            if not hasattr(status_bar, '_original_text'):
+                status_bar._original_text = status_bar.cget('text')
+            
+            # Update with progress message
+            status_bar.config(text=message)
+            
+            # Add visual indicator (change foreground color)
+            if not hasattr(status_bar, '_original_fg'):
+                status_bar._original_fg = status_bar.cget('foreground')
+            status_bar.config(foreground='blue')
+            
+        except tk.TclError:
+            # Widget may have been destroyed
+            pass
+    
+    def _hide_progress_indicator(self, status_bar):
+        """
+        Hide the progress indicator and restore normal status bar appearance.
+        
+        Args:
+            status_bar: The status bar label widget
+        """
+        try:
+            # Restore original foreground color
+            if hasattr(status_bar, '_original_fg'):
+                status_bar.config(foreground=status_bar._original_fg)
+                delattr(status_bar, '_original_fg')
+            
+            # Clear stored original text
+            if hasattr(status_bar, '_original_text'):
+                delattr(status_bar, '_original_text')
+            
+        except tk.TclError:
+            # Widget may have been destroyed
+            pass
+
+    def update_tab_labels(self):
+        """Updates tab labels to show first 7 non-whitespace characters of content."""
+        self._update_tab_labels_impl()
+    
+    def _update_tab_labels_impl(self):
+        """Internal implementation of tab label updates with caching and optimization."""
+        # Initialize tab label cache if not exists
+        if not hasattr(self, '_tab_label_cache'):
+            self._tab_label_cache = {}
+        
+        # Update input tabs
+        self._update_notebook_tab_labels(self.input_tabs, self.input_notebook, 'input')
+        
+        # Update output tabs
+        self._update_notebook_tab_labels(self.output_tabs, self.output_notebook, 'output')
+        
+        # Update diff tabs if they exist
+        if hasattr(self, 'diff_input_tabs'):
+            self._update_notebook_tab_labels(self.diff_input_tabs, self.diff_input_notebook, 'diff_input')
+            self._update_notebook_tab_labels(self.diff_output_tabs, self.diff_output_notebook, 'diff_output')
+    
+    def _update_notebook_tab_labels(self, tabs, notebook, cache_key_prefix):
+        """Update tab labels for a specific notebook with caching."""
+        for i, tab in enumerate(tabs):
+            cache_key = f"{cache_key_prefix}_{i}"
+            
+            # Get content efficiently - only first 50 chars to avoid processing large content
+            try:
+                # Get only the first few lines to extract first characters efficiently
+                content_sample = tab.text.get("1.0", "3.0")  # First 2 lines should be enough
+                content_hash = hash(content_sample)
+                
+                # Check cache
+                if cache_key in self._tab_label_cache:
+                    cached_hash, cached_label = self._tab_label_cache[cache_key]
+                    if cached_hash == content_hash:
+                        # Content hasn't changed, skip update
+                        continue
+                
+                # Extract first non-whitespace characters efficiently
+                first_chars = self._extract_first_chars(content_sample, 7)
+                new_label = f"{i+1}: {first_chars}" if first_chars else f"{i+1}:"
+                
+                # Update cache
+                self._tab_label_cache[cache_key] = (content_hash, new_label)
+                
+                # Update tab label only if it changed
+                current_label = notebook.tab(i, "text")
+                if current_label != new_label:
+                    notebook.tab(i, text=new_label)
+                    
+            except tk.TclError:
+                # Handle case where tab might not exist
+                continue
+    
+    def _extract_first_chars(self, text, max_chars):
+        """Efficiently extract first non-whitespace characters."""
+        result = []
+        char_count = 0
+        
+        for char in text:
+            if char_count >= max_chars:
+                break
+            if char not in ' \t\n\r':
+                result.append(char)
+                char_count += 1
+        
+        return ''.join(result)
+
+    def _format_bytes(self, byte_count):
+        """Format byte count with K/M suffixes for readability."""
+        if byte_count >= 1000000:
+            value = byte_count / 1000000
+            formatted = f"{value:.1f}M"
+        elif byte_count >= 1000:
+            value = byte_count / 1000
+            # Check if rounding to 1 decimal would make it >= 1000K
+            if round(value, 1) >= 1000:
+                formatted = f"{value / 1000:.1f}M"
+            else:
+                formatted = f"{value:.1f}K"
+        else:
+            return str(byte_count)
+        
+        # Remove trailing zeros and decimal point if not needed
+        return formatted.rstrip('0').rstrip('.')
+
+    def update_all_stats(self):
+        """
+        Updates the status bars for both input and output with visibility awareness.
+        
+        When StatisticsUpdateManager is available, this method uses visibility-aware
+        updates that skip hidden tabs and inactive components. Otherwise, it falls
+        back to direct statistics updates.
+        """
+        # Get active tab indices
+        active_input_index = self.input_notebook.index(self.input_notebook.select())
+        active_output_index = self.output_notebook.index(self.output_notebook.select())
+        
+        # Use StatisticsUpdateManager if available
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            # Request updates for active tabs with HIGH priority
+            input_component_id = f"input_tab_{active_input_index}"
+            output_component_id = f"output_tab_{active_output_index}"
+            
+            # Create update callbacks
+            def update_input_stats(widget_id):
+                active_input_tab = self.input_tabs[active_input_index]
+                self.update_stats(active_input_tab.text, self.input_status_bar)
+            
+            def update_output_stats(widget_id):
+                active_output_tab = self.output_tabs[active_output_index]
+                self.update_stats(active_output_tab.text, self.output_status_bar)
+            
+            # Request updates through the manager
+            self.statistics_update_manager.request_update(
+                widget_id=input_component_id,
+                priority=UpdatePriority.HIGH,
+                callback=update_input_stats
+            )
+            
+            self.statistics_update_manager.request_update(
+                widget_id=output_component_id,
+                priority=UpdatePriority.HIGH,
+                callback=update_output_stats
+            )
+        else:
+            # Fallback to direct updates when StatisticsUpdateManager is not available
+            active_input_tab = self.input_tabs[active_input_index]
+            active_output_tab = self.output_tabs[active_output_index]
+            self.update_stats(active_input_tab.text, self.input_status_bar)
+            self.update_stats(active_output_tab.text, self.output_status_bar)
+        
+        # Always update tab labels
+        self.update_tab_labels()
+
+    def _consolidated_input_changed(self, widget_id: str, tab_index: int):
+        """
+        Handles input changes from EventConsolidator with optimized debouncing.
+        
+        This method is called by the EventConsolidator after intelligent debouncing
+        and event deduplication. The EventConsolidator has already:
+        - Consolidated multiple event triggers (<<Modified>>, <KeyRelease>, <Button-1>)
+        - Applied adaptive debouncing based on content size
+        - Prevented duplicate calculations for the same content
+        
+        Args:
+            widget_id: Unique identifier for the widget (e.g., "input_tab_0")
+            tab_index: Index of the tab that changed
+        """
+        # Update statistics immediately since EventConsolidator already handled debouncing
+        self.update_all_stats()
+        
+        # Handle tool processing for non-manual tools
+        if self.tool_var.get() not in self.manual_process_tools:
+            self.apply_tool()
+        
+        # Save settings with debouncing to avoid excessive file writes
+        if not hasattr(self, '_save_after_id'):
+            self._save_after_id = None
+        
+        if self._save_after_id:
+            self.after_cancel(self._save_after_id)
+        self._save_after_id = self.after(1000, self.save_settings)
+        
+        # Store original content for filtering (only if no filter is active)
+        try:
+            if hasattr(self, 'input_filter_var') and not self.input_filter_var.get():
+                if 0 <= tab_index < len(self.input_tabs):
+                    active_input_tab = self.input_tabs[tab_index]
+                    self.input_original_content[tab_index] = active_input_tab.text.get("1.0", tk.END)
+        except (tk.TclError, IndexError) as e:
+            # Handle case where tab might not exist or be selected
+            self.logger.debug(f"Error storing original content for tab {tab_index}: {e}")
+
+    def on_input_changed(self, event=None):
+        """
+        Legacy input change handler for backward compatibility.
+        
+        This method is kept for widgets that don't use EventConsolidator.
+        When EventConsolidator is available, it handles all event consolidation,
+        debouncing, and deduplication, so this method should rarely be called.
+        
+        This provides a fallback for:
+        - Systems where EventConsolidator is not available
+        - Widgets not registered with EventConsolidator
+        - Edge cases during initialization
+        """
+        # If EventConsolidator is available, log that we're using fallback
+        if hasattr(self, 'event_consolidator') and self.event_consolidator:
+            self.logger.debug("on_input_changed called despite EventConsolidator being available - using fallback")
+        
+        # Initialize debouncing system if not exists
+        if not hasattr(self, '_debounce_manager'):
+            self._debounce_manager = {
+                'stats_after_id': None,
+                'tool_after_id': None,
+                'save_after_id': None,
+                'last_stats_update': 0,
+                'last_tool_update': 0,
+                'last_save_update': 0
+            }
+        
+        current_time = time.time() * 1000  # Convert to milliseconds
+        
+        # Save settings with debouncing to avoid excessive file writes
+        if self._debounce_manager['save_after_id']:
+            self.after_cancel(self._debounce_manager['save_after_id'])
+        self._debounce_manager['save_after_id'] = self.after(1000, self.save_settings)
+        
+        # Immediate stats update for small changes, debounced for frequent changes
+        time_since_last_stats = current_time - self._debounce_manager['last_stats_update']
+        
+        if time_since_last_stats > 100:  # Update stats immediately if >100ms since last update
+            self.update_all_stats()
+            self._debounce_manager['last_stats_update'] = current_time
+        else:
+            # Debounce stats updates for rapid typing
+            if self._debounce_manager['stats_after_id']:
+                self.after_cancel(self._debounce_manager['stats_after_id'])
+            self._debounce_manager['stats_after_id'] = self.after(50, self._debounced_stats_update)
+        
+        # Tool processing with longer debounce
+        if self.tool_var.get() in self.manual_process_tools:
+            return
+
+        if self._debounce_manager['tool_after_id']:
+            self.after_cancel(self._debounce_manager['tool_after_id'])
+        
+        # Adaptive debounce delay based on content size (matches EventConsolidator behavior)
+        try:
+            current_tab_index = self.input_notebook.index(self.input_notebook.select())
+            active_input_tab = self.input_tabs[current_tab_index]
+            content_length = len(active_input_tab.text.get("1.0", tk.END))
+            
+            # Store original content for filtering (only if no filter is active)
+            if hasattr(self, 'input_filter_var') and not self.input_filter_var.get():
+                self.input_original_content[current_tab_index] = active_input_tab.text.get("1.0", tk.END)
+            
+            # Adaptive delay matching EventConsolidator's DebounceConfig
+            if content_length > 100000:  # Very large content
+                debounce_delay = 700  # Extra delay for very large content
+            elif content_length > 10000:  # Large content
+                debounce_delay = 500  # Slow delay
+            elif content_length > 1000:  # Medium content
+                debounce_delay = 300  # Normal delay
+            else:  # Small content
+                debounce_delay = 50  # Fast delay
+            
+            self._debounce_manager['tool_after_id'] = self.after(debounce_delay, self.apply_tool)
+            self._debounce_manager['last_tool_update'] = current_time
+            
+        except (tk.TclError, IndexError) as e:
+            self.logger.debug(f"Error in on_input_changed: {e}")
+    
+    def _debounced_stats_update(self):
+        """Debounced statistics update."""
+        self.update_all_stats()
+        self._debounce_manager['last_stats_update'] = time.time() * 1000
+    
+    def cancel_pending_operations(self):
+        """Cancel all pending debounced operations."""
+        # Cancel EventConsolidator pending updates
+        if hasattr(self, 'event_consolidator') and self.event_consolidator:
+            self.event_consolidator.cancel_all_pending_updates()
+        
+        # Cancel legacy debouncing operations
+        if hasattr(self, '_debounce_manager'):
+            if self._debounce_manager['stats_after_id']:
+                self.after_cancel(self._debounce_manager['stats_after_id'])
+                self._debounce_manager['stats_after_id'] = None
+            
+            if self._debounce_manager['tool_after_id']:
+                self.after_cancel(self._debounce_manager['tool_after_id'])
+                self._debounce_manager['tool_after_id'] = None
+                
+            if self._debounce_manager['save_after_id']:
+                self.after_cancel(self._debounce_manager['save_after_id'])
+                self._debounce_manager['save_after_id'] = None
+        
+        # Cancel consolidated save operation
+        if hasattr(self, '_save_after_id') and self._save_after_id:
+            self.after_cancel(self._save_after_id)
+            self._save_after_id = None
+        
+        # Legacy support for old debouncing
+        if hasattr(self, '_after_id') and self._after_id:
+            self.after_cancel(self._after_id)
+            self._after_id = None
+
+    def export_input_file(self, file_format):
+        """Exports the input text to the specified file format."""
+        active_input_tab = self.input_tabs[self.input_notebook.index(self.input_notebook.select())]
+        input_text = active_input_tab.text.get("1.0", tk.END)
+        export_path = self.export_path_var.get()
+        if not os.path.isdir(export_path):
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Export Error", "Invalid export path specified in settings.")
+            else:
+                messagebox.showerror("Export Error", "Invalid export path specified in settings.")
+            return
+
+        filename = filedialog.asksaveasfilename(
+            initialdir=export_path,
+            title=f"Save Input as {file_format.upper()}",
+            defaultextension=f".{file_format}",
+            filetypes=[(f"{file_format.upper()} files", f"*.{file_format}"), ("All files", "*.*")]
+        )
+        if not filename: return
+
+        try:
+            if file_format == "txt":
+                with open(filename, "w", encoding="utf-8") as f: f.write(input_text)
+            elif file_format == "csv":
+                with open(filename, "w", encoding="utf-8", newline='') as f:
+                    writer = csv.writer(f)
+                    for line in input_text.splitlines():
+                        writer.writerow([line])
+            elif file_format == "pdf": self.export_to_pdf(filename, input_text)
+            elif file_format == "docx": self.export_to_docx(filename, input_text)
+
+            self.logger.info(f"Successfully exported input to {filename}")
+            if self.dialog_manager:
+                self.dialog_manager.show_info("Export Successful", f"Input file saved as {filename}", "success")
+            else:
+                messagebox.showinfo("Export Successful", f"Input file saved as {filename}")
+
+            if platform.system() == "Windows": 
+                os.startfile(filename)
+            elif platform.system() == "Darwin": 
+                import subprocess
+                subprocess.Popen(["open", filename])
+            else: 
+                import subprocess
+                subprocess.Popen(["xdg-open", filename])
+        except Exception as e:
+            self.logger.error(f"Failed to export input to {filename}: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Export Error", f"An error occurred while exporting:\n{e}")
+            else:
+                messagebox.showerror("Export Error", f"An error occurred while exporting:\n{e}")
+
+    def copy_to_specific_input_tab(self, target_tab_index, dialog):
+        """Copies output to a specific input tab and closes the dialog."""
+        if hasattr(self, 'diff_frame') and self.diff_frame.winfo_viewable():
+            active_output_tab = self.diff_output_tabs[self.diff_output_notebook.index("current")]
+            destination_tab = self.diff_input_tabs[target_tab_index]
+        else:
+            active_output_tab = self.output_tabs[self.output_notebook.index("current")]
+            destination_tab = self.input_tabs[target_tab_index]
+        
+        output_text = active_output_tab.text.get("1.0", tk.END)
+        
+        destination_tab.text.delete("1.0", tk.END)
+        destination_tab.text.insert("1.0", output_text)
+
+        # Save settings after modifying tab content
+        self.save_settings()
+        self.update_tab_labels()
+
+        self.logger.info(f"Output copied to Input Tab {target_tab_index + 1}.")
+        if dialog:
+            dialog.destroy()
+    
+    def send_content_to_input_tab(self, target_tab_index, content):
+        """Send custom content to a specific input tab."""
+        try:
+            if hasattr(self, 'diff_frame') and self.diff_frame.winfo_viewable():
+                destination_tab = self.diff_input_tabs[target_tab_index]
+            else:
+                destination_tab = self.input_tabs[target_tab_index]
+            
+            destination_tab.text.delete("1.0", tk.END)
+            destination_tab.text.insert("1.0", content)
+            
+            self.logger.info(f"Content sent to Input Tab {target_tab_index + 1}.")
+            
+            # Apply tool if not manual processing
+            if self.tool_var.get() not in self.manual_process_tools:
+                self.apply_tool()
+            
+            # Save settings after modifying tab content
+            self.save_settings()
+                
+        except Exception as e:
+            self.logger.error(f"Failed to send content to input tab: {e}")
+            raise
+        
+        self.after(10, self.update_all_stats)
+        self.update_tab_labels()
+        
+        # Switch to the target tab and apply tool if needed
+        if hasattr(self, 'diff_frame') and self.diff_frame.winfo_viewable():
+            self.diff_input_notebook.select(target_tab_index)
+            if self.tool_var.get() == "Diff Viewer":
+                self.run_diff_viewer()
+        else:
+            self.input_notebook.select(target_tab_index)
+            if self.input_notebook.index("current") == target_tab_index:
+                self.apply_tool()
+
+    def copy_to_clipboard(self):
+        """Copies the content of the output text area to the system clipboard."""
+        if hasattr(self, 'diff_frame') and self.diff_frame.winfo_viewable():
+            active_output_tab = self.diff_output_tabs[self.diff_output_notebook.index(self.diff_output_notebook.select())]
+        else:
+            active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+        
+        self.clipboard_clear()
+        self.clipboard_append(active_output_tab.text.get("1.0", tk.END))
+        self.update()
+        self.logger.info("Output copied to clipboard.")
+        self.after(10, self.update_all_stats)
+
+    def on_input_tab_change(self, event):
+        """
+        Handles logic when the input tab is changed.
+        
+        Updates visibility states for all input tabs when using visibility-aware updates.
+        """
+        # Update visibility states if visibility monitor is available
+        if hasattr(self, 'visibility_monitor') and self.visibility_monitor:
+            active_index = self.input_notebook.index(self.input_notebook.select())
+            
+            # Update visibility states for all input tabs
+            for i in range(len(self.input_tabs)):
+                component_id = f"input_tab_{i}"
+                tab_id = f"input_notebook_tab_{i}"
+                
+                # Set active tab as visible and active, others as hidden
+                is_active = (i == active_index)
+                self.visibility_monitor.set_tab_active(tab_id, is_active)
+                
+                # Update component visibility state
+                new_state = VisibilityState.VISIBLE_ACTIVE if is_active else VisibilityState.HIDDEN
+                if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+                    self.statistics_update_manager.set_visibility_state(component_id, new_state)
+            
+            self.logger.debug(f"Input tab changed to {active_index}, updated visibility states")
+        
+        # Apply tool if needed
+        if self.tool_var.get() not in self.manual_process_tools:
+            self.apply_tool()
+        
+        # Request immediate statistics update for the newly active tab
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            active_index = self.input_notebook.index(self.input_notebook.select())
+            component_id = f"input_tab_{active_index}"
+            self.statistics_update_manager.request_update(component_id, UpdatePriority.IMMEDIATE)
+        
+        self.after(10, self.update_all_stats)
+
+    def on_output_tab_change(self, event):
+        """
+        Handles logic when the output tab is changed.
+        
+        Updates visibility states for all output tabs when using visibility-aware updates.
+        """
+        # Update visibility states if visibility monitor is available
+        if hasattr(self, 'visibility_monitor') and self.visibility_monitor:
+            active_index = self.output_notebook.index(self.output_notebook.select())
+            
+            # Update visibility states for all output tabs
+            for i in range(len(self.output_tabs)):
+                component_id = f"output_tab_{i}"
+                tab_id = f"output_notebook_tab_{i}"
+                
+                # Set active tab as visible and active, others as hidden
+                is_active = (i == active_index)
+                self.visibility_monitor.set_tab_active(tab_id, is_active)
+                
+                # Update component visibility state
+                new_state = VisibilityState.VISIBLE_ACTIVE if is_active else VisibilityState.HIDDEN
+                if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+                    self.statistics_update_manager.set_visibility_state(component_id, new_state)
+            
+            self.logger.debug(f"Output tab changed to {active_index}, updated visibility states")
+        
+        # Apply tool if output is empty
+        active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+        if not active_output_tab.text.get("1.0", tk.END).strip():
+            if self.tool_var.get() not in self.manual_process_tools:
+                self.apply_tool()
+        
+        # Request immediate statistics update for the newly active tab
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            active_index = self.output_notebook.index(self.output_notebook.select())
+            component_id = f"output_tab_{active_index}"
+            self.statistics_update_manager.request_update(component_id, UpdatePriority.IMMEDIATE)
+        
+        self.after(10, self.update_all_stats)
+    
+    def _on_window_focus_in(self, event=None):
+        """
+        Handle window focus in event.
+        
+        Resumes statistics updates when window regains focus.
+        """
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            # Resume updates
+            self.statistics_update_manager.pause_updates(False)
+            
+            # Mark user activity
+            self.statistics_update_manager.mark_user_activity()
+            
+            self.logger.debug("Window gained focus - resumed statistics updates")
+    
+    def _on_window_focus_out(self, event=None):
+        """
+        Handle window focus out event.
+        
+        Reduces update frequency when window loses focus.
+        """
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            # Don't pause completely, just reduce priority
+            # The update manager will handle this through visibility states
+            self.logger.debug("Window lost focus - reduced update priority")
+    
+    def _on_window_minimized(self, event=None):
+        """
+        Handle window minimization event.
+        
+        Pauses statistics updates when window is minimized.
+        """
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            # Pause all updates
+            self.statistics_update_manager.pause_updates(True)
+            
+            self.logger.debug("Window minimized - paused statistics updates")
+    
+    def _on_window_restored(self, event=None):
+        """
+        Handle window restoration event.
+        
+        Resumes statistics updates when window is restored from minimization.
+        """
+        if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
+            # Resume updates
+            self.statistics_update_manager.pause_updates(False)
+            
+            # Force update of all visible components
+            self.statistics_update_manager.force_update_all_visible()
+            
+            self.logger.debug("Window restored - resumed statistics updates")
+
+    def apply_tool(self):
+        """Applies the selected text processing tool to the input text."""
+        tool_name = self.tool_var.get()
+        
+        if tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI", "Diff Viewer", "AI Tools"]:
+            return
+
+        try:
+            active_input_tab = self.input_tabs[self.input_notebook.index(self.input_notebook.select())]
+            input_text = active_input_tab.text.get("1.0", tk.END).strip()
+            
+            if not input_text:
+                # Check if we have content in output that might be from Diff Viewer sync
+                current_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+                current_output = current_output_tab.text.get("1.0", tk.END).strip()
+                
+                # Only clear output if it's actually empty
+                if not current_output:
+                    self.update_output_text("")
+                return
+            
+            # Check if we should use async processing based on settings
+            perf_settings = self.settings.get("performance_settings", {})
+            async_settings = perf_settings.get("async_processing", {})
+            async_enabled = async_settings.get("enabled", True)
+            async_threshold = async_settings.get("threshold_kb", 10) * 1024  # Convert KB to bytes
+            
+            if (ASYNC_PROCESSING_AVAILABLE and self.async_processor and 
+                async_enabled and len(input_text) > async_threshold):
+                
+                self._process_text_async(tool_name, input_text)
+            else:
+                # Process synchronously for small content
+                output_text = self._process_text_with_tool(tool_name, input_text)
+                    
+                self.update_output_text(output_text)
+            
+        except Exception as e:
+            error_msg = f"Error processing text with {tool_name}: {e}"
+            self.logger.error(error_msg, exc_info=True)
+            self.update_output_text(f"Error: {error_msg}")
+    
+    def _process_text_async(self, tool_name: str, input_text: str):
+        """Process text asynchronously for large content."""
+        try:
+            # Cancel any existing async operation for this tab
+            tab_index = self.input_notebook.index(self.input_notebook.select())
+            existing_task_id = self.pending_async_operations.get(tab_index)
+            if existing_task_id:
+                self.async_processor.cancel_processing(existing_task_id)
+            
+            # Create processing context
+            context = TextProcessingContext.from_content(
+                input_text, 
+                tool_name=tool_name,
+                callback_id=f"tab_{tab_index}"
+            )
+            
+            # Show processing indicator and cancel button
+            self.update_output_text("⏳ Processing large content asynchronously...")
+            if hasattr(self, 'cancel_async_button'):
+                self.cancel_async_button.pack(side=tk.LEFT, padx=(0, 6))
+            
+            # Create processor function
+            def processor_func(text: str) -> str:
+                return self._process_text_with_tool(tool_name, text)
+            
+            # Create completion callback
+            def completion_callback(result: ProcessingResult):
+                self.after(0, lambda: self._on_async_processing_complete(result, tab_index))
+            
+            # Create progress callback
+            def progress_callback(current: int, total: int):
+                progress_text = f"⏳ Processing chunk {current}/{total}..."
+                self.after(0, lambda: self.update_output_text(progress_text))
+            
+            # Start async processing
+            task_id = self.async_processor.process_text_async(
+                context=context,
+                processor_func=processor_func,
+                callback=completion_callback,
+                progress_callback=progress_callback if context.processing_mode == ProcessingMode.CHUNKED else None
+            )
+            
+            # Track the operation
+            self.pending_async_operations[tab_index] = task_id
+            
+            self.logger.info(f"Started async processing for {tool_name} "
+                           f"({context.size_bytes} bytes, {context.processing_mode.value} mode)")
+            
+        except Exception as e:
+            error_msg = f"Error starting async processing: {e}"
+            self.logger.error(error_msg, exc_info=True)
+            self.update_output_text(f"Error: {error_msg}")
+    
+    def _on_async_processing_complete(self, result: ProcessingResult, tab_index: int):
+        """Handle completion of async text processing."""
+        try:
+            # Remove from pending operations
+            self.pending_async_operations.pop(tab_index, None)
+            
+            # Hide cancel button if no more pending operations
+            if not self.pending_async_operations and hasattr(self, 'cancel_async_button'):
+                self.cancel_async_button.pack_forget()
+            
+            if result.success:
+                self.update_output_text(result.result)
+                
+                # Log performance info
+                if result.chunks_processed > 1:
+                    self.logger.info(f"Async processing completed: {result.processing_time_ms:.1f}ms, "
+                                   f"{result.chunks_processed} chunks")
+                else:
+                    self.logger.info(f"Async processing completed: {result.processing_time_ms:.1f}ms")
+            else:
+                error_msg = f"Async processing failed: {result.error_message}"
+                self.logger.error(error_msg)
+                self.update_output_text(f"Error: {error_msg}")
+                
+        except Exception as e:
+            error_msg = f"Error handling async completion: {e}"
+            self.logger.error(error_msg, exc_info=True)
+            self.update_output_text(f"Error: {error_msg}")
+    
+    def cancel_async_processing(self, tab_index: Optional[int] = None):
+        """Cancel async processing for a specific tab or all tabs."""
+        if tab_index is not None:
+            task_id = self.pending_async_operations.get(tab_index)
+            if task_id and self.async_processor:
+                if self.async_processor.cancel_processing(task_id):
+                    self.pending_async_operations.pop(tab_index, None)
+                    self.update_output_text("Processing cancelled.")
+                    self.logger.info(f"Cancelled async processing for tab {tab_index}")
+        else:
+            # Cancel all pending operations
+            if self.async_processor:
+                cancelled_count = 0
+                for tab_idx, task_id in list(self.pending_async_operations.items()):
+                    if self.async_processor.cancel_processing(task_id):
+                        cancelled_count += 1
+                
+                self.pending_async_operations.clear()
+                if cancelled_count > 0:
+                    self.logger.info(f"Cancelled {cancelled_count} async operations")
+    
+    def cancel_current_async_processing(self):
+        """Cancel async processing for the current active tab."""
+        current_tab_index = self.output_notebook.index(self.output_notebook.select())
+        self.cancel_async_processing(current_tab_index)
+    
+    def _process_text_with_tool(self, tool_name, input_text):
+        """Processes text with the specified tool using the TextProcessor class."""
+        try:
+            # Use processing cache if available
+            if INTELLIGENT_CACHING_AVAILABLE and self.processing_cache:
+                # Get tool settings for cache key
+                tool_settings = self.settings.get("tool_settings", {}).get(tool_name, {})
+                
+                # Define processor function for cache miss
+                def processor_func(content):
+                    return self._process_text_basic(tool_name, content)
+                
+                # Process with cache
+                result, was_cached = self.processing_cache.process_with_cache(
+                    input_text, tool_name, tool_settings, processor_func
+                )
+                
+
+                
+                return result
+            else:
+                # Fallback to basic processing without cache
+                return self._process_text_basic(tool_name, input_text)
+                
+        except Exception as e:
+            self.logger.error(f"Error in _process_text_with_tool for {tool_name}: {e}")
+            raise
+
+    
+    def _process_text_basic(self, tool_name, input_text):
+        """Basic text processing without caching - used as fallback."""
+        if tool_name == "Case Tool":
+            if CASE_TOOL_MODULE_AVAILABLE and self.case_tool:
+                settings = self.settings["tool_settings"]["Case Tool"]
+                return self.case_tool.process_text(input_text, settings)
+            else:
+                return "Case Tool module not available"
+
+
+
+        elif tool_name == "Find & Replace Text": 
+            if FIND_REPLACE_MODULE_AVAILABLE and self.find_replace_widget:
+                return self.find_replace_widget.replace_all()
+            else:
+                return "Find & Replace module not available"
+        elif tool_name == "Email Extraction Tool":
+            if EMAIL_EXTRACTION_MODULE_AVAILABLE and self.email_extraction_tool:
+                settings = self.settings["tool_settings"]["Email Extraction Tool"]
+                return self.email_extraction_tool.process_text(input_text, settings)
+            else:
+                return "Email Extraction Tool module not available"
+        elif tool_name == "Email Header Analyzer":
+            if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and self.email_header_analyzer:
+                settings = self.settings["tool_settings"]["Email Header Analyzer"]
+                return self.email_header_analyzer.process_text(input_text, settings)
+            else:
+                return "Email Header Analyzer module not available"
+        elif tool_name == "URL and Link Extractor":
+            if URL_LINK_EXTRACTOR_MODULE_AVAILABLE and self.url_link_extractor:
+                settings = self.settings["tool_settings"]["URL and Link Extractor"]
+                return self.url_link_extractor.process_text(input_text, settings)
+            else:
+                return "URL and Link Extractor module not available"
+        elif tool_name == "Word Frequency Counter":
+            if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE and self.word_frequency_counter:
+                settings = self.settings["tool_settings"].get("Word Frequency Counter", {})
+                return self.word_frequency_counter.process_text(input_text, settings)
+            else:
+                return "Word Frequency Counter module not available"
+        elif tool_name == "URL Parser":
+            if URL_PARSER_MODULE_AVAILABLE and self.url_parser:
+                settings = self.settings["tool_settings"]["URL Parser"]
+                return self.url_parser.process_text(input_text, settings)
+            else:
+                return "URL Parser module not available"
+        elif tool_name == "JSON/XML Tool":
+            if JSONXML_TOOL_MODULE_AVAILABLE:
+                # JSON/XML Tool uses its own processing method, not this basic text processing
+                return "JSON/XML Tool processing handled by widget interface"
+            else:
+                return "JSON/XML Tool module not available"
+        elif tool_name == "Cron Tool":
+            if CRON_TOOL_MODULE_AVAILABLE:
+                # Cron Tool uses its own processing method, not this basic text processing
+                return "Cron Tool processing handled by widget interface"
+            else:
+                return "Cron Tool module not available"
+        elif tool_name == "HTML Extraction Tool":
+            if HTML_EXTRACTION_TOOL_MODULE_AVAILABLE and self.html_extraction_tool:
+                settings = self.settings["tool_settings"]["HTML Extraction Tool"]
+                return self.html_extraction_tool.process_text(input_text, settings)
+            else:
+                return "HTML Extraction Tool module not available"
+        else: 
+            return f"Unknown tool: {tool_name}"
+
+    def update_output_text(self, text):
+        """Thread-safe method to update the output text widget."""
+        current_tab_index = self.output_notebook.index(self.output_notebook.select())
+        active_output_tab = self.output_tabs[current_tab_index]
+        
+        # Clear any stored filter content since we have new content
+        self.output_original_content[current_tab_index] = ""
+        
+        # Always show the new content directly
+        active_output_tab.text.config(state="normal")
+        active_output_tab.text.delete("1.0", tk.END)
+        active_output_tab.text.insert("1.0", text)
+        active_output_tab.text.config(state="disabled")
+        
+        # If there's an active filter, apply it to the new content
+        if hasattr(self, 'output_filter_var') and self.output_filter_var.get():
+            self.apply_output_filter()
+        
+        self.save_settings()
+        self.after(10, self.update_all_stats)
+        
+        if self.tool_var.get() == "Find & Replace Text":
+            if FIND_REPLACE_MODULE_AVAILABLE and self.find_replace_widget:
+                self.find_replace_widget.highlight_processed_results()
+        
+        self.update_tab_labels()
+
+    def _get_search_pattern(self):
+        """Helper to build the regex pattern for Find & Replace."""
+        find_str = self.find_text_field.get().strip()
+        
+        # Determine case sensitivity and base option
+        is_case_sensitive = self.match_case_var.get()
+        base_option = self.fr_option_var.get()
+        
+
+        
+
+        
+        # Skip intelligent caching for now as it doesn't support our custom text matching options
+        # TODO: Integrate custom text matching with intelligent caching
+        # if INTELLIGENT_CACHING_AVAILABLE and self.regex_cache:
+        #     try:
+        #         flags = 0 if is_case_sensitive else re.IGNORECASE
+        #         compiled_pattern = self.regex_cache.get_compiled_pattern(
+        #             find_str, flags, self.regex_mode_var.get()
+        #         )
+        #         return compiled_pattern.pattern
+        #     except Exception as e:
+        #         self.logger.warning(f"Regex cache failed, falling back to basic: {e}")
+        
+        # Fallback to basic caching
+        cache_key = (find_str, base_option, is_case_sensitive, self.regex_mode_var.get())
+        if cache_key in self._regex_cache:
+            return self._regex_cache[cache_key]
+        
+        if self.regex_mode_var.get():
+            pattern = find_str
+        else:
+            search_term = re.escape(find_str)
+            if base_option == "whole_words": 
+                search_term = r'\b' + search_term + r'\b'
+            elif base_option == "match_prefix": 
+                search_term = r'\b' + search_term
+            elif base_option == "match_suffix": 
+                search_term = search_term + r'\b'
+            pattern = search_term
+        
+        self._regex_cache[cache_key] = pattern
+        
+
+        
+        return pattern
+
+    def preview_find_replace(self):
+        """Highlights matches in input and output without replacing using progressive search."""
+        self.on_tool_setting_change()
+        active_input_tab = self.input_tabs[self.input_notebook.index(self.input_notebook.select())]
+        active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+
+        # Reset replacement count and skip tracking when starting new search
+        self.replaced_count = 0
+        self.replaced_count_label.config(text="Replaced matches: 0")
+        self.skipped_matches = set()  # Reset skipped matches tracking
+        self.all_matches_processed = False
+        self.loop_start_position = None
+
+        # Clear existing highlights
+        if PROGRESSIVE_SEARCH_AVAILABLE and self.search_highlighter:
+            self.search_highlighter.clear_highlights(active_input_tab.text, "yellow_highlight")
+            self.search_highlighter.clear_highlights(active_output_tab.text, "pink_highlight")
+        else:
+            active_input_tab.text.tag_remove("yellow_highlight", "1.0", tk.END)
+            active_output_tab.text.tag_remove("pink_highlight", "1.0", tk.END)
+        
+        active_output_tab.text.config(state="normal")
+        input_content = active_input_tab.text.get("1.0", tk.END)
+        active_output_tab.text.delete("1.0", tk.END)
+        active_output_tab.text.insert("1.0", input_content)
+
+        find_str = self.find_text_field.get()
+        if not find_str:
+            active_output_tab.text.config(state="disabled")
+            self.match_count_label.config(text="Found matches: 0")
+            return
+        
+        # Use progressive search if available
+        if PROGRESSIVE_SEARCH_AVAILABLE and self.search_highlighter and self.find_replace_processor:
+            self._preview_with_progressive_search(active_input_tab, active_output_tab, find_str)
+        else:
+            self._preview_with_basic_search(active_input_tab, active_output_tab, find_str)
+        
+        active_output_tab.text.config(state="disabled")
+        self.after(10, self.update_all_stats)
+
+
+
+
+
+
+
+
+    def load_diff_viewer_content(self):
+        """Copies content from the main input/output tabs to the diff viewer tabs."""
+        if DIFF_VIEWER_MODULE_AVAILABLE and hasattr(self, 'diff_viewer_widget'):
+            try:
+                # Use the new modular diff viewer
+                input_contents = []
+                output_contents = []
+                
+                for i in range(AppConfig.TAB_COUNT):
+                    input_content = self.input_tabs[i].text.get("1.0", tk.END)
+                    input_contents.append(input_content)
+                    
+                    output_content = self.output_tabs[i].text.get("1.0", tk.END)
+                    output_contents.append(output_content)
+                
+                self.logger.info(f"Loading content to diff viewer - {len(input_contents)} input tabs, {len(output_contents)} output tabs")
+                self.diff_viewer_widget.load_content(input_contents, output_contents)
+                
+                # Sync notebook selections
+                try:
+                    self.diff_viewer_widget.input_notebook.select(self.input_notebook.index("current"))
+                    self.diff_viewer_widget.output_notebook.select(self.output_notebook.index("current"))
+                except (tk.TclError, AttributeError):
+                    # Fallback to first tab if sync fails
+                    try:
+                        self.diff_viewer_widget.input_notebook.select(0)
+                        self.diff_viewer_widget.output_notebook.select(0)
+                    except:
+                        pass
+                
+                self.logger.info("Content loaded to diff viewer successfully")
+            except Exception as e:
+                self.logger.error(f"Error loading content to diff viewer: {e}")
+        
+        self.update_tab_labels()
+
+    def sync_diff_viewer_to_main_tabs(self):
+        """Copies content from the diff viewer tabs back to the main tabs."""
+        if DIFF_VIEWER_MODULE_AVAILABLE and hasattr(self, 'diff_viewer_widget'):
+            try:
+                # Use the new modular diff viewer
+                input_contents, output_contents = self.diff_viewer_widget.sync_content_back()
+                
+                self.logger.info(f"Syncing diff viewer content back to main tabs - {len(input_contents)} input tabs, {len(output_contents)} output tabs")
+                
+                # Debug: Log what content we're syncing
+                for i, content in enumerate(input_contents):
+                    if content.strip():
+                        self.logger.info(f"Input tab {i+1}: '{content[:50]}...' ({len(content)} chars)")
+                for i, content in enumerate(output_contents):
+                    if content.strip():
+                        self.logger.info(f"Output tab {i+1}: '{content[:50]}...' ({len(content)} chars)")
+                
+                for i in range(min(len(input_contents), AppConfig.TAB_COUNT)):
+                    self.input_tabs[i].text.delete("1.0", tk.END)
+                    self.input_tabs[i].text.insert("1.0", input_contents[i])
+                    
+                    self.output_tabs[i].text.config(state="normal")
+                    self.output_tabs[i].text.delete("1.0", tk.END)
+                    self.output_tabs[i].text.insert("1.0", output_contents[i])
+                    self.output_tabs[i].text.config(state="disabled")
+                
+                self.logger.info("Diff viewer content synced successfully")
+                
+                # Verify what's actually in the main tabs after sync
+                main_input_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.input_tabs]
+                main_output_contents = [tab.text.get("1.0", tk.END).strip() for tab in self.output_tabs]
+                non_empty_main_inputs = sum(1 for content in main_input_contents if content)
+                non_empty_main_outputs = sum(1 for content in main_output_contents if content)
+                self.logger.info(f"After sync - Main tabs have {non_empty_main_inputs} non-empty input tabs, {non_empty_main_outputs} non-empty output tabs")
+                
+            except Exception as e:
+                self.logger.error(f"Error syncing diff viewer content: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        self.update_tab_labels()
+        self.save_settings()
+
+
+
+    def on_diff_viewer_content_changed(self):
+        """Callback for when diff viewer content changes."""
+        # This ensures that changes in diff viewer are reflected in main tabs
+        # when the user switches tools or closes the app
+        pass
+
+    def run_diff_viewer(self):
+        """Compares the active tabs within the Diff Viewer and displays the diff."""
+        if DIFF_VIEWER_MODULE_AVAILABLE and hasattr(self, 'diff_viewer_widget'):
+            # Use the new modular diff viewer
+            option = self.settings.get("tool_settings", {}).get("Diff Viewer", {}).get("option", "ignore_case")
+            self.diff_viewer_widget.run_comparison(option)
+        else:
+            self.logger.warning("Diff Viewer module not available")
+
+
+
+
+
+    def export_file(self, file_format):
+        """Exports the output text to the specified file format."""
+        active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+        output_text = active_output_tab.text.get("1.0", tk.END)
+        export_path = self.export_path_var.get()
+        if not os.path.isdir(export_path):
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Export Error", "Invalid export path specified in settings.")
+            else:
+                messagebox.showerror("Export Error", "Invalid export path specified in settings.")
+            return
+
+        filename = filedialog.asksaveasfilename(
+            initialdir=export_path,
+            title=f"Save as {file_format.upper()}",
+            defaultextension=f".{file_format}",
+            filetypes=[(f"{file_format.upper()} files", f"*.{file_format}"), ("All files", "*.*")]
+        )
+        if not filename: return
+
+        try:
+            if file_format == "txt":
+                with open(filename, "w", encoding="utf-8") as f: f.write(output_text)
+            elif file_format == "csv":
+                with open(filename, "w", encoding="utf-8", newline='') as f:
+                    writer = csv.writer(f)
+                    for line in output_text.splitlines():
+                        writer.writerow([line])
+            elif file_format == "pdf": self.export_to_pdf(filename, output_text)
+            elif file_format == "docx": self.export_to_docx(filename, output_text)
+
+            self.logger.info(f"Successfully exported to {filename}")
+            if self.dialog_manager:
+                self.dialog_manager.show_info("Export Successful", f"File saved as {filename}", "success")
+            else:
+                messagebox.showinfo("Export Successful", f"File saved as {filename}")
+
+            if platform.system() == "Windows": 
+                os.startfile(filename)
+            elif platform.system() == "Darwin": 
+                import subprocess
+                subprocess.Popen(["open", filename])
+            else: 
+                import subprocess
+                subprocess.Popen(["xdg-open", filename])
+        except Exception as e:
+            self.logger.error(f"Failed to export to {filename}: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Export Error", f"An error occurred while exporting:\n{e}")
+            else:
+                messagebox.showerror("Export Error", f"An error occurred while exporting:\n{e}")
+
+    def export_to_pdf(self, filename, text):
+        """Helper function to create a PDF file."""
+        c = canvas.Canvas(filename, pagesize=letter)
+        width, height = letter
+        text_object = c.beginText(40, height - 40)
+        text_object.setFont("Helvetica", 10)
+        for line in text.splitlines():
+            text_object.textLine(line)
+        c.drawText(text_object)
+        c.save()
+
+    def export_to_docx(self, filename, text):
+        """Helper function to create a DOCX file."""
+        doc = Document()
+        doc.add_paragraph(text)
+        doc.save(filename)
+        
+    def clear_regex_cache(self):
+        self._regex_cache.clear()
+        self.logger.debug("Regex cache cleared")
+        
+    # Settings Backup and Recovery Methods
+    
+    def create_manual_backup(self):
+        """Create a manual backup of current settings."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            success = self.db_settings_manager.create_backup("manual", "Manual backup created from File menu")
+            
+            if success:
+                self.show_success("Manual backup created successfully")
+                self.logger.info("Manual backup created from File menu")
+            else:
+                self.show_error("Failed to create manual backup")
+                
+        except Exception as e:
+            self.logger.error(f"Error creating manual backup: {e}")
+            self.show_error(f"Error creating manual backup: {e}")
+    
+    def show_backup_history(self):
+        """Show backup history in a dialog window."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Create backup history window
+            history_window = tk.Toplevel(self)
+            history_window.title("Backup History")
+            history_window.geometry("800x600")
+            history_window.transient(self)
+            history_window.grab_set()
+            
+            # Create main frame
+            main_frame = ttk.Frame(history_window, padding="10")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Title
+            title_label = ttk.Label(main_frame, text="Settings Backup History", font=("Helvetica", 14, "bold"))
+            title_label.pack(pady=(0, 10))
+            
+            # Get backup statistics
+            stats = self.db_settings_manager.get_backup_statistics()
+            
+            # Add statistics info (moved above table)
+            stats_frame = ttk.LabelFrame(main_frame, text="Backup Statistics", padding="5")
+            stats_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            stats_text = f"Total Backups: {stats.get('total_backups', 0)} | "
+            stats_text += f"Total Size: {stats.get('total_size_mb', 0):.2f} MB | "
+            stats_text += f"Recent (7 days): {stats.get('recent_backups_7d', 0)}"
+            
+            ttk.Label(stats_frame, text=stats_text).pack()
+            
+            # Button frame (moved above table)
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            # Create treeview for backup list
+            columns = ("Timestamp", "Type", "Size", "Description")
+            tree = ttk.Treeview(main_frame, columns=columns, show="headings", height=15)
+            
+            # Configure columns
+            tree.heading("Timestamp", text="Timestamp")
+            tree.heading("Type", text="Type")
+            tree.heading("Size", text="Size (MB)")
+            tree.heading("Description", text="Description")
+            
+            tree.column("Timestamp", width=150)
+            tree.column("Type", width=100)
+            tree.column("Size", width=80)
+            tree.column("Description", width=300)
+            
+            # Add scrollbar
+            scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+            
+            # Pack treeview and scrollbar
+            tree_frame = ttk.Frame(main_frame)
+            tree_frame.pack(fill=tk.BOTH, expand=True)
+            
+            tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Get backup history and populate tree
+            if hasattr(self.db_settings_manager, 'backup_recovery_manager') and self.db_settings_manager.backup_recovery_manager:
+                backup_history = self.db_settings_manager.backup_recovery_manager.get_backup_history()
+                
+                for backup in reversed(backup_history):  # Show most recent first
+                    timestamp_str = backup.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                    size_mb = round(backup.size_bytes / (1024 * 1024), 2)
+                    description = backup.description or "No description"
+                    
+                    tree.insert("", tk.END, values=(
+                        timestamp_str,
+                        backup.backup_type.value,
+                        size_mb,
+                        description
+                    ))
+            
+            # Restore button (define function before button creation)
+            def restore_selected():
+                selection = tree.selection()
+                if not selection:
+                    self.show_warning("Please select a backup to restore")
+                    return
+                
+                item = tree.item(selection[0])
+                timestamp_str = item['values'][0]
+                backup_type = item['values'][1]
+                
+                # Find the backup info
+                backup_history = self.db_settings_manager.backup_recovery_manager.get_backup_history()
+                selected_backup = None
+                
+                for backup in backup_history:
+                    if (backup.timestamp.strftime("%Y-%m-%d %H:%M:%S") == timestamp_str and 
+                        backup.backup_type.value == backup_type):
+                        selected_backup = backup
+                        break
+                
+                if selected_backup:
+                    history_window.destroy()
+                    self.restore_from_backup_file(selected_backup.filepath)
+                else:
+                    self.show_error("Could not find selected backup")
+            
+            # Add buttons to the button frame (now above table)
+            ttk.Button(button_frame, text="Restore Selected", command=restore_selected).pack(side=tk.LEFT, padx=(0, 5))
+            ttk.Button(button_frame, text="Refresh", command=lambda: self.show_backup_history()).pack(side=tk.LEFT, padx=(0, 5))
+            ttk.Button(button_frame, text="Close", command=history_window.destroy).pack(side=tk.RIGHT)
+            
+        except Exception as e:
+            self.logger.error(f"Error showing backup history: {e}")
+            self.show_error(f"Error showing backup history: {e}")
+    
+    def export_settings_to_json(self):
+        """Export current settings to a JSON file."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Ask user for file location
+            filename = filedialog.asksaveasfilename(
+                title="Export Settings to JSON",
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                initialfile="settings_export.json"
+            )
+            
+            if filename:
+                success = self.db_settings_manager.export_settings_to_file(filename, "json")
+                
+                if success:
+                    self.show_success(f"Settings exported successfully to:\n{filename}")
+                    self.logger.info(f"Settings exported to JSON: {filename}")
+                else:
+                    self.show_error("Failed to export settings")
+                    
+        except Exception as e:
+            self.logger.error(f"Error exporting settings to JSON: {e}")
+            self.show_error(f"Error exporting settings: {e}")
+    
+    def import_settings_from_json(self):
+        """Import settings from a JSON file."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Ask user for file location
+            filename = filedialog.askopenfilename(
+                title="Import Settings from JSON",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            
+            if filename:
+                # Confirm import
+                result = messagebox.askyesno(
+                    "Confirm Import",
+                    "Importing settings will replace your current settings.\n\n"
+                    "A backup will be created automatically before import.\n\n"
+                    "Do you want to continue?",
+                    icon="warning"
+                )
+                
+                if result:
+                    # Create backup before import
+                    backup_success = self.db_settings_manager.create_backup("manual", "Pre-import backup")
+                    if not backup_success:
+                        self.logger.warning("Failed to create pre-import backup")
+                    
+                    # Import settings
+                    success = self.db_settings_manager.import_settings_from_file(filename)
+                    
+                    if success:
+                        self.show_success(f"Settings imported successfully from:\n{filename}\n\nPlease restart the application for all changes to take effect.")
+                        self.logger.info(f"Settings imported from JSON: {filename}")
+                    else:
+                        self.show_error("Failed to import settings")
+                        
+        except Exception as e:
+            self.logger.error(f"Error importing settings from JSON: {e}")
+            self.show_error(f"Error importing settings: {e}")
+    
+    def restore_from_backup_dialog(self):
+        """Show dialog to select and restore from a backup file."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Ask user for backup file
+            filename = filedialog.askopenfilename(
+                title="Select Backup File to Restore",
+                filetypes=[
+                    ("Database backups", "*.db"),
+                    ("Compressed backups", "*.gz"),
+                    ("All files", "*.*")
+                ]
+            )
+            
+            if filename:
+                self.restore_from_backup_file(filename)
+                
+        except Exception as e:
+            self.logger.error(f"Error in restore dialog: {e}")
+            self.show_error(f"Error in restore dialog: {e}")
+    
+    def restore_from_backup_file(self, filename):
+        """Restore settings from a specific backup file."""
+        try:
+            # Confirm restore
+            result = messagebox.askyesno(
+                "Confirm Restore",
+                f"Restoring from backup will replace your current settings.\n\n"
+                f"Backup file: {os.path.basename(filename)}\n\n"
+                f"A backup of current settings will be created before restore.\n\n"
+                f"Do you want to continue?",
+                icon="warning"
+            )
+            
+            if result:
+                # Create backup of current state
+                backup_success = self.db_settings_manager.create_backup("manual", "Pre-restore backup")
+                if not backup_success:
+                    self.logger.warning("Failed to create pre-restore backup")
+                
+                # Restore from backup
+                success = self.db_settings_manager.restore_from_backup(filename)
+                
+                if success:
+                    self.show_success(f"Settings restored successfully from backup.\n\nPlease restart the application for all changes to take effect.")
+                    self.logger.info(f"Settings restored from backup: {filename}")
+                else:
+                    self.show_error("Failed to restore from backup")
+                    
+        except Exception as e:
+            self.logger.error(f"Error restoring from backup: {e}")
+            self.show_error(f"Error restoring from backup: {e}")
+    
+    def repair_database_dialog(self):
+        """Show dialog to repair database corruption."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Confirm repair
+            result = messagebox.askyesno(
+                "Confirm Database Repair",
+                "Database repair will attempt to fix corruption issues.\n\n"
+                "An emergency backup will be created before repair.\n\n"
+                "This operation may take a few moments.\n\n"
+                "Do you want to continue?",
+                icon="question"
+            )
+            
+            if result:
+                # Show progress dialog
+                progress_window = tk.Toplevel(self)
+                progress_window.title("Repairing Database")
+                progress_window.geometry("400x150")
+                progress_window.transient(self)
+                progress_window.grab_set()
+                
+                progress_frame = ttk.Frame(progress_window, padding="20")
+                progress_frame.pack(fill=tk.BOTH, expand=True)
+                
+                ttk.Label(progress_frame, text="Repairing database...").pack(pady=(0, 10))
+                progress_bar = ttk.Progressbar(progress_frame, mode='indeterminate')
+                progress_bar.pack(fill=tk.X, pady=(0, 10))
+                progress_bar.start()
+                
+                status_label = ttk.Label(progress_frame, text="Creating emergency backup...")
+                status_label.pack()
+                
+                def repair_worker():
+                    try:
+                        # Update status
+                        self.after(0, lambda: status_label.config(text="Analyzing database..."))
+                        
+                        # Perform repair
+                        success = self.db_settings_manager.repair_database()
+                        
+                        # Close progress window
+                        self.after(0, progress_window.destroy)
+                        
+                        if success:
+                            self.after(0, lambda: self.show_success("Database repair completed successfully."))
+                            self.logger.info("Database repair completed successfully")
+                        else:
+                            self.after(0, lambda: self.show_error("Database repair failed. Check logs for details."))
+                            
+                    except Exception as e:
+                        self.after(0, progress_window.destroy)
+                        self.after(0, lambda: self.show_error(f"Database repair error: {e}"))
+                        self.logger.error(f"Database repair error: {e}")
+                
+                # Run repair in background thread
+                threading.Thread(target=repair_worker, daemon=True).start()
+                
+        except Exception as e:
+            self.logger.error(f"Error in repair dialog: {e}")
+            self.show_error(f"Error in repair dialog: {e}")
+    
+    def validate_settings_integrity_dialog(self):
+        """Show dialog to validate settings integrity."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Ask if user wants to apply automatic fixes
+            apply_fixes = messagebox.askyesno(
+                "Settings Integrity Validation",
+                "Do you want to automatically apply fixes for issues that can be repaired?\n\n"
+                "Choose 'Yes' to apply fixes automatically, or 'No' to only validate without changes.",
+                icon="question"
+            )
+            
+            # Show progress dialog
+            progress_window = tk.Toplevel(self)
+            progress_window.title("Validating Settings")
+            progress_window.geometry("400x150")
+            progress_window.transient(self)
+            progress_window.grab_set()
+            
+            progress_frame = ttk.Frame(progress_window, padding="20")
+            progress_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(progress_frame, text="Validating settings integrity...").pack(pady=(0, 10))
+            progress_bar = ttk.Progressbar(progress_frame, mode='indeterminate')
+            progress_bar.pack(fill=tk.X, pady=(0, 10))
+            progress_bar.start()
+            
+            status_label = ttk.Label(progress_frame, text="Analyzing settings...")
+            status_label.pack()
+            
+            def validation_worker():
+                try:
+                    # Perform validation
+                    report = self.db_settings_manager.validate_settings_integrity(apply_fixes)
+                    
+                    # Close progress window
+                    self.after(0, progress_window.destroy)
+                    
+                    # Show results
+                    self.after(0, lambda: self.show_validation_results(report, apply_fixes))
+                    
+                except Exception as e:
+                    self.after(0, progress_window.destroy)
+                    self.after(0, lambda: self.show_error(f"Validation error: {e}"))
+                    self.logger.error(f"Settings validation error: {e}")
+            
+            # Run validation in background thread
+            threading.Thread(target=validation_worker, daemon=True).start()
+            
+        except Exception as e:
+            self.logger.error(f"Error in validation dialog: {e}")
+            self.show_error(f"Error in validation dialog: {e}")
+    
+    def show_validation_results(self, report, fixes_applied):
+        """Show validation results in a dialog."""
+        try:
+            # Create results window
+            results_window = tk.Toplevel(self)
+            results_window.title("Settings Validation Results")
+            results_window.geometry("700x500")
+            results_window.transient(self)
+            results_window.grab_set()
+            
+            # Create main frame
+            main_frame = ttk.Frame(results_window, padding="10")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Title
+            title_text = "Settings Validation Results"
+            if fixes_applied:
+                title_text += " (with Auto-fixes Applied)"
+            
+            title_label = ttk.Label(main_frame, text=title_text, font=("Helvetica", 14, "bold"))
+            title_label.pack(pady=(0, 10))
+            
+            # Summary frame
+            summary_frame = ttk.LabelFrame(main_frame, text="Summary", padding="10")
+            summary_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            total_issues = report.get('total_issues', 0)
+            if total_issues == 0:
+                summary_text = "✅ No issues found - settings are valid!"
+                summary_color = "green"
+            else:
+                summary_text = f"Found {total_issues} issues:\n"
+                issues_by_severity = report.get('issues_by_severity', {})
+                for severity, count in issues_by_severity.items():
+                    if count > 0:
+                        summary_text += f"  • {severity.title()}: {count}\n"
+                
+                if fixes_applied:
+                    auto_fixable = report.get('auto_fixable_issues', 0)
+                    summary_text += f"\n🔧 {auto_fixable} issues were automatically fixed"
+                
+                summary_color = "red" if issues_by_severity.get('critical', 0) > 0 else "orange"
+            
+            summary_label = ttk.Label(summary_frame, text=summary_text.strip())
+            summary_label.pack(anchor=tk.W)
+            
+            # Details frame with scrollable text
+            if total_issues > 0:
+                details_frame = ttk.LabelFrame(main_frame, text="Issue Details", padding="5")
+                details_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+                
+                details_text = scrolledtext.ScrolledText(details_frame, height=15, wrap=tk.WORD)
+                details_text.pack(fill=tk.BOTH, expand=True)
+                
+                # Add all issues by severity
+                issues_by_severity = report.get('issues_by_severity', {})
+                
+                # Display critical issues first
+                critical_issues = report.get('critical_issues', [])
+                if critical_issues:
+                    details_text.insert(tk.END, "🚨 CRITICAL ISSUES:\n")
+                    for issue in critical_issues:
+                        details_text.insert(tk.END, f"  • {issue['message']}\n")
+                        details_text.insert(tk.END, f"    Location: {issue['location']}\n")
+                        if issue.get('auto_fixable'):
+                            details_text.insert(tk.END, "    Status: Auto-fixable\n")
+                        details_text.insert(tk.END, "\n")
+                
+                # Display other severity levels if we have the full issue list
+                # Check if the report contains a full issues list
+                all_issues = report.get('all_issues', [])
+                if all_issues:
+                    # Group issues by severity
+                    severity_groups = {
+                        'high': [],
+                        'medium': [],
+                        'low': []
+                    }
+                    
+                    for issue in all_issues:
+                        severity = issue.get('severity', 'medium')
+                        if severity != 'critical':  # Critical already handled above
+                            if severity in severity_groups:
+                                severity_groups[severity].append(issue)
+                    
+                    # Display each severity group
+                    severity_icons = {
+                        'high': '🔴',
+                        'medium': '🟡', 
+                        'low': '🟢'
+                    }
+                    
+                    for severity in ['high', 'medium', 'low']:
+                        issues = severity_groups[severity]
+                        if issues:
+                            icon = severity_icons[severity]
+                            details_text.insert(tk.END, f"\n{icon} {severity.upper()} ISSUES:\n")
+                            for issue in issues:
+                                details_text.insert(tk.END, f"  • {issue.get('message', 'Unknown issue')}\n")
+                                if issue.get('location'):
+                                    details_text.insert(tk.END, f"    Location: {issue['location']}\n")
+                                if issue.get('auto_fixable'):
+                                    details_text.insert(tk.END, "    Status: Auto-fixable\n")
+                                if issue.get('suggestion'):
+                                    details_text.insert(tk.END, f"    Suggestion: {issue['suggestion']}\n")
+                                details_text.insert(tk.END, "\n")
+                
+                elif issues_by_severity:
+                    # Fallback: show summary by severity if we don't have detailed issues
+                    details_text.insert(tk.END, "\n📊 ISSUES BY SEVERITY:\n")
+                    for severity, count in issues_by_severity.items():
+                        if count > 0 and severity != 'critical':  # Critical already shown
+                            details_text.insert(tk.END, f"  • {severity.title()}: {count} issues\n")
+                    
+                    details_text.insert(tk.END, "\nNote: Run validation again to see detailed issue descriptions.\n")
+                
+                # Add recommendations
+                recommendations = report.get('recommendations', [])
+                if recommendations:
+                    details_text.insert(tk.END, "\n💡 RECOMMENDATIONS:\n")
+                    for rec in recommendations:
+                        details_text.insert(tk.END, f"  • {rec}\n")
+                
+                details_text.config(state=tk.DISABLED)
+            
+            # Button frame
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill=tk.X)
+            
+            ttk.Button(button_frame, text="Close", command=results_window.destroy).pack(side=tk.RIGHT)
+            
+            if total_issues > 0 and not fixes_applied:
+                def apply_fixes():
+                    results_window.destroy()
+                    self.validate_settings_integrity_dialog()
+                
+                ttk.Button(button_frame, text="Apply Auto-fixes", command=apply_fixes).pack(side=tk.RIGHT, padx=(0, 5))
+            
+        except Exception as e:
+            self.logger.error(f"Error showing validation results: {e}")
+            self.show_error(f"Error showing validation results: {e}")
+    
+    def cleanup_old_backups_dialog(self):
+        """Show dialog to cleanup old backups."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Get current backup statistics
+            stats = self.db_settings_manager.get_backup_statistics()
+            total_backups = stats.get('total_backups', 0)
+            total_size_mb = stats.get('total_size_mb', 0)
+            
+            if total_backups == 0:
+                self.show_info("No backups found to cleanup.")
+                return
+            
+            # Confirm cleanup
+            result = messagebox.askyesno(
+                "Cleanup Old Backups",
+                f"Current backup statistics:\n"
+                f"  • Total backups: {total_backups}\n"
+                f"  • Total size: {total_size_mb:.2f} MB\n\n"
+                f"This will remove old backups based on the retention policy.\n"
+                f"Recent backups will be preserved.\n\n"
+                f"Do you want to continue?",
+                icon="question"
+            )
+            
+            if result:
+                cleaned_count = self.db_settings_manager.cleanup_old_backups()
+                
+                if cleaned_count > 0:
+                    self.show_success(f"Cleanup completed successfully.\n\n{cleaned_count} old backups were removed.")
+                    self.logger.info(f"Cleaned up {cleaned_count} old backups")
+                else:
+                    self.show_info("No old backups needed cleanup.")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in cleanup dialog: {e}")
+            self.show_error(f"Error in cleanup dialog: {e}")
+    
+    def open_retention_settings(self):
+        """Open retention settings configuration dialog."""
+        try:
+            if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
+                self.show_error("Database settings manager not available")
+                return
+            
+            # Create retention settings window
+            retention_window = tk.Toplevel(self)
+            retention_window.title("Backup Retention Settings")
+            retention_window.transient(self)
+            
+            # Hide window initially to prevent flickering
+            retention_window.withdraw()
+            
+            # Set initial size and allow resizing
+            retention_window.geometry("550x650")
+            retention_window.minsize(500, 600)
+            retention_window.resizable(True, True)
+            
+            # Create scrollable main frame
+            canvas = tk.Canvas(retention_window)
+            scrollbar = ttk.Scrollbar(retention_window, orient="vertical", command=canvas.yview)
+            scrollable_frame = ttk.Frame(canvas)
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            # Pack canvas and scrollbar
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Create main frame inside scrollable frame
+            main_frame = ttk.Frame(scrollable_frame, padding="15")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Bind mousewheel to canvas for scrolling
+            def _on_mousewheel(event):
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            
+            def _bind_to_mousewheel(event):
+                canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            
+            def _unbind_from_mousewheel(event):
+                canvas.unbind_all("<MouseWheel>")
+            
+            canvas.bind('<Enter>', _bind_to_mousewheel)
+            canvas.bind('<Leave>', _unbind_from_mousewheel)
+            
+            # Title
+            title_label = ttk.Label(main_frame, text="Backup Retention Policy", font=("Helvetica", 14, "bold"))
+            title_label.pack(pady=(0, 15))
+            
+            # Get current settings
+            backup_manager = self.db_settings_manager.backup_recovery_manager
+            if not backup_manager:
+                self.show_error("Backup manager not available")
+                retention_window.destroy()
+                return
+            
+            current_max_backups = backup_manager.max_backups
+            current_auto_interval = backup_manager.auto_backup_interval
+            current_compression = backup_manager.enable_compression
+            
+            # Settings frame
+            settings_frame = ttk.LabelFrame(main_frame, text="Retention Policy Settings", padding="10")
+            settings_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            # Max backups setting
+            max_backups_frame = ttk.Frame(settings_frame)
+            max_backups_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            ttk.Label(max_backups_frame, text="Maximum number of backups to keep:").pack(side=tk.LEFT)
+            max_backups_var = tk.IntVar(value=current_max_backups)
+            max_backups_spinbox = ttk.Spinbox(
+                max_backups_frame, 
+                from_=5, 
+                to=200, 
+                width=10,
+                textvariable=max_backups_var
+            )
+            max_backups_spinbox.pack(side=tk.RIGHT)
+            
+            # Auto backup interval setting
+            interval_frame = ttk.Frame(settings_frame)
+            interval_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            ttk.Label(interval_frame, text="Automatic backup interval (minutes):").pack(side=tk.LEFT)
+            interval_var = tk.IntVar(value=current_auto_interval // 60)  # Convert seconds to minutes
+            interval_spinbox = ttk.Spinbox(
+                interval_frame,
+                from_=5,
+                to=1440,  # 24 hours
+                width=10,
+                textvariable=interval_var
+            )
+            interval_spinbox.pack(side=tk.RIGHT)
+            
+            # Compression setting
+            compression_frame = ttk.Frame(settings_frame)
+            compression_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            compression_var = tk.BooleanVar(value=current_compression)
+            compression_check = ttk.Checkbutton(
+                compression_frame,
+                text="Enable backup compression (saves disk space)",
+                variable=compression_var
+            )
+            compression_check.pack(side=tk.LEFT)
+            
+            # Current statistics frame
+            stats_frame = ttk.LabelFrame(main_frame, text="Current Backup Statistics", padding="10")
+            stats_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            # Get and display current statistics
+            stats = self.db_settings_manager.get_backup_statistics()
+            total_backups = stats.get('total_backups', 0)
+            total_size_mb = stats.get('total_size_mb', 0)
+            recent_backups = stats.get('recent_backups_7d', 0)
+            
+            stats_text = f"Total backups: {total_backups}\n"
+            stats_text += f"Total size: {total_size_mb:.2f} MB\n"
+            stats_text += f"Recent backups (7 days): {recent_backups}\n"
+            stats_text += f"Backup directory: {backup_manager.backup_dir}"
+            
+            stats_label = ttk.Label(stats_frame, text=stats_text, justify=tk.LEFT)
+            stats_label.pack(anchor=tk.W)
+            
+            # Retention policy explanation
+            explanation_frame = ttk.LabelFrame(main_frame, text="How Retention Policy Works", padding="10")
+            explanation_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            explanation_text = (
+                "• Backups are automatically cleaned up when the maximum count is exceeded\n"
+                "• The most recent backups are always preserved\n"
+                "• Manual backups and migration backups are treated equally\n"
+                "• Compression reduces file size but may slightly increase backup time\n"
+                "• Shorter intervals provide better protection but use more disk space"
+            )
+            
+            explanation_label = ttk.Label(explanation_frame, text=explanation_text, justify=tk.LEFT)
+            explanation_label.pack(anchor=tk.W)
+            
+            # Button frame
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill=tk.X, pady=(10, 0))
+            
+            def apply_settings():
+                try:
+                    # Get new values
+                    new_max_backups = max_backups_var.get()
+                    new_interval_minutes = interval_var.get()
+                    new_compression = compression_var.get()
+                    
+                    # Validate values
+                    if new_max_backups < 5:
+                        self.show_warning("Maximum backups must be at least 5")
+                        return
+                    
+                    if new_interval_minutes < 5:
+                        self.show_warning("Backup interval must be at least 5 minutes")
+                        return
+                    
+                    # Apply settings using the backup manager's method
+                    success = backup_manager.update_retention_settings(
+                        max_backups=new_max_backups,
+                        auto_backup_interval=new_interval_minutes * 60,  # Convert to seconds
+                        enable_compression=new_compression
+                    )
+                    
+                    if success:
+                        self.show_success("Retention settings updated and saved successfully!")
+                        self.logger.info(f"Updated retention settings: max_backups={new_max_backups}, interval={new_interval_minutes}min, compression={new_compression}")
+                        retention_window.destroy()
+                    else:
+                        self.show_error("Failed to update retention settings")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error applying retention settings: {e}")
+                    self.show_error(f"Error applying settings: {e}")
+            
+            def reset_defaults():
+                max_backups_var.set(50)
+                interval_var.set(60)  # 1 hour
+                compression_var.set(True)
+            
+            # Buttons
+            ttk.Button(button_frame, text="Apply", command=apply_settings).pack(side=tk.RIGHT, padx=(5, 0))
+            ttk.Button(button_frame, text="Cancel", command=retention_window.destroy).pack(side=tk.RIGHT)
+            ttk.Button(button_frame, text="Reset to Defaults", command=reset_defaults).pack(side=tk.LEFT)
+            
+            # Update window size after all content is added
+            def adjust_window_size():
+                retention_window.update_idletasks()
+                
+                # Get the required size for all content
+                required_width = scrollable_frame.winfo_reqwidth() + 50  # Add padding
+                required_height = scrollable_frame.winfo_reqheight() + 50  # Add padding
+                
+                # Get screen dimensions
+                screen_width = retention_window.winfo_screenwidth()
+                screen_height = retention_window.winfo_screenheight()
+                
+                # Limit to reasonable maximum sizes (80% of screen)
+                max_width = min(required_width, int(screen_width * 0.8))
+                max_height = min(required_height, int(screen_height * 0.8))
+                
+                # Ensure minimum sizes
+                final_width = max(max_width, 550)
+                final_height = max(max_height, 600)
+                
+                # Center the window on screen
+                x = (screen_width - final_width) // 2
+                y = (screen_height - final_height) // 2
+                
+                retention_window.geometry(f"{final_width}x{final_height}+{x}+{y}")
+                
+                # If content is larger than window, enable scrolling
+                if required_height > final_height:
+                    scrollbar.pack(side="right", fill="y")
+                else:
+                    scrollbar.pack_forget()
+                
+                # Show the window after positioning (prevents flickering)
+                retention_window.deiconify()
+                retention_window.grab_set()
+            
+            # Schedule size adjustment after window is fully rendered
+            retention_window.after(100, adjust_window_size)
+            
+        except Exception as e:
+            self.logger.error(f"Error opening retention settings: {e}")
+            self.show_error(f"Error opening retention settings: {e}")
+    
+    # Helper methods for dialogs
+    
+    def show_success(self, message):
+        """Show success message dialog."""
+        if hasattr(self, 'dialog_manager') and self.dialog_manager:
+            self.dialog_manager.show_info("Success", message)
+        else:
+            messagebox.showinfo("Success", message)
+    
+    def show_error(self, message):
+        """Show error message dialog."""
+        if hasattr(self, 'dialog_manager') and self.dialog_manager:
+            self.dialog_manager.show_error("Error", message)
+        else:
+            messagebox.showerror("Error", message)
+    
+    def show_warning(self, message):
+        """Show warning message dialog."""
+        if hasattr(self, 'dialog_manager') and self.dialog_manager:
+            self.dialog_manager.show_warning("Warning", message)
+        else:
+            messagebox.showwarning("Warning", message)
+    
+    def show_info(self, message):
+        """Show info message dialog."""
+        if hasattr(self, 'dialog_manager') and self.dialog_manager:
+            self.dialog_manager.show_info("Information", message)
+        else:
+            messagebox.showinfo("Information", message)
+
+    def on_closing(self):
+        """Handles cleanup when the application window is closed."""
+        # Sync diff viewer content if it's currently active
+        if (self.tool_var.get() == "Diff Viewer" and 
+            DIFF_VIEWER_MODULE_AVAILABLE and hasattr(self, 'diff_viewer_widget')):
+            self.sync_diff_viewer_to_main_tabs()
+        
+        self.save_settings()
+        self.clear_regex_cache()
+        
+        # Cancel pending debounced operations
+        self.cancel_pending_operations()
+        
+        # Cancel and cleanup progressive search operations
+        if PROGRESSIVE_SEARCH_AVAILABLE:
+            if self.operation_manager:
+                self.operation_manager.cancel_all_operations()
+                self.operation_manager.shutdown()
+            if self.search_highlighter:
+                self.search_highlighter.shutdown()
+            if self.find_replace_processor:
+                self.find_replace_processor.shutdown()
+            self.logger.info("Progressive search components shut down")
+        
+        # Cancel and cleanup async operations
+        if ASYNC_PROCESSING_AVAILABLE and self.async_processor:
+            self.cancel_async_processing()  # Cancel all pending operations
+            self.async_processor.shutdown(wait=False, timeout=2.0)
+            self.logger.info("Async processor shut down")
+        
+        # Advanced memory management cleanup not needed (modules not available)
+        
+        # Cleanup intelligent caching
+        if INTELLIGENT_CACHING_AVAILABLE:
+            if self.smart_stats_calculator:
+                self.smart_stats_calculator.clear_cache()
+            if self.regex_cache:
+                self.regex_cache.clear_cache()
+            if self.content_cache:
+                self.content_cache.clear_cache()
+            # Note: processing_cache doesn't have clear_cache method, it uses content_cache
+            self.logger.info("Intelligent caching cleared")
+        
+        # Cleanup Event Consolidator
+        if EVENT_CONSOLIDATOR_AVAILABLE and hasattr(self, 'event_consolidator') and self.event_consolidator:
+            # Unregister all widgets and cancel pending updates
+            for i in range(AppConfig.TAB_COUNT):
+                widget_id = f"input_tab_{i}"
+                self.event_consolidator.unregister_text_widget(widget_id)
+            self.logger.info("Event Consolidator cleaned up")
+        
+        # Cleanup Database Settings Manager
+        if DATABASE_SETTINGS_AVAILABLE and hasattr(self, 'db_settings_manager') and self.db_settings_manager:
+            try:
+                self.db_settings_manager.close()
+                self.logger.info("Database settings manager closed")
+            except Exception as e:
+                self.logger.error(f"Error closing database settings manager: {e}")
+        
+        if self.audio_stream:
+            self.audio_stream.stop_stream()
+            self.audio_stream.close()
+        if self.pyaudio_instance:
+            self.pyaudio_instance.terminate()
+        self.destroy()
+
+    def on_tab_content_changed(self, event=None):
+        """Handles changes in tab content to update labels and sync diff edits"""
+        if hasattr(self, '_tab_label_after_id'): self.after_cancel(self._tab_label_after_id)
+        self._tab_label_after_id = self.after(500, self.update_tab_labels)
+
+        src_widget = getattr(event, 'widget', None)
+        if not src_widget: return
+        try:
+            for i, tab in enumerate(getattr(self, 'diff_input_tabs', [])):
+                if tab.text is src_widget:
+                    content = tab.text.get("1.0", tk.END)
+                    self.input_tabs[i].text.delete("1.0", tk.END)
+                    self.input_tabs[i].text.insert("1.0", content)
+                    self.save_settings()
+                    self.after(10, self.update_all_stats)
+                    return
+            for i, tab in enumerate(getattr(self, 'diff_output_tabs', [])):
+                if tab.text is src_widget:
+                    content = tab.text.get("1.0", tk.END)
+                    self.output_tabs[i].text.config(state="normal")
+                    self.output_tabs[i].text.delete("1.0", tk.END)
+                    self.output_tabs[i].text.insert("1.0", content)
+                    self.output_tabs[i].text.config(state="disabled")
+                    self.save_settings()
+                    self.after(10, self.update_all_stats)
+                    return
+        except Exception: pass
+
+if __name__ == "__main__":
+    if not PYAUDIO_AVAILABLE:
+        print("Warning: 'PyAudio' or 'numpy' not found. Morse audio playback will be disabled.")
+        print("Please install them using: pip install pyaudio numpy")
+    app = PromeraAIApp()
+    app.mainloop()

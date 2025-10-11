@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Build for Ubuntu/Debian-based systems
+  build-ubuntu:
+    build:
+      context: .
+      dockerfile: Dockerfile.ubuntu
+    volumes:
+      - ./dist-docker:/output
+    environment:
+      - BUILD_TARGET=ubuntu
+
+  # Build for Alpine Linux (smaller, static)
+  build-alpine:
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    volumes:
+      - ./dist-docker:/output
+    environment:
+      - BUILD_TARGET=alpine
+
+  # Build for CentOS/RHEL-based systems
+  build-centos:
+    build:
+      context: .
+      dockerfile: Dockerfile.centos
+    volumes:
+      - ./dist-docker:/output
+    environment:
+      - BUILD_TARGET=centos

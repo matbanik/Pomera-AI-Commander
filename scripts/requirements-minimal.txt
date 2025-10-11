@@ -1,0 +1,22 @@
+# Minimal requirements for Pomera AI Commander
+# Only the absolutely essential libraries
+
+# Core GUI and functionality
+requests>=2.25.0
+reportlab>=3.6.0
+python-docx>=0.8.11
+
+# AI Tools (optional but core feature)
+huggingface-hub>=0.16.0
+
+# Encryption for AI tools
+cryptography>=3.4.0
+
+# Image processing (required by reportlab)
+Pillow>=8.0.0
+
+# XML processing (required by python-docx)
+lxml>=4.6.0
+
+# Build tool
+pyinstaller>=5.0.0
