@@ -368,7 +368,8 @@ class FolderFileReporter:
         # Open folder selection dialog
         selected_folder = filedialog.askdirectory(
             title="Select Input Folder",
-            initialdir=initial_dir if os.path.exists(initial_dir) else os.path.expanduser("~")
+            initialdir=initial_dir if os.path.exists(initial_dir) else os.path.expanduser("~"),
+            parent=self.parent
         )
         
         # Update path if user selected a folder (not cancelled)
@@ -390,7 +391,8 @@ class FolderFileReporter:
         # Open folder selection dialog
         selected_folder = filedialog.askdirectory(
             title="Select Output Folder",
-            initialdir=initial_dir if os.path.exists(initial_dir) else os.path.expanduser("~")
+            initialdir=initial_dir if os.path.exists(initial_dir) else os.path.expanduser("~"),
+            parent=self.parent
         )
         
         # Update path if user selected a folder (not cancelled)
@@ -929,9 +931,9 @@ class FolderFileReporter:
             message: Warning message text
         """
         if self.dialog_manager and hasattr(self.dialog_manager, 'show_warning'):
-            self.dialog_manager.show_warning(title, message)
+            self.dialog_manager.show_warning(title, message, parent=self.parent)
         else:
-            messagebox.showwarning(title, message)
+            messagebox.showwarning(title, message, parent=self.parent)
     
     def _show_info(self, title, message):
         """
@@ -944,9 +946,9 @@ class FolderFileReporter:
             message: Information message text
         """
         if self.dialog_manager and hasattr(self.dialog_manager, 'show_info'):
-            self.dialog_manager.show_info(title, message)
+            self.dialog_manager.show_info(title, message, parent=self.parent)
         else:
-            messagebox.showinfo(title, message)
+            messagebox.showinfo(title, message, parent=self.parent)
     
     def _format_report_line(self, file_info):
         """
@@ -1130,9 +1132,9 @@ class FolderFileReporter:
         Requirements: 8.1, 8.2, 8.5
         """
         if self.dialog_manager and hasattr(self.dialog_manager, 'show_error'):
-            self.dialog_manager.show_error(title, message)
+            self.dialog_manager.show_error(title, message, parent=self.parent)
         else:
-            messagebox.showerror(title, message)
+            messagebox.showerror(title, message, parent=self.parent)
     
     def _log_error(self, error_message):
         """

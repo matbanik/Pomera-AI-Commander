@@ -275,37 +275,37 @@ class DiffApp:
     def _show_info(self, title, message, category="success"):
         """Show info dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_info(title, message, category)
+            return self.dialog_manager.show_info(title, message, category, parent=self.root)
         else:
-            messagebox.showinfo(title, message)
+            messagebox.showinfo(title, message, parent=self.root)
             return True
     
     def _show_warning(self, title, message, category="warning"):
         """Show warning dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_warning(title, message, category)
+            return self.dialog_manager.show_warning(title, message, category, parent=self.root)
         else:
-            messagebox.showwarning(title, message)
+            messagebox.showwarning(title, message, parent=self.root)
             return True
     
     def _show_error(self, title, message):
         """Show error dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_error(title, message)
+            return self.dialog_manager.show_error(title, message, parent=self.root)
         else:
-            messagebox.showerror(title, message)
+            messagebox.showerror(title, message, parent=self.root)
             return True
     
     def _ask_yes_no(self, title, message, category="confirmation"):
         """Show confirmation dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.ask_yes_no(title, message, category)
+            return self.dialog_manager.ask_yes_no(title, message, category, parent=self.root)
         else:
-            return messagebox.askyesno(title, message)
+            return messagebox.askyesno(title, message, parent=self.root)
 
     def select_output_path(self):
         """Opens a dialog to select an output folder."""
-        path = filedialog.askdirectory(title="Select Output Folder", initialdir=self.output_path.get())
+        path = filedialog.askdirectory(title="Select Output Folder", initialdir=self.output_path.get(), parent=self.root)
         if path:
             self.output_path.set(path)
 

@@ -307,20 +307,7 @@ The application automatically saves settings to `settings.json`, including:
 - **Async Processing** - Non-blocking operations for large files
 - **Memory Efficiency** - Optimized memory usage patterns
 
-### Recent Optimizations (2025)
-- ✅ **Phase 1**: Removed unused modules and fixed missing dependencies
-- ✅ **Phase 2**: Optimized standard library imports with lazy loading
-- ✅ **Performance**: 6.0% startup time improvement achieved
-- ✅ **Architecture**: Cleaner global namespace and better separation of concerns
-
 ## 🧪 Testing
-
-### Validation Framework
-The application includes a comprehensive validation framework:
-
-```bash
-python validation_framework.py
-```
 
 For quick testing setup and procedures, see the [**Testing Quick Start Guide**](docs/TESTING_QUICK_START.md).
 

@@ -120,11 +120,11 @@ class DiffViewerWidget:
     def _show_error(self, title, message):
         """Show error dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_error(title, message)
+            return self.dialog_manager.show_error(title, message, parent=self.parent)
         else:
             try:
                 from tkinter import messagebox
-                messagebox.showerror(title, message)
+                messagebox.showerror(title, message, parent=self.parent)
                 return True
             except:
                 return False
@@ -132,11 +132,11 @@ class DiffViewerWidget:
     def _show_warning(self, title, message, category="warning"):
         """Show warning dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_warning(title, message, category)
+            return self.dialog_manager.show_warning(title, message, category, parent=self.parent)
         else:
             try:
                 import tkinter.messagebox as messagebox
-                messagebox.showwarning(title, message)
+                messagebox.showwarning(title, message, parent=self.parent)
                 return True
             except:
                 return False
@@ -682,7 +682,8 @@ class DiffViewerWidget:
                 filetypes=[
                     ("Text files", "*.txt"),
                     ("All files", "*.*")
-                ]
+                ],
+                parent=self.parent
             )
             
             if file_path:

@@ -108,10 +108,10 @@ class TranslatorToolsWidget(ttk.Frame):
     def _show_error(self, title, message):
         """Show error dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_error(title, message)
+            return self.dialog_manager.show_error(title, message, parent=self.winfo_toplevel())
         else:
             from tkinter import messagebox
-            messagebox.showerror(title, message)
+            messagebox.showerror(title, message, parent=self.winfo_toplevel())
             return True
     
     def _show_audio_setup_instructions(self, missing_library):
@@ -157,10 +157,10 @@ Note: Audio libraries were excluded to keep the
 executable small and portable."""
         
         if self.dialog_manager:
-            return self.dialog_manager.show_info(title, message)
+            return self.dialog_manager.show_info(title, message, parent=self.winfo_toplevel())
         else:
             from tkinter import messagebox
-            messagebox.showinfo(title, message)
+            messagebox.showinfo(title, message, parent=self.winfo_toplevel())
             return True
 
     def setup_audio(self):

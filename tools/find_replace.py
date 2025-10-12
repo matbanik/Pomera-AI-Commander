@@ -96,17 +96,17 @@ class FindReplaceWidget:
     def _show_info(self, title, message, category="success"):
         """Show info dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_info(title, message, category)
+            return self.dialog_manager.show_info(title, message, category, parent=self.parent)
         else:
-            messagebox.showinfo(title, message)
+            messagebox.showinfo(title, message, parent=self.parent)
             return True
     
     def _show_warning(self, title, message, category="warning"):
         """Show warning dialog using DialogManager if available, otherwise use messagebox."""
         if self.dialog_manager:
-            return self.dialog_manager.show_warning(title, message, category)
+            return self.dialog_manager.show_warning(title, message, category, parent=self.parent)
         else:
-            messagebox.showwarning(title, message)
+            messagebox.showwarning(title, message, parent=self.parent)
             return True
         
     def create_widgets(self, parent_frame, settings: Dict[str, Any]):

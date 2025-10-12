@@ -222,14 +222,14 @@ class FolderFileReporterAdapter:
     
     def _browse_input_folder(self):
         """Open folder browser for Input folder selection."""
-        folder = filedialog.askdirectory(title="Select Input Folder")
+        folder = filedialog.askdirectory(title="Select Input Folder", parent=self.app)
         if folder:
             self.input_folder_var.set(folder)
             self._save_all_settings()
     
     def _browse_output_folder(self):
         """Open folder browser for Output folder selection."""
-        folder = filedialog.askdirectory(title="Select Output Folder")
+        folder = filedialog.askdirectory(title="Select Output Folder", parent=self.app)
         if folder:
             self.output_folder_var.set(folder)
             self._save_all_settings()
@@ -292,7 +292,8 @@ class FolderFileReporterAdapter:
             else:
                 tk.messagebox.showwarning(
                     "No Folders Selected",
-                    "Please select at least one folder to generate a report."
+                    "Please select at least one folder to generate a report.",
+                    parent=self.app
                 )
             return
         
@@ -399,7 +400,7 @@ class FolderFileReporterAdapter:
             if self.app.dialog_manager:
                 self.app.dialog_manager.show_error("Report Generation Error", error_msg)
             else:
-                tk.messagebox.showerror("Report Generation Error", error_msg)
+                tk.messagebox.showerror("Report Generation Error", error_msg, parent=self.app)
     
     def get_default_settings(self):
         """

@@ -42,6 +42,7 @@ archive/
 backups/
 
 # IDE
+.kiro/
 .vscode/
 .idea/
 *.swp
