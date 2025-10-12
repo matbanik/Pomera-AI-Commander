@@ -148,7 +148,7 @@ jobs:
             exit 1
           fi
           
-          echo "✅ Build test passed: ${FINAL_EXECUTABLE}"
+          echo "[x] Build test passed: ${FINAL_EXECUTABLE}"
           ls -la dist/
           
       - name: Test executable validation
@@ -182,7 +182,7 @@ jobs:
             exit 1
           fi
           
-          echo "✅ Size validation passed: ${FILE_SIZE} bytes"
+          echo "[x] Size validation passed: ${FILE_SIZE} bytes"
           
       - name: Test smoke test functionality
         shell: bash
@@ -226,7 +226,7 @@ jobs:
             fi
           fi
           
-          echo "✅ Smoke test passed"
+          echo "[x] Smoke test passed"
           
       - name: Test checksum generation
         shell: bash
@@ -264,7 +264,7 @@ jobs:
             exit 1
           fi
           
-          echo "✅ Checksum generation passed: ${CHECKSUM}"
+          echo "[x] Checksum generation passed: ${CHECKSUM}"
           
           # Create checksum file
           CHECKSUM_FILE="dist/${EXECUTABLE_NAME}${{ matrix.extension }}.sha256"
@@ -275,7 +275,7 @@ jobs:
             exit 1
           fi
           
-          echo "✅ Checksum file created: ${CHECKSUM_FILE}"
+          echo "[x] Checksum file created: ${CHECKSUM_FILE}"
           
       - name: Upload test artifacts
         uses: actions/upload-artifact@v4
@@ -357,7 +357,7 @@ jobs:
             exit 1
           fi
           
-          echo "✅ Combined checksums test passed with ${CHECKSUM_COUNT} entries"
+          echo "[x] Combined checksums test passed with ${CHECKSUM_COUNT} entries"
           cat "${CHECKSUMS_FILE}"
           
       - name: Upload test checksums
@@ -422,7 +422,7 @@ jobs:
             exit 1
           fi
           
-          echo "✅ Release preparation test passed with ${COPIED_COUNT} executables"
+          echo "[x] Release preparation test passed with ${COPIED_COUNT} executables"
           ls -la test-release-assets/
           
       - name: Test release notes generation
@@ -434,48 +434,14 @@ jobs:
           
           # Generate test release notes
           TEST_TAG="${{ github.event.inputs.test_tag }}"
-          cat > test-release-notes.md << EOF
-## Test Release ${TEST_TAG}
-
-This is a test release to validate the release workflow functionality.
-
-## Test Results
-- ✅ Cross-platform executable generation
-- ✅ Executable validation and smoke tests
-- ✅ Checksum generation and verification
-- ✅ Release asset preparation
-- ✅ Release notes generation
-
-## Installation (Test)
-
-### Windows
-1. Download \`pomera-${TEST_TAG}-windows.exe\`
-2. Run the executable directly
-
-### Linux
-1. Download \`pomera-${TEST_TAG}-linux\`
-2. Make executable: \`chmod +x pomera-${TEST_TAG}-linux\`
-3. Run: \`./pomera-${TEST_TAG}-linux\`
-
-### macOS
-1. Download \`pomera-${TEST_TAG}-macos\`
-2. Make executable: \`chmod +x pomera-${TEST_TAG}-macos\`
-3. Run: \`./pomera-${TEST_TAG}-macos\`
-
-## Verification
-
-Verify file integrity using checksums.txt:
-\`\`\`bash
-sha256sum -c checksums.txt
-\`\`\`
-EOF
+          printf "## Test Release %s\n\nThis is a test release to validate the release workflow functionality.\n\n## Test Results\n- [x] Cross-platform executable generation\n- [x] Executable validation and smoke tests\n- [x] Checksum generation and verification\n- [x] Release asset preparation\n- [x] Release notes generation\n\n## Installation (Test)\n\n### Windows\n1. Download \`pomera-%s-windows.exe\`\n2. Run the executable directly\n\n### Linux\n1. Download \`pomera-%s-linux\`\n2. Make executable: \`chmod +x pomera-%s-linux\`\n3. Run: \`./pomera-%s-linux\`\n\n### macOS\n1. Download \`pomera-%s-macos\`\n2. Make executable: \`chmod +x pomera-%s-macos\`\n3. Run: \`./pomera-%s-macos\`\n\n## Verification\n\nVerify file integrity using checksums.txt:\n\`\`\`bash\nsha256sum -c checksums.txt\n\`\`\`\n" "${TEST_TAG}" "${TEST_TAG}" "${TEST_TAG}" "${TEST_TAG}" "${TEST_TAG}" "${TEST_TAG}" "${TEST_TAG}" "${TEST_TAG}" > test-release-notes.md
           
           if [[ ! -f "test-release-notes.md" ]]; then
             echo "❌ Test release notes creation failed"
             exit 1
           fi
           
-          echo "✅ Release notes generation test passed"
+          echo "[x] Release notes generation test passed"
           echo "Generated release notes:"
           cat test-release-notes.md
 
@@ -513,7 +479,7 @@ EOF
           
           # Determine overall result
           if [[ "${VALIDATE_RESULT}" == "success" && "${BUILD_RESULT}" == "success" && "${CHECKSUMS_RESULT}" == "success" ]]; then
-            echo "## ✅ Overall Result: SUCCESS"
+            echo "## [x] Overall Result: SUCCESS"
             echo ""
             echo "The release workflow is functioning correctly and ready for production use."
             echo ""
