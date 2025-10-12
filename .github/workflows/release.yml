@@ -36,24 +36,89 @@ jobs:
           python-version: '3.11'
           
       - name: Install dependencies
+        shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install -r requirements.txt || true
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
           
       - name: Build executable
+        shell: bash
         run: |
-          pyinstaller --onefile --name pomera-${{ github.ref_name }}-${{ matrix.name }} --exclude-module pytest --exclude-module test --exclude-module tests --exclude-module matplotlib --exclude-module scipy --exclude-module pandas --exclude-module jupyter --exclude-module IPython --exclude-module torch --exclude-module torchvision --exclude-module torchaudio --exclude-module tensorflow --exclude-module sklearn --exclude-module cv2 --exclude-module numpy --exclude-module pygame --exclude-module nltk --exclude-module spacy --exclude-module yt_dlp --exclude-module transformers --exclude-module boto3 --exclude-module botocore --exclude-module grpc --exclude-module onnxruntime --exclude-module opentelemetry --exclude-module timm --exclude-module emoji --exclude-module pygments --exclude-module jinja2 --exclude-module anyio --exclude-module orjson --exclude-module uvicorn --exclude-module fsspec --exclude-module websockets --exclude-module psutil --exclude-module regex pomera.py
+          # Copy and modify the spec file for this build
+          cp pomera.spec pomera-${{ matrix.name }}.spec
+          
+          # Update the executable name in the spec file
+          python update_spec.py pomera-${{ matrix.name }}.spec pomera-${{ github.ref_name }}-${{ matrix.name }}
+          
+          # Build using the spec file
+          pyinstaller pomera-${{ matrix.name }}.spec
+          
+          # List contents for debugging
+          echo "Contents of dist directory after build:"
+          if command -v ls >/dev/null 2>&1; then
+            ls -la dist/
+          else
+            dir dist
+          fi
           
       - name: Rename and prepare artifact
         shell: bash
         run: |
-          cd dist
-          if [ "${{ matrix.name }}" = "windows" ]; then
-            mv pomera-${{ github.ref_name }}-${{ matrix.name }}.exe pomera-${{ github.ref_name }}-${{ matrix.name }}${{ matrix.ext }}
+          echo "Contents of dist directory:"
+          if command -v ls >/dev/null 2>&1; then
+            ls -la dist/
           else
-            chmod +x pomera-${{ github.ref_name }}-${{ matrix.name }}
-            mv pomera-${{ github.ref_name }}-${{ matrix.name }} pomera-${{ github.ref_name }}-${{ matrix.name }}${{ matrix.ext }}
+            dir dist
+          fi
+          
+          cd dist
+          
+          # The spec file should create the executable with the correct name already
+          EXPECTED_NAME="pomera-${{ github.ref_name }}-${{ matrix.name }}"
+          
+          if [ "${{ matrix.name }}" = "windows" ]; then
+            EXPECTED_FILE="${EXPECTED_NAME}.exe"
+            FINAL_FILE="${EXPECTED_NAME}${{ matrix.ext }}"
+            
+            if [ -f "${EXPECTED_FILE}" ]; then
+              if [ "${EXPECTED_FILE}" != "${FINAL_FILE}" ]; then
+                mv "${EXPECTED_FILE}" "${FINAL_FILE}"
+              fi
+            else
+              echo "Error: Expected Windows executable ${EXPECTED_FILE} not found"
+              echo "Available files:"
+              if command -v ls >/dev/null 2>&1; then
+                ls -la
+              else
+                dir
+              fi
+              exit 1
+            fi
+          else
+            EXPECTED_FILE="${EXPECTED_NAME}"
+            FINAL_FILE="${EXPECTED_NAME}${{ matrix.ext }}"
+            
+            if [ -f "${EXPECTED_FILE}" ]; then
+              chmod +x "${EXPECTED_FILE}"
+              if [ "${EXPECTED_FILE}" != "${FINAL_FILE}" ]; then
+                mv "${EXPECTED_FILE}" "${FINAL_FILE}"
+              fi
+            else
+              echo "Error: Expected Unix executable ${EXPECTED_FILE} not found"
+              echo "Available files:"
+              ls -la
+              exit 1
+            fi
+          fi
+          
+          echo "Final artifact:"
+          if command -v ls >/dev/null 2>&1; then
+            ls -la "${FINAL_FILE}"
+          else
+            dir "${FINAL_FILE}"
           fi
           
       - name: Upload artifact
