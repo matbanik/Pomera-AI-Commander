@@ -121,11 +121,91 @@ jobs:
             dir "${FINAL_FILE}"
           fi
           
+      - name: Create macOS DMG
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          cd dist
+          APP_NAME="pomera-${{ github.ref_name }}-${{ matrix.name }}"
+          DMG_NAME="${APP_NAME}.dmg"
+          
+          # Create a temporary directory for DMG contents
+          mkdir -p dmg-temp
+          cp "${APP_NAME}" dmg-temp/
+          
+          # Create the DMG
+          hdiutil create -volname "Pomera ${{ github.ref_name }}" -srcfolder dmg-temp -ov -format UDZO "${DMG_NAME}"
+          
+          echo "Created DMG:"
+          ls -la "${DMG_NAME}"
+          
+      - name: Create Linux DEB package
+        if: matrix.name == 'linux'
+        shell: bash
+        run: |
+          cd dist
+          APP_NAME="pomera-${{ github.ref_name }}-${{ matrix.name }}"
+          DEB_NAME="pomera-${{ github.ref_name }}-linux.deb"
+          
+          # Create DEB package structure
+          mkdir -p deb-temp/DEBIAN
+          mkdir -p deb-temp/usr/local/bin
+          mkdir -p deb-temp/usr/share/applications
+          mkdir -p deb-temp/usr/share/doc/pomera
+          
+          # Copy executable
+          cp "${APP_NAME}" deb-temp/usr/local/bin/pomera
+          chmod +x deb-temp/usr/local/bin/pomera
+          
+          # Create control file
+          cat > deb-temp/DEBIAN/control << EOF
+          Package: pomera
+          Version: ${{ github.ref_name }}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Pomera Team
+          Description: Pomera text editor
+           A powerful text editor application.
+          EOF
+          
+          # Create desktop entry
+          cat > deb-temp/usr/share/applications/pomera.desktop << EOF
+          [Desktop Entry]
+          Name=Pomera
+          Comment=Text Editor
+          Exec=/usr/local/bin/pomera
+          Icon=text-editor
+          Terminal=false
+          Type=Application
+          Categories=Utility;TextEditor;
+          EOF
+          
+          # Create copyright file
+          cat > deb-temp/usr/share/doc/pomera/copyright << EOF
+          Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+          Upstream-Name: pomera
+          Source: https://github.com/${{ github.repository }}
+          
+          Files: *
+          Copyright: $(date +%Y) Pomera Team
+          License: MIT
+          EOF
+          
+          # Build the DEB package
+          dpkg-deb --build deb-temp "${DEB_NAME}"
+          
+          echo "Created DEB package:"
+          ls -la "${DEB_NAME}"
+          
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: pomera-${{ github.ref_name }}-${{ matrix.name }}${{ matrix.ext }}
-          path: dist/pomera-${{ github.ref_name }}-${{ matrix.name }}${{ matrix.ext }}
+          path: |
+            dist/pomera-${{ github.ref_name }}-${{ matrix.name }}${{ matrix.ext }}
+            dist/pomera-${{ github.ref_name }}-${{ matrix.name }}.dmg
+            dist/pomera-${{ github.ref_name }}-linux.deb
 
   release:
     needs: build
@@ -144,8 +224,11 @@ jobs:
           files: |
             artifacts/pomera-${{ github.ref_name }}-windows.exe/pomera-${{ github.ref_name }}-windows.exe
             artifacts/pomera-${{ github.ref_name }}-linux/pomera-${{ github.ref_name }}-linux
+            artifacts/pomera-${{ github.ref_name }}-linux/pomera-${{ github.ref_name }}-linux.deb
             artifacts/pomera-${{ github.ref_name }}-macos-intel/pomera-${{ github.ref_name }}-macos-intel
+            artifacts/pomera-${{ github.ref_name }}-macos-intel/pomera-${{ github.ref_name }}-macos-intel.dmg
             artifacts/pomera-${{ github.ref_name }}-macos-arm64/pomera-${{ github.ref_name }}-macos-arm64
+            artifacts/pomera-${{ github.ref_name }}-macos-arm64/pomera-${{ github.ref_name }}-macos-arm64.dmg
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
