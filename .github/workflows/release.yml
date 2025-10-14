@@ -157,10 +157,14 @@ jobs:
           cp "${APP_NAME}" deb-temp/usr/local/bin/pomera
           chmod +x deb-temp/usr/local/bin/pomera
           
+          # Strip 'v' prefix from version for DEB package
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
           # Create control file
           cat > deb-temp/DEBIAN/control << EOF
           Package: pomera
-          Version: ${{ github.ref_name }}
+          Version: ${VERSION}
           Section: utils
           Priority: optional
           Architecture: amd64
