@@ -22,6 +22,12 @@ except ImportError:
     HUGGINGFACE_AVAILABLE = False
 
 try:
+    from tools.huggingface_helper import process_huggingface_request
+    HUGGINGFACE_HELPER_AVAILABLE = True
+except ImportError:
+    HUGGINGFACE_HELPER_AVAILABLE = False
+
+try:
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -258,6 +264,11 @@ class AIToolsWidget(ttk.Frame):
             selected_tab = self.notebook.select()
             tab_index = self.notebook.index(selected_tab)
             self.current_provider = list(self.ai_providers.keys())[tab_index]
+            
+            # Ensure AWS Bedrock fields are properly visible when switching to that tab
+            if self.current_provider == "AWS Bedrock":
+                self.after_idle(lambda: self.update_aws_credentials_fields(self.current_provider))
+            
             self.app.on_tool_setting_change()  # Notify parent app of change
         except tk.TclError:
             pass
@@ -305,7 +316,7 @@ class AIToolsWidget(ttk.Frame):
             # Authentication Method
             ttk.Label(aws_frame, text="Auth Method:").pack(side=tk.LEFT, padx=(5, 5))
             
-            auth_method_var = tk.StringVar(value=settings.get("AUTH_METHOD", "iam"))
+            auth_method_var = tk.StringVar(value=settings.get("AUTH_METHOD", "api_key"))
             auth_combo = ttk.Combobox(aws_frame, textvariable=auth_method_var, 
                                     values=[
                                         "API Key (Bearer Token)",
@@ -316,7 +327,16 @@ class AIToolsWidget(ttk.Frame):
                                     state="readonly", width=30)
             
             # Set the display value based on stored value
-            stored_auth = settings.get("AUTH_METHOD", "api_key")
+            stored_auth = settings.get("AUTH_METHOD", "api_key")  # Default to api_key for consistency
+            
+            # Ensure the AUTH_METHOD is saved in settings if not present
+            if "AUTH_METHOD" not in settings:
+                if provider_name not in self.app.settings["tool_settings"]:
+                    self.app.settings["tool_settings"][provider_name] = {}
+                self.app.settings["tool_settings"][provider_name]["AUTH_METHOD"] = stored_auth
+                self.app.save_settings()
+                self.logger.debug(f"Initialized AWS Bedrock AUTH_METHOD to: {stored_auth}")
+            
             if stored_auth == "api_key":
                 auth_combo.set("API Key (Bearer Token)")
             elif stored_auth == "iam":
@@ -325,6 +345,14 @@ class AIToolsWidget(ttk.Frame):
                 auth_combo.set("Session Token (Temporary Credentials)")
             elif stored_auth == "iam_role":
                 auth_combo.set("IAM (Implied Credentials)")
+            else:
+                # Fallback for any unknown values
+                auth_combo.set("API Key (Bearer Token)")
+                stored_auth = "api_key"
+                # Update settings with corrected value
+                self.app.settings["tool_settings"][provider_name]["AUTH_METHOD"] = stored_auth
+                self.app.save_settings()
+            
             auth_combo.pack(side=tk.LEFT, padx=(0, 5))
             auth_method_var.trace_add("write", lambda *args: [self.on_aws_auth_change(provider_name), self.update_aws_credentials_fields(provider_name)])
             
@@ -522,7 +550,8 @@ class AIToolsWidget(ttk.Frame):
             info_label.pack(side=tk.LEFT)
             
             # Initialize field visibility based on current auth method
-            self.update_aws_credentials_fields(provider_name)
+            # Use after_idle to ensure all widgets are created before updating visibility
+            self.after_idle(lambda: self.update_aws_credentials_fields(provider_name))
         
         # Process button section
         process_frame = ttk.Frame(top_frame)
@@ -677,6 +706,18 @@ class AIToolsWidget(ttk.Frame):
             combo.grid(row=row, column=1, sticky="ew", padx=(0, 10), pady=2)
             var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
             
+        elif config["type"] == "checkbox":
+            # Convert string values to boolean for checkbox
+            if isinstance(current_value, str):
+                checkbox_value = current_value.lower() in ('true', '1', 'yes', 'on')
+            else:
+                checkbox_value = bool(current_value)
+            
+            var = tk.BooleanVar(value=checkbox_value)
+            checkbox = ttk.Checkbutton(parent, variable=var)
+            checkbox.grid(row=row, column=1, sticky="w", padx=(0, 10), pady=2)
+            var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
+            
         else:  # entry
             var = tk.StringVar(value=current_value)
             entry = ttk.Entry(parent, textvariable=var, width=30)
@@ -734,26 +775,46 @@ class AIToolsWidget(ttk.Frame):
     
     def on_setting_change(self, provider_name):
         """Handle setting changes for a provider."""
-        # Update settings in parent app
-        if provider_name not in self.app.settings["tool_settings"]:
-            self.app.settings["tool_settings"][provider_name] = {}
-        
-        # Update all widget values
-        for param, widget in self.ai_widgets[provider_name].items():
-            if isinstance(widget, tk.Text):
-                value = widget.get("1.0", tk.END).strip()
+        try:
+            # Update settings in parent app
+            if provider_name not in self.app.settings["tool_settings"]:
+                self.app.settings["tool_settings"][provider_name] = {}
+            
+            # Collect all widget values first
+            updated_settings = {}
+            for param, widget in self.ai_widgets[provider_name].items():
+                if isinstance(widget, tk.Text):
+                    value = widget.get("1.0", tk.END).strip()
+                else:
+                    value = widget.get()
+                
+                # Encrypt sensitive credentials before saving (except for LM Studio)
+                if provider_name != "LM Studio" and param in ["API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
+                    if value and value != "putinyourkey":
+                        value = encrypt_api_key(value)
+                
+                updated_settings[param] = value
+            
+            # Update settings using database manager directly for better reliability
+            if hasattr(self.app, 'db_settings_manager') and self.app.db_settings_manager:
+                # Use database manager's tool setting method for atomic updates
+                for param, value in updated_settings.items():
+                    self.app.db_settings_manager.set_tool_setting(provider_name, param, value)
+                
+                self.logger.info(f"Saved {len(updated_settings)} settings for {provider_name} via database manager")
             else:
-                value = widget.get()
-            
-            # Encrypt sensitive credentials before saving (except for LM Studio)
-            if provider_name != "LM Studio" and param in ["API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
-                if value and value != "putinyourkey":
-                    value = encrypt_api_key(value)
-            
-            self.app.settings["tool_settings"][provider_name][param] = value
-        
-        # Save settings
-        self.app.save_settings()
+                # Fallback to proxy method
+                for param, value in updated_settings.items():
+                    self.app.settings["tool_settings"][provider_name][param] = value
+                
+                # Force save
+                self.app.save_settings()
+                self.logger.info(f"Saved {len(updated_settings)} settings for {provider_name} via proxy")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to save settings for {provider_name}: {e}", exc_info=True)
+            # Show user-friendly error
+            self._show_info("Error", f"Failed to save {provider_name} settings: {str(e)}", "error")
     
     def refresh_lm_studio_models(self, provider_name):
         """Refresh the model list from LM Studio server."""
@@ -856,19 +917,53 @@ class AIToolsWidget(ttk.Frame):
                             models.append(model_id)
             
             if models:
+                # Add inference profile versions for models that require them
+                enhanced_models = []
+                inference_profile_mapping = {
+                    # Claude 4.5 models (newest)
+                    "anthropic.claude-haiku-4-5-20251001-v1:0": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    "anthropic.claude-sonnet-4-5-20250929-v1:0": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    
+                    # Claude 4.1 models  
+                    "anthropic.claude-opus-4-1-20250805-v1:0": "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                    
+                    # Claude 3.7 models
+                    "anthropic.claude-3-7-sonnet-20250219-v1:0": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    
+                    # Claude 3.5 models (v2)
+                    "anthropic.claude-3-5-haiku-20241022-v1:0": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                    "anthropic.claude-3-5-sonnet-20241022-v2:0": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    
+                    # Claude 3.5 models (v1)
+                    "anthropic.claude-3-5-sonnet-20240620-v1:0": "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+                    
+                    # Claude 3 models (original)
+                    "anthropic.claude-3-opus-20240229-v1:0": "us.anthropic.claude-3-opus-20240229-v1:0",
+                    "anthropic.claude-3-sonnet-20240229-v1:0": "us.anthropic.claude-3-sonnet-20240229-v1:0",
+                    "anthropic.claude-3-haiku-20240307-v1:0": "us.anthropic.claude-3-haiku-20240307-v1:0"
+                }
+                
+                for model_id in models:
+                    enhanced_models.append(model_id)
+                    # If this model has an inference profile, add it as an option too
+                    if model_id in inference_profile_mapping:
+                        profile_id = inference_profile_mapping[model_id]
+                        enhanced_models.append(f"{profile_id} (Inference Profile)")
+                
                 # Update the model combobox
                 model_combo = self.ai_widgets[provider_name].get("MODEL_COMBO")
                 if model_combo:
-                    model_combo.configure(values=models)
+                    model_combo.configure(values=enhanced_models)
                     # Set first model as default if no model is currently selected
-                    if models and not self.ai_widgets[provider_name]["MODEL"].get():
-                        self.ai_widgets[provider_name]["MODEL"].set(models[0])
+                    if enhanced_models and not self.ai_widgets[provider_name]["MODEL"].get():
+                        self.ai_widgets[provider_name]["MODEL"].set(enhanced_models[0])
                 
-                # Update settings
-                self.app.settings["tool_settings"][provider_name]["MODELS_LIST"] = models
+                # Update settings (store the enhanced list)
+                self.app.settings["tool_settings"][provider_name]["MODELS_LIST"] = enhanced_models
                 self.app.save_settings()
                 
-                self._show_info("Success", f"Found {len(models)} models from AWS Bedrock")
+                profile_count = len([m for m in enhanced_models if "Inference Profile" in m])
+                self._show_info("Success", f"Found {len(models)} models from AWS Bedrock ({profile_count} with inference profiles)")
             else:
                 self._show_warning("Warning", "No models found. Please check your credentials and region.")
                 
@@ -888,35 +983,51 @@ class AIToolsWidget(ttk.Frame):
     def update_aws_credentials_fields(self, provider_name):
         """Update AWS credentials field visibility based on authentication method."""
         if provider_name != "AWS Bedrock" or not hasattr(self, 'aws_creds_frame'):
+            self.logger.debug(f"Skipping AWS credentials field update: provider={provider_name}, has_frame={hasattr(self, 'aws_creds_frame')}")
             return
         
         # Get the stored value from settings
-        stored_auth = self.app.settings["tool_settings"].get(provider_name, {}).get("AUTH_METHOD", "iam")
+        stored_auth = self.app.settings["tool_settings"].get(provider_name, {}).get("AUTH_METHOD", "api_key")
+        self.logger.debug(f"AWS Bedrock auth method: {stored_auth}")
         
         # Hide all credential fields first
-        if hasattr(self, 'api_key_row'):
-            self.api_key_row.pack_forget()
-        if hasattr(self, 'access_key_row'):
-            self.access_key_row.pack_forget()
-        if hasattr(self, 'secret_key_row'):
-            self.secret_key_row.pack_forget()
-        if hasattr(self, 'session_token_row'):
-            self.session_token_row.pack_forget()
-        if hasattr(self, 'iam_role_info_frame'):
-            self.iam_role_info_frame.pack_forget()
+        fields_to_hide = ['api_key_row', 'access_key_row', 'secret_key_row', 'session_token_row', 'iam_role_info_frame']
+        for field_name in fields_to_hide:
+            if hasattr(self, field_name):
+                try:
+                    getattr(self, field_name).pack_forget()
+                except Exception as e:
+                    self.logger.debug(f"Error hiding {field_name}: {e}")
         
         # Show fields based on authentication method
-        if stored_auth == "api_key":  # API Key (Bearer Token)
-            self.api_key_row.pack(fill=tk.X, padx=5, pady=2)
-        elif stored_auth == "iam":  # IAM (Explicit Credentials)
-            self.access_key_row.pack(fill=tk.X, padx=5, pady=2)
-            self.secret_key_row.pack(fill=tk.X, padx=5, pady=2)
-        elif stored_auth == "sessionToken":  # Session Token (Temporary Credentials)
-            self.access_key_row.pack(fill=tk.X, padx=5, pady=2)
-            self.secret_key_row.pack(fill=tk.X, padx=5, pady=2)
-            self.session_token_row.pack(fill=tk.X, padx=5, pady=2)
-        elif stored_auth == "iam_role":  # IAM (Implied Credentials)
-            self.iam_role_info_frame.pack(fill=tk.X, padx=5, pady=5)
+        try:
+            if stored_auth == "api_key":  # API Key (Bearer Token)
+                if hasattr(self, 'api_key_row'):
+                    self.api_key_row.pack(fill=tk.X, padx=5, pady=2)
+                    self.logger.debug("Showing API key field")
+                else:
+                    self.logger.warning("API key row not found!")
+            elif stored_auth == "iam":  # IAM (Explicit Credentials)
+                if hasattr(self, 'access_key_row') and hasattr(self, 'secret_key_row'):
+                    self.access_key_row.pack(fill=tk.X, padx=5, pady=2)
+                    self.secret_key_row.pack(fill=tk.X, padx=5, pady=2)
+                    self.logger.debug("Showing IAM credential fields")
+            elif stored_auth == "sessionToken":  # Session Token (Temporary Credentials)
+                if hasattr(self, 'access_key_row') and hasattr(self, 'secret_key_row') and hasattr(self, 'session_token_row'):
+                    self.access_key_row.pack(fill=tk.X, padx=5, pady=2)
+                    self.secret_key_row.pack(fill=tk.X, padx=5, pady=2)
+                    self.session_token_row.pack(fill=tk.X, padx=5, pady=2)
+                    self.logger.debug("Showing session token credential fields")
+            elif stored_auth == "iam_role":  # IAM (Implied Credentials)
+                if hasattr(self, 'iam_role_info_frame'):
+                    self.iam_role_info_frame.pack(fill=tk.X, padx=5, pady=5)
+                    self.logger.debug("Showing IAM role info")
+            else:
+                self.logger.warning(f"Unknown auth method: {stored_auth}, defaulting to API key")
+                if hasattr(self, 'api_key_row'):
+                    self.api_key_row.pack(fill=tk.X, padx=5, pady=2)
+        except Exception as e:
+            self.logger.error(f"Error updating AWS credentials fields: {e}", exc_info=True)
     
     def on_aws_auth_change(self, provider_name):
         """Handle AWS authentication method change and convert display name to stored value."""
@@ -1073,61 +1184,38 @@ class AIToolsWidget(ttk.Frame):
         
         # Handle HuggingFace separately (uses different client)
         if provider_name == "HuggingFace AI":
-            self._process_huggingface_request(api_key, prompt, settings)
-        else:
-            self._process_rest_api_request(provider_name, api_key, prompt, settings)
-    
-    def _process_huggingface_request(self, api_key, prompt, settings):
-        """Process HuggingFace AI request."""
-        if not HUGGINGFACE_AVAILABLE:
-            self.app.after(0, self.app.update_output_text, "Error: huggingface_hub library not found. Please install it.")
+            if not api_key or api_key == "putinyourkey":
+                error_msg = "Please configure your HuggingFace API key in the settings."
+                self.logger.warning(error_msg)
+                self.app.after(0, self.app.update_output_text, error_msg)
+                return
+                
+            if HUGGINGFACE_HELPER_AVAILABLE:
+                try:
+                    # Use the huggingface_helper module for proper task detection
+                    def update_callback(response):
+                        self.app.after(0, self.app.update_output_text, response)
+                    
+                    self.logger.debug(f"Calling HuggingFace helper with model: {settings.get('MODEL', 'unknown')}")
+                    process_huggingface_request(api_key, prompt, settings, update_callback, self.logger)
+                    
+                except Exception as e:
+                    error_msg = f"HuggingFace processing failed: {str(e)}"
+                    self.logger.error(error_msg, exc_info=True)
+                    self.app.after(0, self.app.update_output_text, error_msg)
+            else:
+                error_msg = "HuggingFace helper module not available. Please check your installation."
+                self.logger.error(error_msg)
+                self.app.after(0, self.app.update_output_text, error_msg)
             return
-        
+
+        # All other providers via REST helper
         try:
-            client = InferenceClient(token=api_key)
-            messages = []
-            system_prompt = settings.get("system_prompt", "").strip()
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            
-            params = {"messages": messages, "model": settings.get("MODEL")}
-            
-            # Add supported parameters
-            self._add_param_if_valid(params, settings, "max_tokens", int)
-            self._add_param_if_valid(params, settings, "seed", int)
-            self._add_param_if_valid(params, settings, "temperature", float)
-            self._add_param_if_valid(params, settings, "top_p", float)
-            
-            stop_seq_str = str(settings.get("stop_sequences", '')).strip()
-            if stop_seq_str:
-                params["stop"] = [s.strip() for s in stop_seq_str.split(',')]
-            
-            self.logger.debug(f"HuggingFace payload: {json.dumps(params, indent=2, default=str)}")
-            response_obj = client.chat_completion(**params)
-            self.app.after(0, self.app.update_output_text, response_obj.choices[0].message.content)
-            
-        except HfHubHTTPError as e:
-            error_msg = f"HuggingFace API Error: {e.response.status_code} - {e.response.reason}\n\n{e.response.text}"
-            if e.response.status_code == 401:
-                error_msg += "\n\nThis means your API token is invalid or expired."
-            elif e.response.status_code == 403:
-                error_msg += f"\n\nThis is a 'gated model'. You MUST accept the terms on the model page:\nhttps://huggingface.co/{settings.get('MODEL')}"
-            self.logger.error(error_msg, exc_info=True)
-            self.app.after(0, self.app.update_output_text, error_msg)
-        except Exception as e:
-            self.logger.error(f"HuggingFace Client Error: {e}", exc_info=True)
-            self.app.after(0, self.app.update_output_text, f"HuggingFace Client Error: {e}")
-    
-    def _process_rest_api_request(self, provider_name, api_key, prompt, settings):
-        """Process REST API request for other providers."""
-        try:
-            # Validate model selection for AWS Bedrock
             if provider_name == "AWS Bedrock":
                 model_id = settings.get("MODEL", "")
                 # Check if it's an embedding or image model
                 if any(keyword in model_id.lower() for keyword in [
-                    "embed", "embedding", "image", "stable-diffusion", 
+                    "embed", "embedding", "image", "stable-diffusion",
                     "titan-image", "nova-canvas", "nova-reel", "nova-sonic"
                 ]):
                     error_msg = (
@@ -1143,36 +1231,88 @@ class AIToolsWidget(ttk.Frame):
                     self.logger.error(error_msg)
                     self.app.after(0, self.app.update_output_text, error_msg)
                     return
-            
+
             url, payload, headers = self._build_api_request(provider_name, api_key, prompt, settings)
-            
+
             self.logger.debug(f"{provider_name} payload: {json.dumps(payload, indent=2)}")
-            
+
             # Retry logic with exponential backoff
             max_retries = 5
             base_delay = 1
-            
+
             for i in range(max_retries):
                 try:
                     response = requests.post(url, json=payload, headers=headers, timeout=60)
                     response.raise_for_status()
-                    
+
                     data = response.json()
                     self.logger.debug(f"{provider_name} Response: {data}")
-                    
+
                     result_text = self._extract_response_text(provider_name, data)
                     self.logger.debug(f"FINAL: About to display result_text: {str(result_text)[:100]}...")
                     self.app.after(0, self.app.update_output_text, result_text)
                     return
-                    
+
                 except requests.exceptions.HTTPError as e:
                     if e.response.status_code == 429 and i < max_retries - 1:
                         delay = base_delay * (2 ** i) + random.uniform(0, 1)
                         self.logger.warning(f"Rate limit exceeded. Retrying in {delay:.2f} seconds...")
                         time.sleep(delay)
                     else:
-                        self.logger.error(f"API Request Error: {e}\nResponse: {e.response.text}")
-                        self.app.after(0, self.app.update_output_text, f"API Request Error: {e}\nResponse: {e.response.text}")
+                        error_response = e.response.text if hasattr(e, 'response') and e.response else str(e)
+                        
+                        # Check for AWS Bedrock specific errors
+                        if provider_name == "AWS Bedrock":
+                            model_id = settings.get("MODEL", "unknown")
+                            
+                            if "on-demand throughput isn't supported" in error_response:
+                                error_msg = f"AWS Bedrock Model Error: {model_id}\n\n"
+                                error_msg += "This model requires an inference profile instead of direct model ID.\n\n"
+                                error_msg += "Solutions:\n"
+                                error_msg += "1. Use 'Refresh Models' button to get updated model list with inference profiles\n"
+                                error_msg += "2. Manually update model ID with regional prefix:\n"
+                                error_msg += f"   • US: us.{model_id}\n"
+                                error_msg += f"   • EU: eu.{model_id}\n"
+                                error_msg += f"   • APAC: apac.{model_id}\n"
+                                error_msg += "3. For Claude Sonnet 4.5, use global profile: global.anthropic.claude-sonnet-4-5-20250929-v1:0\n\n"
+                                error_msg += f"Original error: {error_response}"
+                                
+                                self.logger.error(error_msg)
+                                self.app.after(0, self.app.update_output_text, error_msg)
+                            elif e.response.status_code == 400 and any(provider in model_id for provider in ["openai.", "qwen.", "twelvelabs."]):
+                                error_msg = f"AWS Bedrock Model Error: {model_id}\n\n"
+                                error_msg += "This third-party model may not be properly configured or available in your region.\n\n"
+                                error_msg += "Common issues:\n"
+                                error_msg += "1. Model may not be available in your selected region\n"
+                                error_msg += "2. Model may require special access or subscription\n"
+                                error_msg += "3. Model may have been deprecated or renamed\n"
+                                error_msg += "4. Payload format may not be compatible\n\n"
+                                error_msg += "Solutions:\n"
+                                error_msg += "1. Try a different region (us-east-1, us-west-2, eu-west-1)\n"
+                                error_msg += "2. Use 'Refresh Models' to get current available models\n"
+                                error_msg += "3. Try a similar model from Amazon, Anthropic, or Meta instead\n\n"
+                                error_msg += f"Original error: {error_response}"
+                                
+                                self.logger.error(error_msg)
+                                self.app.after(0, self.app.update_output_text, error_msg)
+                            elif e.response.status_code == 404:
+                                error_msg = f"AWS Bedrock Model Not Found: {model_id}\n\n"
+                                error_msg += "This model is not available or the model ID is incorrect.\n\n"
+                                error_msg += "Solutions:\n"
+                                error_msg += "1. Use 'Refresh Models' button to get current available models\n"
+                                error_msg += "2. Check if model ID has suffixes that need to be removed\n"
+                                error_msg += "3. Verify the model is available in your selected region\n"
+                                error_msg += "4. Try a similar model that's confirmed to be available\n\n"
+                                error_msg += f"Original error: {error_response}"
+                                
+                                self.logger.error(error_msg)
+                                self.app.after(0, self.app.update_output_text, error_msg)
+                            else:
+                                self.logger.error(f"AWS Bedrock API Request Error: {e}\nResponse: {error_response}")
+                                self.app.after(0, self.app.update_output_text, f"AWS Bedrock API Request Error: {e}\nResponse: {error_response}")
+                        else:
+                            self.logger.error(f"API Request Error: {e}\nResponse: {error_response}")
+                            self.app.after(0, self.app.update_output_text, f"API Request Error: {e}\nResponse: {error_response}")
                         return
                 except requests.exceptions.RequestException as e:
                     self.logger.error(f"Network Error: {e}")
@@ -1182,9 +1322,9 @@ class AIToolsWidget(ttk.Frame):
                     self.logger.error(f"Error parsing AI response: {e}\n\nResponse:\n{response.text if 'response' in locals() else 'N/A'}")
                     self.app.after(0, self.app.update_output_text, f"Error parsing AI response: {e}\n\nResponse:\n{response.text if 'response' in locals() else 'N/A'}")
                     return
-            
+
             self.app.after(0, self.app.update_output_text, "Error: Max retries exceeded. The API is still busy.")
-            
+
         except Exception as e:
             self.logger.error(f"Error configuring API for {provider_name}: {e}")
             self.app.after(0, self.app.update_output_text, f"Error configuring API request: {e}")
@@ -1201,10 +1341,48 @@ class AIToolsWidget(ttk.Frame):
             region = settings.get("AWS_REGION", "us-west-2")
             model_id = settings.get("MODEL", "meta.llama3-1-70b-instruct-v1:0")
             
-            # Some models require inference profiles instead of direct model IDs
+            # Handle inference profile selection from dropdown
+            if " (Inference Profile)" in model_id:
+                model_id = model_id.replace(" (Inference Profile)", "")
+                self.logger.debug(f"Using inference profile directly: {model_id}")
+            
+            # Clean up model ID suffixes that are metadata but not part of the actual model ID for API calls
+            # These suffixes are used in the model list for information but need to be removed for API calls
+            original_model_id = model_id
+            if ":mm" in model_id:  # Multimodal capability indicator
+                model_id = model_id.replace(":mm", "")
+                self.logger.debug(f"Removed multimodal suffix: {original_model_id} -> {model_id}")
+            elif ":8k" in model_id:  # Context length indicator  
+                model_id = model_id.replace(":8k", "")
+                self.logger.debug(f"Removed context length suffix: {original_model_id} -> {model_id}")
+            elif model_id.count(":") > 2:  # Other suffixes (model should have max 2 colons: provider.model-name-version:number)
+                # Keep only the first two parts (provider.model:version)
+                parts = model_id.split(":")
+                if len(parts) > 2:
+                    model_id = ":".join(parts[:2])
+                    self.logger.debug(f"Cleaned model ID: {original_model_id} -> {model_id}")
+            
+            # AWS Bedrock requires inference profiles for newer Claude models
+            # Based on AWS documentation and current model availability
             inference_profile_mapping = {
+                # Claude 4.5 models (newest)
+                "anthropic.claude-haiku-4-5-20251001-v1:0": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "anthropic.claude-sonnet-4-5-20250929-v1:0": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",  # Global profile available
+                
+                # Claude 4.1 models  
+                "anthropic.claude-opus-4-1-20250805-v1:0": "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                
+                # Claude 3.7 models
+                "anthropic.claude-3-7-sonnet-20250219-v1:0": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                
+                # Claude 3.5 models (v2)
                 "anthropic.claude-3-5-haiku-20241022-v1:0": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
                 "anthropic.claude-3-5-sonnet-20241022-v2:0": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                
+                # Claude 3.5 models (v1)
+                "anthropic.claude-3-5-sonnet-20240620-v1:0": "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+                
+                # Claude 3 models (original)
                 "anthropic.claude-3-opus-20240229-v1:0": "us.anthropic.claude-3-opus-20240229-v1:0",
                 "anthropic.claude-3-sonnet-20240229-v1:0": "us.anthropic.claude-3-sonnet-20240229-v1:0",
                 "anthropic.claude-3-haiku-20240307-v1:0": "us.anthropic.claude-3-haiku-20240307-v1:0"
@@ -1212,6 +1390,22 @@ class AIToolsWidget(ttk.Frame):
             
             # Use inference profile if available, otherwise use direct model ID
             final_model_id = inference_profile_mapping.get(model_id, model_id)
+            
+            # If we're using an inference profile, log the conversion for debugging
+            if final_model_id != model_id:
+                self.logger.info(f"AWS Bedrock: Converting model ID '{model_id}' to inference profile '{final_model_id}'")
+            
+            # Handle regional preferences for inference profiles
+            # If user is in EU region and model supports EU profiles, use EU prefix
+            if region.startswith('eu-') and final_model_id.startswith('us.anthropic.'):
+                eu_model_id = final_model_id.replace('us.anthropic.', 'eu.anthropic.')
+                self.logger.info(f"AWS Bedrock: Using EU inference profile '{eu_model_id}' for region '{region}'")
+                final_model_id = eu_model_id
+            elif region.startswith('ap-') and final_model_id.startswith('us.anthropic.'):
+                apac_model_id = final_model_id.replace('us.anthropic.', 'apac.anthropic.')
+                self.logger.info(f"AWS Bedrock: Using APAC inference profile '{apac_model_id}' for region '{region}'")
+                final_model_id = apac_model_id
+            
             url = provider_config["url"].format(region=region, model=final_model_id)
         elif "url_template" in provider_config:
             url = provider_config["url_template"].format(model=settings.get("MODEL"), api_key=api_key)
@@ -1426,11 +1620,50 @@ class AIToolsWidget(ttk.Frame):
                         "topP": 0.9
                     }
                 }
+            elif "cohere.command" in model_id:
+                # Cohere Command models
+                payload = {
+                    "message": prompt,
+                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "temperature": 0.7,
+                    "p": 0.9
+                }
+                if system_prompt:
+                    payload["preamble"] = system_prompt
+                    
+            elif "mistral." in model_id or "mixtral." in model_id:
+                # Mistral models
+                payload = {
+                    "prompt": f"<s>[INST] {system_prompt}\n\n{prompt} [/INST]" if system_prompt else f"<s>[INST] {prompt} [/INST]",
+                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "temperature": 0.7,
+                    "top_p": 0.9
+                }
+            elif "ai21." in model_id:
+                # AI21 models
+                payload = {
+                    "prompt": f"{system_prompt}\n\n{prompt}" if system_prompt else prompt,
+                    "maxTokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "temperature": 0.7,
+                    "topP": 0.9
+                }
+            elif any(provider in model_id for provider in ["openai.", "qwen.", "twelvelabs."]):
+                # Third-party models that may have different requirements
+                # Use a more generic messages format that many models support
+                payload = {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "temperature": 0.7
+                }
+                if system_prompt:
+                    payload["messages"].insert(0, {"role": "system", "content": system_prompt})
             else:
                 # Default structure for other models
                 payload = {
                     "prompt": f"{system_prompt}\n\n{prompt}" if system_prompt else prompt,
-                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096"))
+                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "temperature": 0.7,
+                    "top_p": 0.9
                 }
         
         return payload
@@ -1517,10 +1750,34 @@ class AIToolsWidget(ttk.Frame):
                 elif 'completions' in data and len(data['completions']) > 0:
                     # Other model formats
                     result_text = data['completions'][0].get('data', {}).get('text', result_text)
+                elif 'text' in data:
+                    # Cohere and other models that return text directly
+                    self.logger.debug("Using direct text format")
+                    result_text = data['text']
+                elif 'response' in data:
+                    # Some models use 'response' field
+                    self.logger.debug("Using response field format")
+                    result_text = data['response']
+                elif 'choices' in data and len(data['choices']) > 0:
+                    # OpenAI-style format used by some third-party models
+                    self.logger.debug("Using OpenAI-style choices format")
+                    choice = data['choices'][0]
+                    if 'message' in choice and 'content' in choice['message']:
+                        result_text = choice['message']['content']
+                    elif 'text' in choice:
+                        result_text = choice['text']
+                elif 'outputs' in data and len(data['outputs']) > 0:
+                    # Some models use 'outputs' array
+                    self.logger.debug("Using outputs array format")
+                    output = data['outputs'][0]
+                    if isinstance(output, dict):
+                        result_text = output.get('text', output.get('content', str(output)))
+                    else:
+                        result_text = str(output)
                 else:
                     # Fallback - try to find text in common locations
                     self.logger.debug("Using fallback format - no recognized structure")
-                    result_text = data.get('text', data.get('output', str(data)))
+                    result_text = data.get('text', data.get('output', data.get('response', str(data))))
             except Exception as e:
                 self.logger.error(f"Error extracting AWS Bedrock response: {e}")
                 result_text = str(data)

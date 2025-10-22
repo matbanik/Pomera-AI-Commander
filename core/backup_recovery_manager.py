@@ -18,6 +18,8 @@ Features:
 import json
 import sqlite3
 import os
+import gzip
+from pathlib import Path
 import shutil
 import gzip
 import logging
@@ -429,20 +431,54 @@ class BackupRecoveryManager:
         """
         try:
             export_file = Path(export_path)
+            
+            # Validate settings data
+            if not settings_data:
+                self.logger.error("Export failed: No settings data provided")
+                return False
+            
+            if not isinstance(settings_data, dict):
+                self.logger.error(f"Export failed: Settings data must be a dictionary, got {type(settings_data)}")
+                return False
+            
+            # Create parent directory if needed
             export_file.parent.mkdir(parents=True, exist_ok=True)
+            self.logger.debug(f"Export directory created/verified: {export_file.parent}")
+            
+            # Count items being exported for logging
+            tool_count = len(settings_data.get("tool_settings", {}))
+            total_keys = len(settings_data.keys())
             
             if format_type == "compressed":
                 with gzip.open(export_path, 'wt', encoding='utf-8') as f:
                     json.dump(settings_data, f, indent=2, ensure_ascii=False)
+                self.logger.info(f"Settings exported (compressed) to: {export_path} - {total_keys} keys, {tool_count} tools")
             else:
                 with open(export_path, 'w', encoding='utf-8') as f:
                     json.dump(settings_data, f, indent=2, ensure_ascii=False)
+                self.logger.info(f"Settings exported to: {export_path} - {total_keys} keys, {tool_count} tools")
             
-            self.logger.info(f"Settings exported to: {export_path}")
-            return True
+            # Verify file was created and has content
+            if export_file.exists():
+                file_size = export_file.stat().st_size
+                if file_size > 0:
+                    self.logger.debug(f"Export verification passed - file size: {file_size} bytes")
+                    return True
+                else:
+                    self.logger.error("Export failed: File created but is empty")
+                    return False
+            else:
+                self.logger.error("Export failed: File was not created")
+                return False
             
+        except PermissionError as e:
+            self.logger.error(f"Export failed: Permission denied - {e}")
+            return False
+        except json.JSONEncodeError as e:
+            self.logger.error(f"Export failed: JSON encoding error - {e}")
+            return False
         except Exception as e:
-            self.logger.error(f"Failed to export settings: {e}")
+            self.logger.error(f"Export failed with unexpected error: {e}", exc_info=True)
             return False
     
     def import_settings(self, import_path: str) -> Optional[Dict[str, Any]]:
@@ -456,25 +492,56 @@ class BackupRecoveryManager:
             Imported settings data if successful, None otherwise
         """
         try:
-            if not os.path.exists(import_path):
-                self.logger.error(f"Import file not found: {import_path}")
+            import_file = Path(import_path)
+            
+            # Validate file exists
+            if not import_file.exists():
+                self.logger.error(f"Import failed: File not found - {import_path}")
                 return None
+            
+            # Check file size
+            file_size = import_file.stat().st_size
+            if file_size == 0:
+                self.logger.error(f"Import failed: File is empty - {import_path}")
+                return None
+            
+            self.logger.debug(f"Import file validation passed - size: {file_size} bytes")
             
             # Detect if file is compressed
             is_compressed = import_path.endswith('.gz')
             
             if is_compressed:
+                self.logger.debug("Importing compressed file")
                 with gzip.open(import_path, 'rt', encoding='utf-8') as f:
                     settings_data = json.load(f)
             else:
+                self.logger.debug("Importing uncompressed file")
                 with open(import_path, 'r', encoding='utf-8') as f:
                     settings_data = json.load(f)
             
-            self.logger.info(f"Settings imported from: {import_path}")
+            # Validate imported data
+            if not isinstance(settings_data, dict):
+                self.logger.error(f"Import failed: Invalid data format - expected dict, got {type(settings_data)}")
+                return None
+            
+            # Count imported items for logging
+            tool_count = len(settings_data.get("tool_settings", {}))
+            total_keys = len(settings_data.keys())
+            
+            self.logger.info(f"Settings imported from: {import_path} - {total_keys} keys, {tool_count} tools")
             return settings_data
             
+        except PermissionError as e:
+            self.logger.error(f"Import failed: Permission denied - {e}")
+            return None
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Import failed: Invalid JSON format - {e}")
+            return None
+        except UnicodeDecodeError as e:
+            self.logger.error(f"Import failed: File encoding error - {e}")
+            return None
         except Exception as e:
-            self.logger.error(f"Failed to import settings: {e}")
+            self.logger.error(f"Import failed with unexpected error: {e}", exc_info=True)
             return None
     
     def validate_backup_integrity(self, backup_info: BackupInfo) -> bool:

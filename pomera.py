@@ -5329,20 +5329,46 @@ class PromeraAIApp(tk.Tk):
         """Create a manual backup of current settings."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                self.show_error("Database settings manager not available")
+                error_msg = "Database settings manager not available"
+                self.logger.error(error_msg)
+                self.show_error(error_msg)
                 return
+            
+            self.logger.info("Creating manual backup from File menu...")
+            
+            # Check current settings before backup
+            current_settings = self.db_settings_manager.load_settings()
+            tool_count = len(current_settings.get("tool_settings", {}))
+            self.logger.info(f"Backing up {tool_count} tool configurations")
             
             success = self.db_settings_manager.create_backup("manual", "Manual backup created from File menu")
             
             if success:
-                self.show_success("Manual backup created successfully")
-                self.logger.info("Manual backup created from File menu")
+                # Get backup statistics for user feedback
+                try:
+                    backup_stats = self.db_settings_manager.get_backup_statistics()
+                    total_backups = backup_stats.get('total_backups', 'unknown')
+                    
+                    success_msg = f"Manual backup created successfully!\n\nTool configurations: {tool_count}\nTotal backups: {total_backups}"
+                    self.show_success(success_msg)
+                    self.logger.info(f"Manual backup created - {tool_count} tools backed up")
+                except Exception as stats_error:
+                    self.logger.warning(f"Failed to get backup statistics: {stats_error}")
+                    self.show_success("Manual backup created successfully!")
             else:
-                self.show_error("Failed to create manual backup")
+                error_msg = "Backup operation returned failure status"
+                self.logger.error(error_msg)
+                
+                # Try to get more specific error information
+                if not hasattr(self.db_settings_manager, 'backup_recovery_manager') or not self.db_settings_manager.backup_recovery_manager:
+                    error_msg += "\n\nBackup recovery manager is not available."
+                
+                self.show_error(f"Failed to create manual backup:\n{error_msg}")
                 
         except Exception as e:
-            self.logger.error(f"Error creating manual backup: {e}")
-            self.show_error(f"Error creating manual backup: {e}")
+            error_msg = f"Backup failed with exception: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            self.show_error(f"Error creating manual backup:\n{error_msg}")
     
     def show_backup_history(self):
         """Show backup history in a dialog window."""
@@ -5465,7 +5491,9 @@ class PromeraAIApp(tk.Tk):
         """Export current settings to a JSON file."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                self.show_error("Database settings manager not available")
+                error_msg = "Database settings manager not available"
+                self.logger.error(error_msg)
+                self.show_error(error_msg)
                 return
             
             # Ask user for file location
@@ -5477,23 +5505,59 @@ class PromeraAIApp(tk.Tk):
             )
             
             if filename:
+                self.logger.info(f"Starting export to: {filename}")
+                
+                # Check current settings before export
+                current_settings = self.db_settings_manager.load_settings()
+                tool_count = len(current_settings.get("tool_settings", {}))
+                self.logger.info(f"Exporting {tool_count} tool configurations")
+                
                 success = self.db_settings_manager.export_settings_to_file(filename, "json")
                 
                 if success:
-                    self.show_success(f"Settings exported successfully to:\n{filename}")
-                    self.logger.info(f"Settings exported to JSON: {filename}")
+                    # Verify export file was created and has content
+                    if os.path.exists(filename):
+                        file_size = os.path.getsize(filename)
+                        self.logger.info(f"Export successful - file size: {file_size} bytes")
+                        
+                        # Quick validation of exported content
+                        try:
+                            with open(filename, 'r') as f:
+                                exported_data = json.load(f)
+                            exported_tools = len(exported_data.get("tool_settings", {}))
+                            
+                            success_msg = f"Settings exported successfully!\n\nFile: {filename}\nSize: {file_size:,} bytes\nTools: {exported_tools} configurations"
+                            self.show_success(success_msg)
+                            self.logger.info(f"Export validation passed - {exported_tools} tools exported")
+                        except Exception as validation_error:
+                            self.logger.warning(f"Export file validation failed: {validation_error}")
+                            self.show_success(f"Settings exported to:\n{filename}\n\nNote: File validation failed, but export completed.")
+                    else:
+                        error_msg = f"Export reported success but file not found: {filename}"
+                        self.logger.error(error_msg)
+                        self.show_error(error_msg)
                 else:
-                    self.show_error("Failed to export settings")
+                    error_msg = "Export operation returned failure status"
+                    self.logger.error(error_msg)
+                    
+                    # Try to get more specific error information
+                    if hasattr(self.db_settings_manager, 'backup_recovery_manager'):
+                        error_msg += "\n\nCheck that the backup recovery manager is properly initialized."
+                    
+                    self.show_error(error_msg)
                     
         except Exception as e:
-            self.logger.error(f"Error exporting settings to JSON: {e}")
-            self.show_error(f"Error exporting settings: {e}")
+            error_msg = f"Export failed with exception: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            self.show_error(f"Error exporting settings:\n{error_msg}")
     
     def import_settings_from_json(self):
         """Import settings from a JSON file."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                self.show_error("Database settings manager not available")
+                error_msg = "Database settings manager not available"
+                self.logger.error(error_msg)
+                self.show_error(error_msg)
                 return
             
             # Ask user for file location
@@ -5503,33 +5567,92 @@ class PromeraAIApp(tk.Tk):
             )
             
             if filename:
-                # Confirm import
+                self.logger.info(f"Starting import from: {filename}")
+                
+                # Validate import file first
+                if not os.path.exists(filename):
+                    error_msg = f"Import file not found: {filename}"
+                    self.logger.error(error_msg)
+                    self.show_error(error_msg)
+                    return
+                
+                try:
+                    with open(filename, 'r') as f:
+                        import_data = json.load(f)
+                    
+                    file_size = os.path.getsize(filename)
+                    import_tools = len(import_data.get("tool_settings", {}))
+                    self.logger.info(f"Import file validation passed - {file_size} bytes, {import_tools} tools")
+                    
+                except Exception as validation_error:
+                    error_msg = f"Import file is not valid JSON: {validation_error}"
+                    self.logger.error(error_msg)
+                    self.show_error(error_msg)
+                    return
+                
+                # Confirm import with details
                 result = messagebox.askyesno(
                     "Confirm Import",
-                    "Importing settings will replace your current settings.\n\n"
-                    "A backup will be created automatically before import.\n\n"
+                    f"Import settings from:\n{os.path.basename(filename)}\n\n"
+                    f"File size: {file_size:,} bytes\n"
+                    f"Tool configurations: {import_tools}\n\n"
+                    "This will replace your current settings.\n"
+                    "A backup will be created automatically.\n\n"
                     "Do you want to continue?",
                     icon="warning"
                 )
                 
                 if result:
                     # Create backup before import
+                    self.logger.info("Creating pre-import backup...")
                     backup_success = self.db_settings_manager.create_backup("manual", "Pre-import backup")
-                    if not backup_success:
+                    if backup_success:
+                        self.logger.info("Pre-import backup created successfully")
+                    else:
                         self.logger.warning("Failed to create pre-import backup")
+                        
+                        # Ask if user wants to continue without backup
+                        continue_result = messagebox.askyesno(
+                            "Backup Failed",
+                            "Failed to create backup before import.\n\n"
+                            "Do you want to continue anyway?\n"
+                            "(This is not recommended)",
+                            icon="warning"
+                        )
+                        if not continue_result:
+                            self.logger.info("Import cancelled by user due to backup failure")
+                            return
                     
                     # Import settings
+                    self.logger.info("Starting settings import...")
                     success = self.db_settings_manager.import_settings_from_file(filename)
                     
                     if success:
-                        self.show_success(f"Settings imported successfully from:\n{filename}\n\nPlease restart the application for all changes to take effect.")
-                        self.logger.info(f"Settings imported from JSON: {filename}")
+                        # Verify import by checking current settings
+                        try:
+                            current_settings = self.db_settings_manager.load_settings()
+                            current_tools = len(current_settings.get("tool_settings", {}))
+                            
+                            success_msg = f"Settings imported successfully!\n\nFrom: {os.path.basename(filename)}\nTool configurations: {current_tools}\n\nPlease restart the application for all changes to take effect."
+                            self.show_success(success_msg)
+                            self.logger.info(f"Import successful - {current_tools} tools now in database")
+                        except Exception as verify_error:
+                            self.logger.warning(f"Import verification failed: {verify_error}")
+                            self.show_success(f"Settings imported from:\n{filename}\n\nNote: Import verification failed, but import completed.\n\nPlease restart the application.")
                     else:
-                        self.show_error("Failed to import settings")
+                        error_msg = "Import operation returned failure status"
+                        self.logger.error(error_msg)
+                        
+                        # Try to get more specific error information
+                        if hasattr(self.db_settings_manager, 'backup_recovery_manager'):
+                            error_msg += "\n\nPossible causes:\n- File format is incompatible\n- Settings validation failed\n- Database write error"
+                        
+                        self.show_error(f"Failed to import settings:\n{error_msg}")
                         
         except Exception as e:
-            self.logger.error(f"Error importing settings from JSON: {e}")
-            self.show_error(f"Error importing settings: {e}")
+            error_msg = f"Import failed with exception: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            self.show_error(f"Error importing settings:\n{error_msg}")
     
     def restore_from_backup_dialog(self):
         """Show dialog to select and restore from a backup file."""

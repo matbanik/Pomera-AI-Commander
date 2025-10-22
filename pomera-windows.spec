@@ -97,7 +97,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='pomera',
+    name='pomera-v1.0.1-test-windows',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
