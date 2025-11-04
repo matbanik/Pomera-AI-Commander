@@ -54,7 +54,7 @@ jobs:
           python update_spec.py pomera-${{ matrix.name }}.spec pomera-${{ github.ref_name }}-${{ matrix.name }}
           
           # Build using the spec file
-          pyinstaller pomera-${{ matrix.name }}.spec
+          python -m PyInstaller pomera-${{ matrix.name }}.spec
           
           # List contents for debugging
           echo "Contents of dist directory after build:"

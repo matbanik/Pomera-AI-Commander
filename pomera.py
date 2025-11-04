@@ -833,6 +833,13 @@ class PromeraAIApp(tk.Tk):
                     "system_prompt": "You are a helpful assistant.",
                     "temperature": 0.7, "topK": 40, "topP": 0.95, "candidateCount": 1, "maxOutputTokens": 8192, "stopSequences": ""
                 },
+                "Azure AI": {
+                    "API_KEY": "putinyourkey", "MODEL": "gpt-4.1", "MODELS_LIST": ["gpt-4.1", "gpt-4o", "gpt-4-turbo", "gpt-35-turbo"],
+                    "ENDPOINT": "", "API_VERSION": "2024-10-21",
+                    "system_prompt": "You are a helpful assistant.",
+                    "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "frequency_penalty": 0.0,
+                    "presence_penalty": 0.0, "seed": "", "stop": ""
+                },
                 "Anthropic AI": {
                     "API_KEY": "putinyourkey", "MODEL": "claude-3-5-sonnet-20240620", "MODELS_LIST": ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
                     "system": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.9, "top_k": 40, "stop_sequences": ""

@@ -253,10 +253,10 @@ AI-powered text processing capabilities:
 
 - **AI Tools Widget**: Multi-provider AI interface
   - **Implementation**: AIToolsWidget class
-  - **Providers**: Google AI (Gemini), Anthropic (Claude), OpenAI (GPT), Cohere, HuggingFace, Groq, OpenRouter
+  - **Providers**: Google AI (Gemini), Vertex AI, Azure AI, Anthropic (Claude), OpenAI (GPT), AWS Bedrock, Cohere, HuggingFace, Groq, OpenRouter, LM Studio
   - **Features**: Model selection, custom prompts, async processing, streaming responses
-  - **Configuration**: API key management, model-specific settings
-  - **Availability**: Conditional (requires ai_tools.py module and API keys)
+  - **Configuration**: API key management, service account JSON upload (Vertex AI), model-specific settings
+  - **Availability**: Conditional (requires ai_tools.py module and API keys/service account credentials)
 
 ### Data Extraction Tools (4 tools)
 
@@ -1958,15 +1958,15 @@ class SorterToolsWidget(ttk.Frame):
 **Category**: AI Integration Tools  
 **Availability**: Conditional (requires ai_tools.py module and API keys)  
 **Implementation**: `tools/ai_tools.py` - `AIToolsWidget` class  
-**Supported Providers**: 9 AI providers (Google AI, Anthropic AI, OpenAI, AWS Bedrock, Cohere AI, HuggingFace AI, Groq AI, OpenRouter AI, LM Studio)
+**Supported Providers**: 11 AI providers (Google AI, Vertex AI, Azure AI, Anthropic AI, OpenAI, AWS Bedrock, Cohere AI, HuggingFace AI, Groq AI, OpenRouter AI, LM Studio)
 
 #### Description
 
-The AI Tools Widget is a comprehensive multi-provider AI interface that integrates **9 major AI services** into a unified tabbed interface. It provides seamless access to state-of-the-art language models from Google, Anthropic, OpenAI, AWS Bedrock, Cohere, HuggingFace, Groq, OpenRouter, and local LM Studio instances, with provider-specific configuration, parameter tuning capabilities, and **enhanced security features** including API key encryption at rest.
+The AI Tools Widget is a comprehensive multi-provider AI interface that integrates **11 major AI services** into a unified tabbed interface. It provides seamless access to state-of-the-art language models from Google AI Studio, Google Vertex AI, Azure AI, Anthropic, OpenAI, AWS Bedrock, Cohere, HuggingFace, Groq, OpenRouter, and local LM Studio instances, with provider-specific configuration, parameter tuning capabilities, and **enhanced security features** including API key encryption at rest and service account JSON file support for Vertex AI.
 
 #### Key Features
 
-- **Multi-Provider Support**: 9 AI providers in a single unified interface
+- **Multi-Provider Support**: 11 AI providers in a single unified interface
 - **Tabbed Interface**: Easy switching between different AI services with persistent settings
 - **Model Selection**: Provider-specific model dropdown with custom model support and model refresh capabilities
 - **Parameter Tuning**: Advanced parameter configuration for each provider with tabbed organization
@@ -1980,7 +1980,7 @@ The AI Tools Widget is a comprehensive multi-provider AI interface that integrat
 
 #### Supported AI Providers
 
-The AI Tools Widget supports 9 different AI providers, each with unique capabilities, pricing models, and configuration requirements. This section provides detailed information about each provider.
+The AI Tools Widget supports 11 different AI providers, each with unique capabilities, pricing models, and configuration requirements. This section provides detailed information about each provider.
 
 ##### 1. Google AI (Gemini Models)
 
@@ -2010,7 +2010,149 @@ The AI Tools Widget supports 9 different AI providers, each with unique capabili
 
 **Best For**: Complex reasoning, code generation, multimodal tasks, long context understanding
 
-##### 2. Anthropic AI (Claude Models)
+##### 2. Vertex AI (Gemini Models)
+
+**Overview**: Google Cloud Vertex AI provides enterprise-grade access to Gemini models with OAuth2 service account authentication, offering the same powerful capabilities as Google AI Studio but with enterprise security, billing control, and regional deployment options.
+
+**Configuration**:
+- **Authentication Method**: Service Account JSON file (🔒 encrypted at rest)
+- **Documentation URL**: https://cloud.google.com/vertex-ai/docs/authentication
+- **API Endpoint**: `https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent`
+- **System Prompt Field**: `system_prompt`
+- **Authentication**: OAuth2 access tokens via `google-auth` library
+
+**Default Model**: `gemini-2.5-flash`
+
+**Available Models**: 
+- `gemini-2.5-flash` - Fast and efficient model optimized for speed
+- `gemini-2.5-pro` - Advanced Pro model with enhanced reasoning capabilities
+
+**Setup Requirements**:
+1. **Service Account JSON File**: Download from Google Cloud Console
+   - Go to IAM & Admin > Service Accounts
+   - Create or select a service account
+   - Create and download a JSON key
+2. **Required Permissions**: Service account must have "Vertex AI User" role
+3. **API Enablement**: Vertex AI API must be enabled for the project
+4. **Billing**: Billing must be enabled for the project (required for Vertex AI)
+
+**Configuration Steps**:
+1. Select "Vertex AI" tab
+2. Click "Upload JSON" button
+3. Select your service account JSON file
+4. The system will automatically:
+   - Parse and store all JSON fields securely
+   - Encrypt the private key
+   - Extract and set project_id
+   - Set default location to `us-central1`
+5. Select your preferred location from the dropdown (if different from default)
+6. Select model from dropdown (default: `gemini-2.5-flash`)
+
+**Key Parameters** (same as Google AI):
+- **temperature** (0.0-2.0): Controls randomness in responses
+- **topK** (1-100): Limits vocabulary to top K tokens
+- **topP** (0.0-1.0): Nucleus sampling threshold
+- **candidateCount** (1-8): Number of response candidates to generate
+- **maxOutputTokens** (1-8192): Maximum response length
+- **stopSequences**: Comma-separated list of strings that stop generation
+
+**Supported Locations**:
+- `us-central1`, `us-east1`, `us-east4`, `us-west1`, `us-west4`
+- `europe-west1`, `europe-west4`, `europe-west6`
+- `asia-east1`, `asia-northeast1`, `asia-southeast1`, `asia-south1`
+
+**Best For**: Enterprise deployments, organizations requiring billing control, regional compliance requirements, same use cases as Google AI but with enterprise-grade authentication
+
+**Differences from Google AI**:
+- Uses OAuth2 service account authentication instead of API keys
+- Requires billing to be enabled
+- Supports regional deployment for compliance
+- Uses Vertex AI Platform endpoint instead of AI Studio endpoint
+- Better suited for production enterprise workloads
+
+##### 3. Azure AI (Azure AI Foundry & Azure OpenAI)
+
+**Overview**: Azure AI provides enterprise-grade access to AI models through Azure AI Foundry (supporting multiple model providers) and Azure OpenAI (OpenAI models on Azure infrastructure), with automatic endpoint detection, flexible deployment options, and enterprise security features.
+
+**Configuration**:
+- **API Key Required**: Yes (🔒 encrypted at rest)
+- **API Key URL**: https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/how-to/quickstart-ai-project
+- **API Endpoint**: Auto-detected based on endpoint format
+  - **Azure AI Foundry**: `https://{resource}.services.ai.azure.com/models/chat/completions?api-version={api_version}` (model in request body)
+  - **Azure OpenAI**: `https://{resource}.openai.azure.com/openai/deployments/{model}/chat/completions?api-version={api_version}` (model in URL path)
+  - **Azure OpenAI (Cognitive Services)**: `https://{resource}.cognitiveservices.azure.com/openai/deployments/{model}/chat/completions?api-version={api_version}` (model in URL path)
+- **System Prompt Field**: `system_prompt`
+- **Headers**: `api-key: {api_key}`, `Content-Type: application/json`
+- **API Format**: OpenAI-compatible
+
+**Default Model**: `gpt-4.1`
+
+**Available Models**: 
+- `gpt-4.1` - Latest GPT-4.1 model with enhanced capabilities
+- `gpt-4o` - GPT-4 Omni model, multimodal, 128K context
+- `gpt-4-turbo` - High-performance GPT-4 variant, 128K context
+- `gpt-35-turbo` - Fast and cost-effective model, 16K context
+
+**Setup Requirements**:
+1. **Azure AI Resource**: Create an Azure AI resource in Azure Portal
+   - Go to Azure Portal > Create a resource > Azure AI services
+   - Choose between Azure AI Foundry (multiple models) or Azure OpenAI (OpenAI models only)
+   - Note your resource endpoint URL
+2. **Deployment**: Deploy your desired model(s) in the Azure Portal
+   - For Azure OpenAI: Create a deployment with your model name
+   - For Azure AI Foundry: Models are available through the Foundry endpoint
+3. **API Key**: Retrieve your API key from the Azure Portal
+   - Go to your resource > Keys and Endpoint
+   - Copy either Key 1 or Key 2
+
+**Configuration Steps**:
+1. Select "Azure AI" tab
+2. Enter your **API Key** in the "API Key" field
+3. Enter your **Resource Endpoint** URL:
+   - Azure AI Foundry: `https://{resource-name}.services.ai.azure.com` or `https://{resource-name}.services.ai.azure.com/api/projects/{project-name}`
+   - Azure OpenAI: `https://{resource-name}.openai.azure.com` or `https://{resource-name}.cognitiveservices.azure.com`
+4. Enter **API Version** (default: `2024-10-21`):
+   - Common versions: `2024-10-21`, `2025-01-01-preview`, `2024-02-15-preview`
+   - The system will automatically detect endpoint type and construct the correct URL
+5. Select **Model (Deployment Name)** from dropdown (default: `gpt-4.1`)
+6. Configure system prompt and parameters as needed
+7. Click "Process" to test
+
+**Endpoint Auto-Detection**:
+The system automatically detects your endpoint type based on the URL:
+- **Azure AI Foundry** (`.services.ai.azure.com`): Uses `/models/chat/completions` format with model in request body
+- **Azure OpenAI** (`.openai.azure.com` or `.cognitiveservices.azure.com`): Uses `/openai/deployments/{model}/chat/completions` format with model in URL path
+
+**Key Parameters** (OpenAI-compatible):
+- **temperature** (0.0-2.0): Controls randomness in responses
+- **max_tokens** (1-4096): Maximum response length
+- **top_p** (0.0-1.0): Nucleus sampling threshold
+- **frequency_penalty** (-2.0 to 2.0): Reduces repetition of frequent tokens
+- **presence_penalty** (-2.0 to 2.0): Encourages new topics
+- **seed**: Integer for deterministic sampling (optional)
+- **stop**: Comma-separated list of strings to stop generation
+
+**Best For**: Enterprise deployments, organizations requiring Azure infrastructure, compliance with Azure security standards, production workloads with Azure integration, accessing both OpenAI models and Foundry models
+
+**Differences between Azure AI Foundry and Azure OpenAI**:
+- **Azure AI Foundry**: 
+  - Supports multiple model providers (OpenAI, Meta, Mistral, etc.)
+  - Uses `/models/chat/completions` endpoint format
+  - Model name specified in request body, not URL
+  - More flexible for accessing diverse model ecosystem
+- **Azure OpenAI**:
+  - Focuses on OpenAI models (GPT-4, GPT-3.5, etc.)
+  - Uses `/openai/deployments/{model}/chat/completions` endpoint format
+  - Model name (deployment name) specified in URL path
+  - Simpler if only using OpenAI models
+
+**Troubleshooting**:
+- **404 Error**: Ensure your endpoint URL is correct and matches your resource type (Foundry vs. OpenAI)
+- **401 Error**: Verify your API key is correct and has proper permissions
+- **Deployment Not Found**: Check that your model deployment name matches exactly (case-sensitive)
+- **API Version Issues**: Try updating to the latest API version (e.g., `2025-01-01-preview`)
+
+##### 4. Anthropic AI (Claude Models)
 
 **Overview**: Anthropic's Claude models excel at nuanced understanding, creative writing, and following complex instructions with strong safety features.
 
@@ -2040,7 +2182,7 @@ The AI Tools Widget supports 9 different AI providers, each with unique capabili
 
 **Best For**: Creative writing, detailed analysis, instruction following, ethical AI applications
 
-##### 3. OpenAI (GPT Models)
+##### 5. OpenAI (GPT Models)
 
 **Overview**: OpenAI's GPT models are industry-leading language models with broad capabilities across text generation, analysis, and reasoning.
 
@@ -2072,7 +2214,7 @@ The AI Tools Widget supports 9 different AI providers, each with unique capabili
 
 **Best For**: General-purpose text generation, code assistance, broad knowledge tasks, structured outputs
 
-##### 4. AWS Bedrock (Multi-Provider Models) 🆕 ENHANCED
+##### 6. AWS Bedrock (Multi-Provider Models) 🆕 ENHANCED
 
 **Overview**: AWS Bedrock provides access to multiple foundation models from various providers through a unified AWS API, with **intelligent model filtering** that excludes embedding and image models.
 
@@ -2153,7 +2295,7 @@ Use the 'Refresh Models' button to get an updated list.
 
 **Reference**: See `archive/AWS_BEDROCK_MODEL_FILTER_FIX.md` for implementation details
 
-##### 5. Cohere AI (Command Models)
+##### 7. Cohere AI (Command Models)
 
 **Overview**: Cohere's Command models specialize in enterprise applications with strong retrieval-augmented generation (RAG) capabilities.
 
@@ -2184,7 +2326,7 @@ Use the 'Refresh Models' button to get an updated list.
 
 **Best For**: Enterprise applications, RAG systems, document analysis, citation-heavy tasks
 
-##### 6. HuggingFace AI (Open Source Models)
+##### 9. HuggingFace AI (Open Source Models)
 
 **Overview**: HuggingFace provides access to thousands of open-source models through their Inference API, supporting community-driven AI development.
 
@@ -2221,7 +2363,7 @@ else:
 
 **Best For**: Open-source AI, custom models, research applications, cost-effective inference
 
-##### 7. Groq AI (High-Speed Inference)
+##### 8. Groq AI (High-Speed Inference)
 
 **Overview**: Groq provides ultra-fast inference using custom LPU (Language Processing Unit) hardware, delivering industry-leading speed for open-source models.
 
@@ -2291,7 +2433,7 @@ else:
 
 **Best For**: Model comparison, cost optimization, accessing multiple providers, free tier experimentation
 
-##### 9. LM Studio (Local AI Models) 🆕
+##### 11. LM Studio (Local AI Models) 🆕
 
 **Overview**: LM Studio enables running AI models locally on your machine without API keys, providing privacy, offline access, and no usage costs.
 
@@ -2352,6 +2494,7 @@ The AI Tools Widget implements a **unified interface** for multiple AI providers
 AIToolsWidget (ttk.Frame)
 ├── Notebook (ttk.Notebook)
 │   ├── Google AI Tab
+│   ├── Vertex AI Tab (with JSON upload)
 │   ├── Anthropic AI Tab
 │   ├── OpenAI Tab
 │   ├── AWS Bedrock Tab (with auth method selection)
@@ -2386,6 +2529,11 @@ self.ai_providers = {
         "headers_template": {'Content-Type': 'application/json'},
         "api_url": "https://aistudio.google.com/apikey"
     },
+    "Vertex AI": {
+        "url_template": "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent",
+        "headers_template": {'Content-Type': 'application/json', 'Authorization': 'Bearer {access_token}'},
+        "api_url": "https://cloud.google.com/vertex-ai/docs/authentication"
+    },
     "AWS Bedrock": {
         "url": "https://bedrock-runtime.{region}.amazonaws.com/model/{model}/invoke",
         "headers_template": {"Content-Type": "application/json"},
@@ -2409,6 +2557,17 @@ self.ai_providers = {
    - API Key input field (masked with `show="*"`)
    - "Get API Key" button linking to provider dashboard
    
+**Vertex AI Tab** (Special Configuration):
+1. **API Configuration Section** (LabelFrame with 🔒 encryption indicator)
+   - "Upload JSON" button to upload service account JSON file
+   - Status label showing loaded project ID
+   - "Get API Key" button (links to documentation)
+   
+2. **Location Configuration Section** (LabelFrame)
+   - Location dropdown with 12 regional options
+   - Default: `us-central1`
+
+**Standard Provider Tab** (Google AI, Anthropic, OpenAI, Cohere, Groq, OpenRouter, HuggingFace):
 2. **Model Configuration Section** (LabelFrame)
    - Model selection dropdown (Combobox)
    - Model editor button (✎) for custom models
@@ -2742,7 +2901,7 @@ pip install huggingface_hub
 System prompts guide the AI's behavior and response style. Each provider uses slightly different terminology:
 
 **Provider-Specific System Prompt Fields**:
-- **Google AI, OpenAI, HuggingFace, Groq, OpenRouter, LM Studio**: `system_prompt`
+- **Google AI, Vertex AI, Azure AI, OpenAI, HuggingFace, Groq, OpenRouter, LM Studio**: `system_prompt`
 - **Anthropic AI**: `system` (Claude's message format)
 - **Cohere AI**: `preamble` (Cohere's terminology)
 - **AWS Bedrock**: `system_prompt` (varies by underlying model)
@@ -2883,6 +3042,21 @@ Parameters control AI response generation. Understanding these helps optimize re
 ###### Provider-Specific Issues
 
 **Google AI Issues**:
+
+**Vertex AI Issues**:
+- **403 Forbidden Error**: Usually means billing is not enabled or Vertex AI API is not enabled
+  - Enable Vertex AI API in Google Cloud Console
+  - Enable billing for the project
+  - Ensure service account has "Vertex AI User" role
+- **"Failed to obtain access token"**: Service account JSON file is invalid or missing
+  - Re-upload the JSON file
+  - Verify the JSON file is valid and complete
+- **"Project ID not found"**: JSON file was not uploaded or parsed incorrectly
+  - Click "Upload JSON" button again
+  - Verify the JSON file contains a valid project_id field
+- **Model not found (404)**: Model name is incorrect or not available in selected region
+  - Try different model: gemini-2.5-flash or gemini-2.5-pro
+  - Check if model is available in your selected location
 
 **Issue: "API key not valid" despite correct key**
 - **Solution**: Ensure API key restrictions allow your IP/application
@@ -15647,6 +15821,9 @@ pip install requests  # HTTP requests for AI APIs
 
 # For HuggingFace AI support
 pip install huggingface_hub
+
+# For Vertex AI support (service account authentication)
+pip install google-auth google-auth-oauthlib google-auth-httplib2
 ```
 
 ##### Audio Support (Morse Code)
@@ -17492,11 +17669,30 @@ Each AI provider requires proper API key configuration:
   "system_prompt": "You are a helpful assistant.",
   "temperature": 0.7,
   "maxOutputTokens": 8192
+},
+"Vertex AI": {
+  "PROJECT_ID": "your-project-id",
+  "LOCATION": "us-central1",
+  "MODEL": "gemini-2.5-flash",
+  "system_prompt": "You are a helpful assistant.",
+  "temperature": 0.7,
+  "maxOutputTokens": 8192
+},
+"Azure AI": {
+  "API_KEY": "your_azure_ai_key",
+  "ENDPOINT": "https://your-resource.services.ai.azure.com",
+  "API_VERSION": "2024-10-21",
+  "MODEL": "gpt-4.1",
+  "system_prompt": "You are a helpful assistant.",
+  "temperature": 0.7,
+  "max_tokens": 4096
 }
 ```
 
 ##### Provider-Specific Settings
 - **Google AI**: temperature, topK, topP, candidateCount, maxOutputTokens
+- **Vertex AI**: temperature, topK, topP, candidateCount, maxOutputTokens (same as Google AI)
+- **Azure AI**: temperature, max_tokens, top_p, frequency_penalty, presence_penalty, seed, stop
 - **Anthropic AI**: max_tokens, temperature, top_p, top_k
 - **OpenAI**: temperature, max_tokens, top_p, frequency_penalty, presence_penalty
 - **Cohere AI**: temperature, max_tokens, k, p, frequency_penalty
@@ -17578,7 +17774,7 @@ The application includes a comprehensive regex pattern library:
 #### Frequently Asked Questions
 
 ##### Q: How do I add custom AI providers?
-**A**: Currently, the application supports 7 built-in providers. Custom providers would require code modifications to the `ai_tools.py` module.
+**A**: Currently, the application supports 11 built-in providers. Custom providers would require code modifications to the `ai_tools.py` module.
 
 ##### Q: Can I use the application offline?
 **A**: Yes, all tools except AI Tools work offline. AI Tools require internet connection for API calls.
@@ -17672,6 +17868,14 @@ This comprehensive configuration and troubleshooting guide provides users with a
 - **Key Parameters**: temperature, topK, topP, candidateCount, maxOutputTokens
 - **Strengths**: Multimodal capabilities, large context window
 - **Use Cases**: Complex reasoning, code generation, analysis
+
+##### Vertex AI (Gemini)
+- **Models**: gemini-2.5-flash, gemini-2.5-pro
+- **API Endpoint**: https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/
+- **Authentication**: Service account JSON file (OAuth2)
+- **Key Parameters**: temperature, topK, topP, candidateCount, maxOutputTokens (same as Google AI)
+- **Strengths**: Enterprise-grade authentication, regional deployment, billing control
+- **Use Cases**: Enterprise deployments, production workloads, same as Google AI but with enterprise security
 
 ##### Anthropic AI (Claude)
 - **Models**: claude-3-5-sonnet-20240620, claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307

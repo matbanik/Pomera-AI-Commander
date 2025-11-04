@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import json
 import logging
 import requests
@@ -13,6 +13,13 @@ import urllib.parse
 import os
 import base64
 from datetime import datetime
+
+try:
+    from google.oauth2 import service_account
+    from google.auth.transport.requests import Request
+    GOOGLE_AUTH_AVAILABLE = True
+except ImportError:
+    GOOGLE_AUTH_AVAILABLE = False
 
 try:
     from huggingface_hub import InferenceClient
@@ -116,6 +123,16 @@ class AIToolsWidget(ttk.Frame):
                 "headers_template": {'Content-Type': 'application/json'},
                 "api_url": "https://aistudio.google.com/apikey"
             },
+            "Vertex AI": {
+                "url_template": "https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent",
+                "headers_template": {'Content-Type': 'application/json', 'Authorization': 'Bearer {access_token}'},
+                "api_url": "https://cloud.google.com/vertex-ai/docs/authentication"
+            },
+            "Azure AI": {
+                "url_template": "{endpoint}/models/chat/completions?api-version={api_version}",  # Used for Foundry; Azure OpenAI uses /openai/deployments/{model}/...
+                "headers_template": {'Content-Type': 'application/json', 'api-key': '{api_key}'},
+                "api_url": "https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/how-to/quickstart-ai-project"
+            },
             "Anthropic AI": {
                 "url": "https://api.anthropic.com/v1/messages",
                 "headers_template": {"x-api-key": "{api_key}", "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
@@ -209,6 +226,168 @@ class AIToolsWidget(ttk.Frame):
             self.app.settings["tool_settings"][provider_name]["API_KEY"] = encrypted_key
         
         self.app.save_settings()
+    
+    def upload_vertex_ai_json(self, provider_name):
+        """Upload and parse Vertex AI service account JSON file."""
+        try:
+            file_path = filedialog.askopenfilename(
+                title="Select Vertex AI Service Account JSON File",
+                filetypes=[
+                    ("JSON files", "*.json"),
+                    ("All files", "*.*")
+                ]
+            )
+            
+            if not file_path:
+                return
+            
+            # Read and parse JSON file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            
+            # Validate required fields
+            required_fields = ['type', 'project_id', 'private_key_id', 'private_key', 
+                             'client_email', 'client_id', 'auth_uri', 'token_uri']
+            missing_fields = [field for field in required_fields if field not in json_data]
+            
+            if missing_fields:
+                self._show_error("Invalid JSON File", 
+                               f"Missing required fields: {', '.join(missing_fields)}")
+                return
+            
+            # Encrypt private_key
+            encrypted_private_key = encrypt_api_key(json_data['private_key'])
+            
+            # Store in database
+            if hasattr(self.app, 'db_settings_manager') and self.app.db_settings_manager:
+                conn_manager = self.app.db_settings_manager.connection_manager
+                with conn_manager.transaction() as conn:
+                    # Delete existing record (singleton pattern)
+                    conn.execute("DELETE FROM vertex_ai_json")
+                    
+                    # Insert new record
+                    conn.execute("""
+                        INSERT INTO vertex_ai_json (
+                            type, project_id, private_key_id, private_key,
+                            client_email, client_id, auth_uri, token_uri,
+                            auth_provider_x509_cert_url, client_x509_cert_url, universe_domain
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        json_data.get('type', ''),
+                        json_data.get('project_id', ''),
+                        json_data.get('private_key_id', ''),
+                        encrypted_private_key,
+                        json_data.get('client_email', ''),
+                        json_data.get('client_id', ''),
+                        json_data.get('auth_uri', ''),
+                        json_data.get('token_uri', ''),
+                        json_data.get('auth_provider_x509_cert_url'),
+                        json_data.get('client_x509_cert_url'),
+                        json_data.get('universe_domain')
+                    ))
+                
+                # Update location setting if not already set (default to us-central1)
+                settings = self.get_current_settings()
+                if not settings.get("LOCATION"):
+                    self.app.db_settings_manager.set_tool_setting(provider_name, "LOCATION", "us-central1")
+                
+                # Update project_id in tool_settings if not already set
+                if not settings.get("PROJECT_ID"):
+                    self.app.db_settings_manager.set_tool_setting(provider_name, "PROJECT_ID", json_data.get('project_id', ''))
+                
+                self._show_info("Success", "Vertex AI service account JSON uploaded and stored successfully.")
+                self.logger.info(f"Vertex AI JSON uploaded: project_id={json_data.get('project_id')}")
+                
+                # Update status label if widget exists
+                if provider_name in self.ai_widgets and "JSON_STATUS" in self.ai_widgets[provider_name]:
+                    status_label = self.ai_widgets[provider_name]["JSON_STATUS"]
+                    status_label.config(text=f"✓ Loaded: {json_data.get('project_id', 'Unknown')}", foreground="green")
+            else:
+                self._show_error("Error", "Database settings manager not available")
+                
+        except json.JSONDecodeError as e:
+            self._show_error("Invalid JSON", f"The file is not valid JSON: {str(e)}")
+        except Exception as e:
+            self.logger.error(f"Error uploading Vertex AI JSON: {e}", exc_info=True)
+            self._show_error("Error", f"Failed to upload JSON file: {str(e)}")
+    
+    def get_vertex_ai_credentials(self):
+        """Get Vertex AI service account credentials from database."""
+        try:
+            if not hasattr(self.app, 'db_settings_manager') or not self.app.db_settings_manager:
+                return None
+            
+            conn_manager = self.app.db_settings_manager.connection_manager
+            with conn_manager.transaction() as conn:
+                cursor = conn.execute("""
+                    SELECT type, project_id, private_key_id, private_key,
+                           client_email, client_id, auth_uri, token_uri,
+                           auth_provider_x509_cert_url, client_x509_cert_url, universe_domain
+                    FROM vertex_ai_json
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                
+                if not row:
+                    return None
+                
+                # Decrypt private_key
+                decrypted_private_key = decrypt_api_key(row[3])
+                
+                # Reconstruct JSON structure
+                credentials_dict = {
+                    'type': row[0],
+                    'project_id': row[1],
+                    'private_key_id': row[2],
+                    'private_key': decrypted_private_key,
+                    'client_email': row[4],
+                    'client_id': row[5],
+                    'auth_uri': row[6],
+                    'token_uri': row[7],
+                    'auth_provider_x509_cert_url': row[8],
+                    'client_x509_cert_url': row[9],
+                    'universe_domain': row[10]
+                }
+                
+                return credentials_dict
+                
+        except Exception as e:
+            self.logger.error(f"Error getting Vertex AI credentials: {e}", exc_info=True)
+            return None
+    
+    def get_vertex_ai_access_token(self):
+        """Get OAuth2 access token for Vertex AI using service account credentials."""
+        if not GOOGLE_AUTH_AVAILABLE:
+            self.logger.error("google-auth library not available")
+            return None
+        
+        try:
+            credentials_dict = self.get_vertex_ai_credentials()
+            if not credentials_dict:
+                self.logger.warning("No Vertex AI credentials found in database")
+                return None
+            
+            # Create credentials from service account info
+            credentials = service_account.Credentials.from_service_account_info(
+                credentials_dict,
+                scopes=['https://www.googleapis.com/auth/cloud-platform']
+            )
+            
+            # Refresh token if needed
+            if not credentials.valid:
+                request = Request()
+                credentials.refresh(request)
+            
+            # Get access token
+            access_token = credentials.token
+            self.logger.debug("Vertex AI access token obtained successfully")
+            
+            return access_token
+            
+        except Exception as e:
+            self.logger.error(f"Error getting Vertex AI access token: {e}", exc_info=True)
+            return None
     
     def _show_info(self, title, message, category="success"):
         """Show info dialog using DialogManager if available, otherwise use messagebox."""
@@ -376,6 +555,79 @@ class AIToolsWidget(ttk.Frame):
             region_var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
             
             self.ai_widgets[provider_name]["AWS_REGION"] = region_var
+        elif provider_name == "Vertex AI":
+            # Vertex AI Configuration section with JSON upload
+            encryption_status = "🔒" if ENCRYPTION_AVAILABLE else "⚠️"
+            api_frame = ttk.LabelFrame(top_frame, text=f"API Configuration {encryption_status}")
+            api_frame.pack(side=tk.LEFT, padx=(0, 10), fill=tk.Y)
+            
+            ttk.Label(api_frame, text="Service Account:").pack(side=tk.LEFT, padx=(5, 5))
+            
+            # Upload JSON button for Vertex AI
+            ttk.Button(api_frame, text="Upload JSON", 
+                      command=lambda: self.upload_vertex_ai_json(provider_name)).pack(side=tk.LEFT, padx=(5, 5))
+            
+            # Status label to show if JSON is loaded
+            status_label = ttk.Label(api_frame, text="", foreground="gray")
+            status_label.pack(side=tk.LEFT, padx=(5, 5))
+            self.ai_widgets[provider_name]["JSON_STATUS"] = status_label
+            
+            # Check if credentials exist and update status
+            credentials = self.get_vertex_ai_credentials()
+            if credentials:
+                status_label.config(text=f"✓ Loaded: {credentials.get('project_id', 'Unknown')}", foreground="green")
+            else:
+                status_label.config(text="No JSON loaded", foreground="red")
+            
+            # API key link button (docs)
+            ttk.Button(api_frame, text="Get API Key", 
+                      command=lambda: webbrowser.open(self.ai_providers[provider_name]["api_url"])).pack(side=tk.LEFT, padx=(5, 5))
+        elif provider_name == "Azure AI":
+            # Azure AI Configuration section
+            encryption_status = "🔒" if ENCRYPTION_AVAILABLE else "⚠️"
+            api_frame = ttk.LabelFrame(top_frame, text=f"API Configuration {encryption_status}")
+            api_frame.pack(side=tk.LEFT, padx=(0, 10), fill=tk.Y)
+            
+            ttk.Label(api_frame, text="API Key:").pack(side=tk.LEFT, padx=(5, 5))
+            
+            # Get decrypted API key for display
+            decrypted_key = self.get_api_key_for_provider(provider_name, settings)
+            api_key_var = tk.StringVar(value=decrypted_key if decrypted_key else "putinyourkey")
+            api_key_entry = ttk.Entry(api_frame, textvariable=api_key_var, show="*", width=20)
+            api_key_entry.pack(side=tk.LEFT, padx=(0, 5))
+            api_key_var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
+            
+            self.ai_widgets[provider_name]["API_KEY"] = api_key_var
+            
+            # API key link button
+            ttk.Button(api_frame, text="Get API Key", 
+                      command=lambda: webbrowser.open(self.ai_providers[provider_name]["api_url"])).pack(side=tk.LEFT, padx=(5, 5))
+            
+            # Resource Endpoint field
+            endpoint_frame = ttk.LabelFrame(top_frame, text="Endpoint")
+            endpoint_frame.pack(side=tk.LEFT, padx=(0, 10), fill=tk.Y)
+            
+            ttk.Label(endpoint_frame, text="Resource Endpoint:").pack(side=tk.LEFT, padx=(5, 5))
+            
+            endpoint_var = tk.StringVar(value=settings.get("ENDPOINT", ""))
+            endpoint_entry = ttk.Entry(endpoint_frame, textvariable=endpoint_var, width=30)
+            endpoint_entry.pack(side=tk.LEFT, padx=(0, 5))
+            endpoint_var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
+            
+            self.ai_widgets[provider_name]["ENDPOINT"] = endpoint_var
+            
+            # API Version field
+            api_version_frame = ttk.LabelFrame(top_frame, text="API Version")
+            api_version_frame.pack(side=tk.LEFT, padx=(0, 10), fill=tk.Y)
+            
+            ttk.Label(api_version_frame, text="API Version:").pack(side=tk.LEFT, padx=(5, 5))
+            
+            api_version_var = tk.StringVar(value=settings.get("API_VERSION", "2024-10-21"))
+            api_version_entry = ttk.Entry(api_version_frame, textvariable=api_version_var, width=15)
+            api_version_entry.pack(side=tk.LEFT, padx=(0, 5))
+            api_version_var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
+            
+            self.ai_widgets[provider_name]["API_VERSION"] = api_version_var
         else:
             # Standard API Configuration section
             encryption_status = "🔒" if ENCRYPTION_AVAILABLE else "⚠️"
@@ -397,11 +649,60 @@ class AIToolsWidget(ttk.Frame):
             ttk.Button(api_frame, text="Get API Key", 
                       command=lambda: webbrowser.open(self.ai_providers[provider_name]["api_url"])).pack(side=tk.LEFT, padx=(5, 5))
         
+        # Vertex AI Location field (similar to AWS Region)
+        if provider_name == "Vertex AI":
+            location_frame = ttk.LabelFrame(top_frame, text="Location")
+            location_frame.pack(side=tk.LEFT, padx=(0, 10), fill=tk.Y)
+            
+            ttk.Label(location_frame, text="Location:").pack(side=tk.LEFT, padx=(5, 5))
+            
+            location_var = tk.StringVar(value=settings.get("LOCATION", "us-central1"))
+            vertex_locations = [
+                "us-central1", "us-east1", "us-east4", "us-west1", "us-west4",
+                "europe-west1", "europe-west4", "europe-west6", "asia-east1",
+                "asia-northeast1", "asia-southeast1", "asia-south1"
+            ]
+            location_combo = ttk.Combobox(location_frame, textvariable=location_var,
+                                       values=vertex_locations, state="readonly", width=15)
+            location_combo.pack(side=tk.LEFT, padx=(0, 5))
+            location_var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
+            
+            self.ai_widgets[provider_name]["LOCATION"] = location_var
+        
         # Model Configuration section
         model_frame = ttk.LabelFrame(top_frame, text="Model Configuration")
         model_frame.pack(side=tk.LEFT, padx=(0, 10), fill=tk.Y)
         
-        ttk.Label(model_frame, text="Model:").pack(side=tk.LEFT, padx=(5, 5))
+        if provider_name == "Azure AI":
+            ttk.Label(model_frame, text="Model (Deployment Name):").pack(side=tk.LEFT, padx=(5, 5))
+        else:
+            ttk.Label(model_frame, text="Model:").pack(side=tk.LEFT, padx=(5, 5))
+        
+        # Set default models for Vertex AI if not present
+        if provider_name == "Vertex AI":
+            models_list = settings.get("MODELS_LIST", [])
+            if not models_list:
+                models_list = ["gemini-2.5-flash", "gemini-2.5-pro"]
+                if hasattr(self.app, 'db_settings_manager') and self.app.db_settings_manager:
+                    self.app.db_settings_manager.set_tool_setting(provider_name, "MODELS_LIST", models_list)
+                else:
+                    if provider_name not in self.app.settings["tool_settings"]:
+                        self.app.settings["tool_settings"][provider_name] = {}
+                    self.app.settings["tool_settings"][provider_name]["MODELS_LIST"] = models_list
+                    self.app.save_settings()
+            
+            # Set default model if not present
+            if not settings.get("MODEL"):
+                default_model = "gemini-2.5-flash"
+                if hasattr(self.app, 'db_settings_manager') and self.app.db_settings_manager:
+                    self.app.db_settings_manager.set_tool_setting(provider_name, "MODEL", default_model)
+                else:
+                    if provider_name not in self.app.settings["tool_settings"]:
+                        self.app.settings["tool_settings"][provider_name] = {}
+                    self.app.settings["tool_settings"][provider_name]["MODEL"] = default_model
+                    self.app.save_settings()
+                settings["MODEL"] = default_model
+                settings["MODELS_LIST"] = models_list
         
         model_var = tk.StringVar(value=settings.get("MODEL", ""))
         models_list = settings.get("MODELS_LIST", [])
@@ -585,7 +886,8 @@ class AIToolsWidget(ttk.Frame):
         
         self.ai_widgets[provider_name][system_prompt_key] = system_text
         
-        # Parameters notebook with minimal height to reduce empty space (skip for AWS Bedrock and LM Studio)
+        # Parameters notebook with minimal height to reduce empty space (skip for AWS Bedrock, LM Studio, and Azure AI)
+        # Note: Azure AI will use parameters, but we include it here since it uses standard OpenAI-style params
         if provider_name not in ["AWS Bedrock", "LM Studio"]:
             params_notebook = ttk.Notebook(main_frame)
             # Much smaller height to eliminate wasted space - users can scroll if needed
@@ -1147,6 +1449,17 @@ class AIToolsWidget(ttk.Frame):
         active_input_tab = self.app.input_tabs[self.app.input_notebook.index(self.app.input_notebook.select())]
         prompt = active_input_tab.text.get("1.0", tk.END).strip()
         
+        # Validate Vertex AI credentials
+        if provider_name == "Vertex AI":
+            credentials = self.get_vertex_ai_credentials()
+            if not credentials:
+                self.app.after(0, self.app.update_output_text, "Error: Vertex AI requires service account JSON file. Please upload it using the 'Upload JSON' button.")
+                return
+            project_id = settings.get("PROJECT_ID")
+            if not project_id:
+                self.app.after(0, self.app.update_output_text, "Error: Project ID not found. Please upload the service account JSON file.")
+                return
+        
         # LM Studio doesn't require API key, AWS Bedrock has multiple auth methods
         if provider_name == "AWS Bedrock":
             # Validate AWS Bedrock credentials
@@ -1173,7 +1486,16 @@ class AIToolsWidget(ttk.Frame):
                     if not session_token:
                         self.app.after(0, self.app.update_output_text, "Error: AWS Bedrock requires Session Token for temporary credentials.")
                         return
-        elif provider_name != "LM Studio" and (not api_key or api_key == "putinyourkey"):
+        elif provider_name == "Azure AI":
+            # Validate Azure AI credentials
+            endpoint = settings.get("ENDPOINT", "").strip()
+            if not endpoint:
+                self.app.after(0, self.app.update_output_text, "Error: Azure AI requires a Resource Endpoint. Please enter your endpoint URL.")
+                return
+            if not api_key or api_key == "putinyourkey":
+                self.app.after(0, self.app.update_output_text, "Error: Azure AI requires an API Key. Please enter your API key.")
+                return
+        elif provider_name not in ["LM Studio", "Vertex AI"] and (not api_key or api_key == "putinyourkey"):
             self.app.after(0, self.app.update_output_text, f"Error: Please enter a valid {provider_name} API Key in the settings.")
             return
         if not prompt:
@@ -1235,6 +1557,12 @@ class AIToolsWidget(ttk.Frame):
             url, payload, headers = self._build_api_request(provider_name, api_key, prompt, settings)
 
             self.logger.debug(f"{provider_name} payload: {json.dumps(payload, indent=2)}")
+            
+            # Log request details for Vertex AI (without sensitive token)
+            if provider_name == "Vertex AI":
+                self.logger.debug(f"Vertex AI Request URL: {url}")
+                safe_headers = {k: ('***REDACTED***' if k == 'Authorization' else v) for k, v in headers.items()}
+                self.logger.debug(f"Vertex AI Headers: {json.dumps(safe_headers, indent=2)}")
 
             # Retry logic with exponential backoff
             max_retries = 5
@@ -1259,7 +1587,45 @@ class AIToolsWidget(ttk.Frame):
                         self.logger.warning(f"Rate limit exceeded. Retrying in {delay:.2f} seconds...")
                         time.sleep(delay)
                     else:
-                        error_response = e.response.text if hasattr(e, 'response') and e.response else str(e)
+                        # Get full error response
+                        try:
+                            error_response = e.response.text if hasattr(e, 'response') and e.response else str(e)
+                            error_json = e.response.json() if hasattr(e, 'response') and e.response and e.response.headers.get('content-type', '').startswith('application/json') else None
+                        except:
+                            error_response = str(e)
+                            error_json = None
+                        
+                        # Log detailed error for Vertex AI
+                        if provider_name == "Vertex AI":
+                            self.logger.error(f"Vertex AI API Error - Status: {e.response.status_code if hasattr(e, 'response') and e.response else 'N/A'}")
+                            self.logger.error(f"Vertex AI Error Response: {error_response}")
+                            if error_json:
+                                self.logger.error(f"Vertex AI Error JSON: {json.dumps(error_json, indent=2)}")
+                            self.logger.error(f"Vertex AI Request URL: {url}")
+                            self.logger.debug(f"Vertex AI Headers (token redacted): {[(k, '***REDACTED***' if k == 'Authorization' else v) for k, v in headers.items()]}")
+                            
+                            # Provide helpful error message
+                            if e.response.status_code == 403:
+                                error_msg = f"Vertex AI 403 Forbidden Error\n\n"
+                                error_msg += f"URL: {url}\n\n"
+                                if error_json:
+                                    error_msg += f"Error Details: {json.dumps(error_json, indent=2)}\n\n"
+                                else:
+                                    error_msg += f"Error Response: {error_response}\n\n"
+                                error_msg += "Common causes:\n"
+                                error_msg += "1. Service account doesn't have 'Vertex AI User' role\n"
+                                error_msg += "2. Vertex AI API not enabled for the project\n"
+                                error_msg += "3. Project ID format incorrect (check for encoding issues)\n"
+                                error_msg += "4. Model name not available in the selected region\n"
+                                error_msg += "5. Billing not enabled for the project\n\n"
+                                error_msg += "Solutions:\n"
+                                error_msg += "1. Enable Vertex AI API in Google Cloud Console\n"
+                                error_msg += "2. Grant 'Vertex AI User' role to service account\n"
+                                error_msg += "3. Ensure billing is enabled\n"
+                                error_msg += "4. Verify model name is correct (try gemini-1.5-flash or gemini-1.5-pro)\n"
+                                
+                                self.app.after(0, self.app.update_output_text, error_msg)
+                                return
                         
                         # Check for AWS Bedrock specific errors
                         if provider_name == "AWS Bedrock":
@@ -1334,7 +1700,51 @@ class AIToolsWidget(ttk.Frame):
         provider_config = self.ai_providers[provider_name]
         
         # Build URL
-        if provider_name == "LM Studio":
+        if provider_name == "Vertex AI":
+            # Get project_id and location from settings
+            project_id = settings.get("PROJECT_ID", "")
+            location = settings.get("LOCATION", "us-central1")
+            model = settings.get("MODEL", "")
+            
+            # Note: Project IDs in Google Cloud REST API URLs should be used as-is
+            # If project_id contains colons (like project numbers), they're part of the format
+            url = provider_config["url_template"].format(
+                location=location,
+                project_id=project_id,
+                model=model
+            )
+            
+            self.logger.debug(f"Vertex AI URL components - project_id: {project_id}, location: {location}, model: {model}")
+        elif provider_name == "Azure AI":
+            endpoint = settings.get("ENDPOINT", "").strip().rstrip('/')
+            model = settings.get("MODEL", "gpt-4.1")
+            api_version = settings.get("API_VERSION", "2024-10-21")
+            
+            # Auto-detect endpoint type and build URL accordingly
+            # Azure AI Foundry: https://[resource].services.ai.azure.com
+            # Azure OpenAI: https://[resource].openai.azure.com or https://[resource].cognitiveservices.azure.com
+            
+            if ".services.ai.azure.com" in endpoint:
+                # Azure AI Foundry - use /models/chat/completions format (model goes in request body, not URL)
+                # Check if endpoint already includes /api/projects/[project-name]
+                import re
+                if "/api/projects/" in endpoint:
+                    # Project endpoint format - extract base resource endpoint
+                    match = re.search(r'https://([^.]+)\.services\.ai\.azure\.com', endpoint)
+                    if match:
+                        resource_name = match.group(1)
+                        endpoint = f"https://{resource_name}.services.ai.azure.com"
+                # Use Foundry models endpoint format: /models/chat/completions
+                url = f"{endpoint}/models/chat/completions?api-version={api_version}"
+            elif ".openai.azure.com" in endpoint or ".cognitiveservices.azure.com" in endpoint:
+                # Azure OpenAI - use /openai/deployments/[model]/chat/completions format
+                # Both *.openai.azure.com and *.cognitiveservices.azure.com are Azure OpenAI endpoints
+                url = f"{endpoint}/openai/deployments/{model}/chat/completions?api-version={api_version}"
+            else:
+                # Unknown format - assume Azure AI Foundry format by default
+                # Most likely it's a Foundry endpoint if it's not explicitly OpenAI
+                url = f"{endpoint}/models/chat/completions?api-version={api_version}"
+        elif provider_name == "LM Studio":
             base_url = settings.get("BASE_URL", "http://127.0.0.1:1234").rstrip('/')
             url = provider_config["url_template"].format(base_url=base_url)
         elif provider_name == "AWS Bedrock":
@@ -1418,7 +1828,19 @@ class AIToolsWidget(ttk.Frame):
         # Build headers
         headers = {}
         for key, value in provider_config["headers_template"].items():
-            if provider_name in ["LM Studio", "AWS Bedrock"]:
+            if provider_name == "Vertex AI":
+                # Vertex AI uses OAuth2 access token
+                if "{access_token}" in value:
+                    access_token = self.get_vertex_ai_access_token()
+                    if not access_token:
+                        raise ValueError("Failed to obtain Vertex AI access token. Please check your service account JSON.")
+                    headers[key] = value.format(access_token=access_token)
+                else:
+                    headers[key] = value
+            elif provider_name == "Azure AI":
+                # Azure AI uses api-key header (not Authorization Bearer)
+                headers[key] = value.format(api_key=api_key)
+            elif provider_name in ["LM Studio", "AWS Bedrock"]:
                 # LM Studio and AWS Bedrock don't need API key in headers
                 headers[key] = value
             else:
@@ -1473,7 +1895,7 @@ class AIToolsWidget(ttk.Frame):
         """Build API payload for the specific provider."""
         payload = {}
         
-        if provider_name == "Google AI":
+        if provider_name in ["Google AI", "Vertex AI"]:
             system_prompt = settings.get("system_prompt", "").strip()
             full_prompt = f"{system_prompt}\n\n{prompt}".strip() if system_prompt else prompt
             payload = {"contents": [{"parts": [{"text": full_prompt}], "role": "user"}]}
@@ -1525,6 +1947,37 @@ class AIToolsWidget(ttk.Frame):
             if stop_seq_str:
                 payload['stop_sequences'] = [s.strip() for s in stop_seq_str.split(',')]
         
+        elif provider_name == "Azure AI":
+            # Azure AI uses OpenAI-compatible format
+            # For Azure OpenAI: model is in URL, so don't include in payload (recommended)
+            # For Azure AI Foundry: model must be in payload
+            endpoint = settings.get("ENDPOINT", "").strip().rstrip('/')
+            payload = {"messages": []}
+            
+            # Only include model in payload for Azure AI Foundry
+            # Azure OpenAI has model in URL path, so omit from payload for better compatibility
+            if ".services.ai.azure.com" in endpoint:
+                # Azure AI Foundry - model MUST be in payload
+                payload["model"] = settings.get("MODEL")
+            # For Azure OpenAI (openai.azure.com or cognitiveservices.azure.com), model is in URL
+            # Some API versions accept model in payload too, but it's better to omit it
+            
+            system_prompt = settings.get("system_prompt", "").strip()
+            if system_prompt:
+                payload["messages"].append({"role": "system", "content": system_prompt})
+            payload["messages"].append({"role": "user", "content": prompt})
+            
+            # Universal parameters supported by Azure AI Foundry
+            self._add_param_if_valid(payload, settings, 'temperature', float)
+            self._add_param_if_valid(payload, settings, 'top_p', float)
+            self._add_param_if_valid(payload, settings, 'max_tokens', int)
+            self._add_param_if_valid(payload, settings, 'frequency_penalty', float)
+            self._add_param_if_valid(payload, settings, 'presence_penalty', float)
+            self._add_param_if_valid(payload, settings, 'seed', int)
+            
+            stop_str = str(settings.get('stop', '')).strip()
+            if stop_str:
+                payload['stop'] = [s.strip() for s in stop_str.split(',')]
         elif provider_name in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio"]:
             payload = {"model": settings.get("MODEL"), "messages": []}
             system_prompt = settings.get("system_prompt", "").strip()
@@ -1683,11 +2136,11 @@ class AIToolsWidget(ttk.Frame):
         """Extract response text from API response."""
         result_text = f"Error: Could not parse response from {provider_name}."
         
-        if provider_name == "Google AI":
+        if provider_name in ["Google AI", "Vertex AI"]:
             result_text = data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', result_text)
         elif provider_name == "Anthropic AI":
             result_text = data.get('content', [{}])[0].get('text', result_text)
-        elif provider_name in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio"]:
+        elif provider_name in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio", "Azure AI"]:
             result_text = data.get('choices', [{}])[0].get('message', {}).get('content', result_text)
         elif provider_name == "Cohere AI":
             result_text = data.get('text', result_text)
@@ -1850,6 +2303,14 @@ class AIToolsWidget(ttk.Frame):
                 "candidateCount": {"tab": "content", "type": "scale", "range": (1, 8), "res": 1, "tip": "Number of response candidates to generate."},
                 "stopSequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
             },
+            "Vertex AI": {
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "topP": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Cumulative probability threshold for token selection."},
+                "topK": {"tab": "sampling", "type": "scale", "range": (1, 100), "res": 1, "tip": "Limits token selection to top K candidates."},
+                "maxOutputTokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
+                "candidateCount": {"tab": "content", "type": "scale", "range": (1, 8), "res": 1, "tip": "Number of response candidates to generate."},
+                "stopSequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+            },
             "Anthropic AI": {
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
                 "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
@@ -1902,6 +2363,15 @@ class AIToolsWidget(ttk.Frame):
                 "frequency_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes frequent tokens."},
                 "presence_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes tokens that have appeared."},
                 "repetition_penalty": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Penalizes repetitive text."},
+                "seed": {"tab": "content", "type": "entry", "tip": "Random seed for reproducible outputs."},
+                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+            },
+            "Azure AI": {
+                "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
+                "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
+                "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Nucleus sampling threshold."},
+                "frequency_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes frequent tokens."},
+                "presence_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes tokens that have appeared."},
                 "seed": {"tab": "content", "type": "entry", "tip": "Random seed for reproducible outputs."},
                 "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
             }

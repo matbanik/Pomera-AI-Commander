@@ -42,7 +42,8 @@ class DatabaseSchema:
             'performance_settings': DatabaseSchema._get_performance_settings_schema(),
             'font_settings': DatabaseSchema._get_font_settings_schema(),
             'dialog_settings': DatabaseSchema._get_dialog_settings_schema(),
-            'settings_metadata': DatabaseSchema._get_settings_metadata_schema()
+            'settings_metadata': DatabaseSchema._get_settings_metadata_schema(),
+            'vertex_ai_json': DatabaseSchema._get_vertex_ai_json_schema()
         }
     
     @staticmethod
@@ -81,6 +82,10 @@ class DatabaseSchema:
             ],
             'settings_metadata': [
                 "CREATE INDEX IF NOT EXISTS idx_settings_metadata_key ON settings_metadata(key)"
+            ],
+            'vertex_ai_json': [
+                "CREATE INDEX IF NOT EXISTS idx_vertex_ai_json_project_id ON vertex_ai_json(project_id)",
+                "CREATE INDEX IF NOT EXISTS idx_vertex_ai_json_updated ON vertex_ai_json(updated_at)"
             ]
         }
     
@@ -227,6 +232,33 @@ class DatabaseSchema:
         """
     
     @staticmethod
+    def _get_vertex_ai_json_schema() -> str:
+        """
+        Vertex AI service account JSON credentials table.
+        
+        Stores all fields from the service account JSON file with encrypted private_key.
+        Only one record should exist at a time (singleton pattern).
+        """
+        return """
+        CREATE TABLE IF NOT EXISTS vertex_ai_json (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            private_key_id TEXT NOT NULL,
+            private_key TEXT NOT NULL,
+            client_email TEXT NOT NULL,
+            client_id TEXT NOT NULL,
+            auth_uri TEXT NOT NULL,
+            token_uri TEXT NOT NULL,
+            auth_provider_x509_cert_url TEXT,
+            client_x509_cert_url TEXT,
+            universe_domain TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    
+    @staticmethod
     def get_initial_metadata() -> List[Tuple[str, str, str]]:
         """
         Returns initial metadata entries to insert after schema creation.
@@ -289,7 +321,8 @@ class DatabaseSchema:
             'tab_content',
             'performance_settings',
             'font_settings',
-            'dialog_settings'
+            'dialog_settings',
+            'vertex_ai_json'
         ]
 
 

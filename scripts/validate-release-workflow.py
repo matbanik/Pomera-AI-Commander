@@ -145,7 +145,7 @@ class ReleaseWorkflowValidator:
             
             # Build PyInstaller command
             cmd = [
-                "pyinstaller",
+                sys.executable, "-m", "PyInstaller",
                 "--onefile",
                 "--log-level", "INFO",
                 "--name", executable_name,

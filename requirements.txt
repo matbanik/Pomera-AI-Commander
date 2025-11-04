@@ -5,6 +5,9 @@ python-docx>=0.8.11
 
 # AI Tools dependencies
 huggingface-hub>=0.16.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
 
 # Optional audio dependencies (for advanced features)
 # Uncomment if you need audio processing capabilities

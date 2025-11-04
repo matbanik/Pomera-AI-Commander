@@ -28,7 +28,7 @@ echo.
 echo Building with maximum optimization...
 echo This may take a few minutes...
 
-pyinstaller --onefile --windowed ^
+python -m PyInstaller --onefile --windowed ^
     --optimize 2 ^
     --strip ^
     --noupx ^
