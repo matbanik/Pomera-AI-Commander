@@ -51,12 +51,12 @@ git push origin v1.0.0
 
 1. **Go to the Actions tab** in the GitHub repository
 2. **Find the "Release" workflow** that was triggered by your tag
-3. **Monitor the build progress** for all three platforms (Windows, Linux, macOS)
+3. **Monitor the build progress** for all platforms (Windows, Linux, macOS Apple Silicon)
 4. **Check for any build failures** and resolve if necessary
 
 #### Build Process Overview
 The automated workflow will:
-- Build executables for Windows, Linux, and macOS in parallel
+- Build executables for Windows, Linux, and macOS (Apple Silicon) in parallel
 - Generate SHA256 checksums for all executables
 - Create a GitHub release with auto-generated release notes
 - Upload all executables and checksums as release assets
@@ -68,7 +68,7 @@ The automated workflow will:
 2. **Download each platform executable**:
    - `pomera-v1.0.0-windows.exe`
    - `pomera-v1.0.0-linux.bin`
-   - `pomera-v1.0.0-macos.bin`
+   - `pomera-v1.0.0-macos-arm64.bin`
    - `checksums.txt`
 
 3. **Verify checksums**:
@@ -111,10 +111,11 @@ The automated workflow will:
 - Verify Python dependencies
 - Review build logs for specific errors
 
-#### macOS Build Fails
+#### macOS Build Fails (Apple Silicon only)
 - Check for macOS-specific issues
 - Verify code signing requirements (if applicable)
 - Review build logs for permission issues
+- Note: Intel Mac builds are no longer supported
 
 ### Release Creation Fails
 
@@ -177,7 +178,7 @@ git push origin --delete v1.0.0
 
 ### Key Configuration Points
 - **Trigger**: Tags matching `v*.*.*` pattern
-- **Build Matrix**: Windows, Linux, macOS
+- **Build Matrix**: Windows, Linux, macOS (Apple Silicon)
 - **PyInstaller Options**: `--onefile` for standalone executables
 - **Asset Naming**: `pomera-{version}-{platform}{extension}`
 

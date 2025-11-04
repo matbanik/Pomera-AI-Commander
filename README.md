@@ -92,7 +92,6 @@ pip install pyaudio numpy psutil huggingface-hub
 2. Download the latest version for your platform:
    - **Windows**: `pomera-v1.0.0-windows.exe`
    - **Linux**: `pomera-v1.0.0-linux`
-   - **macOS (Intel)**: `pomera-v1.0.0-macos-intel`
    - **macOS (Apple Silicon)**: `pomera-v1.0.0-macos-arm64`
 3. Run the executable directly (no Python installation required)
 
@@ -136,24 +135,15 @@ Visit the [**Releases page**](https://github.com/matbanik/Pomera-AI-Commander/re
    ```
 
 #### macOS
-Choose the version for your Mac:
 
-**Intel Macs (2019 and earlier)**:
-1. Download `pomera-v1.0.0-macos-intel`
-2. Make executable and run:
-   ```bash
-   chmod +x pomera-v1.0.0-macos-intel
-   ./pomera-v1.0.0-macos-intel
-   ```
-
-**Apple Silicon Macs (M1/M2/M3)**:
+**Apple Silicon Macs (M1/M2/M3/M4)**:
 1. Download `pomera-v1.0.0-macos-arm64`
 2. Make executable and run:
    ```bash
    chmod +x pomera-v1.0.0-macos-arm64
    ./pomera-v1.0.0-macos-arm64
    ```
-4. **Note**: macOS may require allowing the app in System Preferences → Security & Privacy
+3. **Note**: macOS may require allowing the app in System Preferences → Security & Privacy
 
 ### Release Process (For Maintainers)
 
@@ -200,7 +190,7 @@ graph LR
 **macOS: "App can't be opened because it is from an unidentified developer"**
 - Go to System Preferences → Security & Privacy
 - Click "Open Anyway" next to the blocked app message
-- Alternative: Run `xattr -d com.apple.quarantine pomera-v1.0.0-macos`
+- Alternative: Run `xattr -d com.apple.quarantine pomera-v1.0.0-macos-arm64`
 
 **Download verification fails**
 - Re-download the file (may be corrupted)
