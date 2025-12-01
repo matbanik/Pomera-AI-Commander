@@ -258,7 +258,7 @@ AI-powered text processing capabilities:
   - **Configuration**: API key management, service account JSON upload (Vertex AI), model-specific settings
   - **Availability**: Conditional (requires ai_tools.py module and API keys/service account credentials)
 
-### Data Extraction Tools (4 tools)
+### Data Extraction Tools (5 tools)
 
 Tools for extracting specific data from text:
 
@@ -278,6 +278,12 @@ Tools for extracting specific data from text:
   - **TextProcessor Method**: `extract_urls()`
   - **Features**: Protocol filtering, markdown support, href extraction
   - **Options**: HTTPS only, any protocol, markdown links, text filtering
+  - **Availability**: Always available
+
+- **Regex Extractor**: Extract text using custom regex patterns
+  - **TextProcessor Method**: `regex_extractor.RegexExtractor.process_text()`
+  - **Features**: Custom regex patterns, match modes, duplicate handling
+  - **Options**: First match per line, all occurrences, omit duplicates, sort results, show counts, case-sensitive
   - **Availability**: Always available
 
 - **HTML Extraction Tool**: Extract and process HTML content in multiple ways
@@ -1854,6 +1860,7 @@ class SorterToolsWidget(ttk.Frame):
 - **Word Frequency Counter**: Analyze sorted data for patterns
 - **Email Extraction Tool**: Extract emails then sort alphabetically
 - **URL and Link Extractor**: Extract URLs then sort alphabetically
+- **Regex Extractor**: Extract custom patterns then sort or deduplicate
 
 #### See Also
 - [Text Transformation Tools Overview](#text-transformation-tools-4-tools)
@@ -3804,7 +3811,7 @@ The tool is designed to minimize false positives, but may occasionally extract:
 
 #### See Also
 - [Email Header Analyzer Documentation](#email-header-analyzer)
-- [Data Extraction Tools Overview](#data-extraction-tools-3-tools)
+- [Data Extraction Tools Overview](#data-extraction-tools-5-tools)
 - [Privacy and Compliance Guidelines](#data-privacy-considerations)###
  Email Header Analyzer
 
@@ -4146,7 +4153,7 @@ The tool gracefully handles malformed headers and continues analysis with availa
 #### See Also
 - [Email Extraction Tool Documentation](#email-extraction-tool)
 - [Email Security Best Practices](#security-implications)
-- [Data Extraction Tools Overview](#data-extraction-tools-3-tools)### UR
+- [Data Extraction Tools Overview](#data-extraction-tools-5-tools)### UR
 L and Link Extractor
 
 **Category**: Data Extraction Tools  
@@ -4503,8 +4510,361 @@ The tool is designed to be permissive and may extract:
 
 #### See Also
 - [URL Parser Documentation](#url-parser)
-- [Data Extraction Tools Overview](#data-extraction-tools-3-tools)
+- [Data Extraction Tools Overview](#data-extraction-tools-5-tools)
 - [Web Scraping Best Practices](#common-use-cases)
+
+### Regex Extractor
+
+**Category**: Data Extraction Tools  
+**Availability**: Always Available  
+**TextProcessor Method**: `regex_extractor.RegexExtractor.process_text()`
+
+#### Description
+
+The Regex Extractor is a flexible pattern extraction utility that uses regular expressions to extract matches from text. It supports custom regex patterns with various matching modes, duplicate handling, sorting, and counting options. The tool can extract all occurrences or limit to first match per line, making it ideal for parsing structured text, logs, data files, and custom formats.
+
+#### Key Features
+
+- **Custom Regex Patterns**: Use any valid regular expression pattern
+- **Match Modes**: First match per line or all occurrences
+- **Duplicate Handling**: Option to remove duplicate matches
+- **Match Counting**: Show occurrence counts for each match
+- **Sorting**: Alphabetically sort extracted results
+- **Case Sensitivity**: Toggle case-sensitive matching
+- **Group Support**: Handles regex groups and captures tuples
+
+#### Capabilities
+
+##### Core Functionality
+- **Pattern Matching**: Extract text using custom regex patterns
+- **Line-by-Line Processing**: Option to process each line individually
+- **Global Matching**: Option to match across entire text
+- **Duplicate Management**: Remove or preserve duplicate matches
+- **Occurrence Tracking**: Count how many times each match appears
+- **Result Organization**: Sort results alphabetically
+- **Group Handling**: Properly handles regex capture groups
+
+##### Match Modes
+
+**First Match Per Line:**
+- Processes text line by line
+- Extracts only the first match from each line
+- Useful for structured data where each line has one key value
+- Maintains line-by-line structure in output
+
+**All Occurrences:**
+- Processes entire text as one block
+- Extracts all matches regardless of line boundaries
+- Useful for finding all instances of a pattern
+- More comprehensive extraction
+
+##### Input/Output Specifications
+- **Input**: Any text content (logs, documents, code, structured data, etc.)
+- **Output**: List of extracted matches (one per line) with optional counts
+- **Performance**: Efficient regex processing with compiled patterns
+- **Error Handling**: Clear error messages for invalid regex patterns
+
+#### Configuration
+
+##### Settings Panel Options
+
+**Find Field:**
+- Enter your regex pattern in the "Find:" field
+- Supports full regex syntax including groups, quantifiers, character classes, etc.
+- Examples: `\d+`, `[A-Z][a-z]+`, `(\w+)@(\w+\.\w+)`, etc.
+
+**Match Mode:**
+- **First match per line**: Extract only the first match from each line
+- **All occurrences**: Extract all matches from the entire text (default)
+
+**Options:**
+- **Omit duplicates**: Remove duplicate matches from results
+- **Hide counts**: Don't show occurrence counts (default: enabled)
+- **Sort results**: Sort extracted matches alphabetically
+- **Case sensitive**: Perform case-sensitive pattern matching
+
+##### Default Settings
+```json
+{
+  "pattern": "",
+  "match_mode": "all_per_line",
+  "omit_duplicates": false,
+  "hide_counts": true,
+  "sort_results": false,
+  "case_sensitive": false
+}
+```
+
+#### Usage Examples
+
+##### Extracting Numbers (All Occurrences)
+**Input:**
+```
+Order #1234 was processed
+Order #5678 was completed
+Order #9012 is pending
+```
+
+**Configuration:**
+- Find: `\d+`
+- Match mode: All occurrences
+- Options: (default)
+
+**Output:**
+```
+1234
+5678
+9012
+```
+
+##### Extracting First Match Per Line
+**Input:**
+```
+User: john.doe@example.com Password: secret123
+User: jane.smith@test.com Password: pass456
+User: bob@company.com Password: qwerty789
+```
+
+**Configuration:**
+- Find: `[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}`
+- Match mode: First match per line
+- Options: Omit duplicates (unchecked), Hide counts
+
+**Output:**
+```
+john.doe@example.com
+jane.smith@test.com
+bob@company.com
+```
+
+##### Extracting with Groups
+**Input:**
+```
+2024-01-15 10:30:00 ERROR: Database connection failed
+2024-01-15 11:45:00 INFO: User logged in successfully
+2024-01-15 12:00:00 ERROR: Cache miss detected
+```
+
+**Configuration:**
+- Find: `(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) (ERROR|INFO): (.+)`
+- Match mode: First match per line
+- Options: Hide counts
+
+**Output:**
+```
+2024-01-15 | 10:30:00 | ERROR | Database connection failed
+2024-01-15 | 11:45:00 | INFO | User logged in successfully
+2024-01-15 | 12:00:00 | ERROR | Cache miss detected
+```
+
+##### Extracting with Duplicate Handling and Sorting
+**Input:**
+```
+Product: Apple, Category: Fruit
+Product: Banana, Category: Fruit
+Product: Carrot, Category: Vegetable
+Product: Apple, Category: Fruit
+Product: Broccoli, Category: Vegetable
+```
+
+**Configuration:**
+- Find: `Category: (\w+)`
+- Match mode: First match per line
+- Options: Omit duplicates ✓, Sort results ✓, Hide counts
+
+**Output:**
+```
+Fruit
+Vegetable
+```
+
+##### Case-Sensitive Matching Example
+**Input:**
+```
+The Quick Brown Fox
+the quick brown fox
+THE QUICK BROWN FOX
+```
+
+**Configuration:**
+- Find: `[A-Z][a-z]+`
+- Match mode: All occurrences
+- Options: Case sensitive ✓
+
+**Output:**
+```
+Quick
+Brown
+Fox
+```
+
+#### Common Use Cases
+
+1. **Log File Parsing**: Extract timestamps, error codes, or specific log entries
+2. **Data Extraction**: Extract values from structured text or CSV-like data
+3. **Email/URL Extraction**: Use custom patterns to extract contact information
+4. **Code Analysis**: Extract function names, class names, or code patterns
+5. **Format Conversion**: Extract data from one format to prepare for another
+6. **Data Cleaning**: Extract valid data matching specific patterns
+7. **Report Generation**: Extract key metrics or values from reports
+8. **Text Mining**: Extract specific patterns from large text corpora
+
+#### Technical Implementation
+
+##### TextProcessor Method
+```python
+@staticmethod
+def extract_matches(text, pattern, match_mode="all_per_line", omit_duplicates=False, 
+                   hide_counts=True, sort_results=False, case_sensitive=False):
+    """
+    Extract matches from text using a regex pattern.
+    
+    Args:
+        text: Input text to search
+        pattern: Regex pattern to search for
+        match_mode: "first_per_line" or "all_per_line"
+        omit_duplicates: If True, only return unique matches
+        hide_counts: If True, don't show match counts
+        sort_results: If True, sort the results
+        case_sensitive: If True, perform case-sensitive matching
+    
+    Returns:
+        String containing extracted matches or error message
+    """
+    # Compile regex pattern
+    flags = 0 if case_sensitive else re.IGNORECASE
+    regex = re.compile(pattern, flags)
+    
+    processed_matches = []
+    
+    # Process based on match mode
+    if match_mode == "first_per_line":
+        # Process line by line
+        for line in text.split('\n'):
+            matches = regex.findall(line)
+            if matches:
+                processed_matches.append(process_match(matches[0]))
+    else:
+        # Process entire text
+        matches = regex.findall(text)
+        for match in matches:
+            processed_matches.append(process_match(match))
+    
+    # Apply duplicate removal, sorting, and formatting
+    # ...
+```
+
+##### Algorithm Details
+1. **Pattern Compilation**: Compiles regex pattern once for efficiency
+2. **Mode-Based Processing**: Different logic for line-by-line vs. global matching
+3. **Match Processing**: Handles both simple matches and tuple results from groups
+4. **Duplicate Handling**: Uses Counter for efficient duplicate tracking
+5. **Formatting**: Applies sorting and count display based on options
+
+##### Dependencies
+- **Required**: Python standard library (re, collections.Counter modules)
+- **Optional**: None
+
+##### Performance Considerations
+- **Pattern Compilation**: Regex patterns are compiled for efficient matching
+- **Large Texts**: Handles large text files efficiently
+- **Memory Usage**: Processes matches incrementally to minimize memory use
+- **Line Processing**: First-per-line mode processes one line at a time
+
+#### Best Practices
+
+##### Recommended Usage
+- **Test Patterns**: Test regex patterns in Find & Replace tool first
+- **Match Mode Selection**: Use "first per line" for structured data, "all occurrences" for comprehensive extraction
+- **Pattern Testing**: Validate regex patterns before processing large files
+- **Group Usage**: Use capture groups to extract specific parts of matches
+- **Duplicate Handling**: Use "omit duplicates" when you only need unique values
+
+##### Performance Tips
+- **Specific Patterns**: More specific patterns are faster than broad patterns
+- **Line Mode**: Use "first per line" mode for better performance on structured data
+- **Large Files**: Tool handles large files efficiently with compiled patterns
+- **Simple Patterns**: Simpler patterns are faster than complex nested groups
+
+##### Common Pitfalls
+- **Invalid Regex**: Invalid regex patterns will show error messages
+- **Greedy Matching**: Use `*?` or `+?` for non-greedy matching when needed
+- **Line Boundaries**: "First per line" mode respects line boundaries
+- **Group Tuples**: Patterns with groups return tuples joined with ` | `
+- **Case Sensitivity**: Remember to set case sensitivity for case-dependent patterns
+
+#### Error Handling
+
+##### No Pattern Entered
+**Output:**
+```
+Please enter a regex pattern in the Find field.
+```
+
+##### Invalid Regex Pattern
+**Output:**
+```
+Regex Error: [error message]
+
+Please check your regex pattern syntax.
+```
+
+##### No Matches Found
+**Output:**
+```
+No matches found for the regex pattern.
+```
+
+#### Regex Pattern Tips
+
+##### Common Patterns
+- **Numbers**: `\d+` (one or more digits)
+- **Words**: `\w+` (word characters)
+- **Email**: `[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}`
+- **URL**: `https?://[^\s<>"]+`
+- **IP Address**: `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`
+- **Date**: `\d{4}-\d{2}-\d{2}` (YYYY-MM-DD format)
+
+##### Capture Groups
+- Use parentheses `()` to create capture groups
+- Multiple groups return tuples: `(\w+)@(\w+\.\w+)` → `('user', 'domain.com')`
+- Groups are joined with ` | ` in output
+
+##### Special Characters
+- **Escape Special**: Use `\` to escape special regex characters
+- **Character Classes**: `[A-Za-z]` for letters, `[0-9]` for digits
+- **Quantifiers**: `*` (zero or more), `+` (one or more), `?` (zero or one)
+- **Anchors**: `^` (start), `$` (end), `\b` (word boundary)
+
+#### Integration with Other Tools
+
+##### Workflow Examples
+1. **Extract → Sort → Format**:
+   - Regex Extractor → Alphabetical Sorter → Case Tool
+
+2. **Extract → Deduplicate → Count**:
+   - Regex Extractor (with omit duplicates) → Word Frequency Counter
+
+3. **Extract → Replace → Format**:
+   - Regex Extractor → Find & Replace Text → Case Tool
+
+4. **Extract → Validate → Process**:
+   - Regex Extractor → URL Parser → Find & Replace (for cleaning)
+
+#### Related Tools
+
+- **Find & Replace Text**: Test regex patterns and perform replacements
+- **Email Extraction Tool**: Extract emails using predefined patterns
+- **URL and Link Extractor**: Extract URLs using predefined patterns
+- **Alphabetical Sorter**: Sort extracted results
+- **Word Frequency Counter**: Analyze frequency of extracted patterns
+
+#### See Also
+- [Find & Replace Text Documentation](#find--replace-text)
+- [Email Extraction Tool Documentation](#email-extraction-tool)
+- [URL and Link Extractor Documentation](#url-and-link-extractor)
+- [Data Extraction Tools Overview](#data-extraction-tools-5-tools)
+- [Regex Pattern Library](core/regex_pattern_library.py)
 
 ### HTML Extraction Tool
 
@@ -4915,7 +5275,7 @@ class HTMLExtractionTool:
 - **Case Tool**: Format extracted text content
 
 #### See Also
-- [Data Extraction Tools Overview](#data-extraction-tools-3-tools)
+- [Data Extraction Tools Overview](#data-extraction-tools-5-tools)
 - [URL and Link Extractor Documentation](#url-and-link-extractor)
 - [Web Content Processing Best Practices](#common-use-cases)
 

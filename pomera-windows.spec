@@ -42,6 +42,7 @@ a = Analysis(
         'tools.translator_tools',
         'tools.url_link_extractor',
         'tools.url_parser',
+        'tools.regex_extractor',
         'tools.word_frequency_counter',
         # Core modules
         'core',

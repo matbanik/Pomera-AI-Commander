@@ -89,6 +89,14 @@ except ImportError:
     URL_LINK_EXTRACTOR_MODULE_AVAILABLE = False
     print("URL and Link Extractor module not available")
 
+# Regex Extractor module import
+try:
+    from tools.regex_extractor import RegexExtractor
+    REGEX_EXTRACTOR_MODULE_AVAILABLE = True
+except ImportError:
+    REGEX_EXTRACTOR_MODULE_AVAILABLE = False
+    print("Regex Extractor module not available")
+
 # URL Parser module import
 try:
     from tools.url_parser import URLParser
@@ -397,7 +405,33 @@ class PromeraAISettingsManager:
             
             self.app.save_settings()
         
-        return self.app.settings.get("pattern_library", [])
+        # Ensure the 7 most common extraction patterns exist
+        pattern_library = self.app.settings.get("pattern_library", [])
+        common_extraction_patterns = [
+            {"find": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "replace": "", "purpose": "Extract Email Addresses - Finds email addresses anywhere in text"},
+            {"find": r"https?://[^\s/$.?#].[^\s]*", "replace": "", "purpose": "Extract URLs - Finds HTTP/HTTPS URLs in text"},
+            {"find": r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "replace": "", "purpose": "Extract IP Addresses - Finds IPv4 addresses (xxx.xxx.xxx.xxx)"},
+            {"find": r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}", "replace": "", "purpose": "Extract Phone Numbers - Finds phone numbers in various formats"},
+            {"find": r"\d+", "replace": "", "purpose": "Extract Numbers - Finds sequences of digits"},
+            {"find": r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "replace": "", "purpose": "Extract UUIDs/GUIDs - Finds UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"},
+            {"find": r"\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?", "replace": "", "purpose": "Extract Dates/Timestamps - Finds dates in YYYY-MM-DD format with optional time"}
+        ]
+        
+        # Check if patterns already exist and add missing ones
+        existing_patterns = {p.get("find", "") for p in pattern_library}
+        added_count = 0
+        for pattern in common_extraction_patterns:
+            if pattern["find"] not in existing_patterns:
+                pattern_library.append(pattern)
+                existing_patterns.add(pattern["find"])
+                added_count += 1
+        
+        if added_count > 0:
+            self.app.settings["pattern_library"] = pattern_library
+            self.app.save_settings()
+            self.app.logger.info(f"Added {added_count} common extraction patterns to pattern library")
+        
+        return pattern_library
 
 
 class DialogSettingsAdapter:
@@ -819,6 +853,7 @@ class PromeraAIApp(tk.Tk):
                 "Sorter Tools": SorterTools().get_default_settings() if SORTER_TOOLS_MODULE_AVAILABLE else {"Number Sorter": {"order": "ascending"}, "Alphabetical Sorter": {"order": "ascending", "unique_only": False, "trim": False}},
                 "URL and Link Extractor": URLLinkExtractor().get_default_settings() if URL_LINK_EXTRACTOR_MODULE_AVAILABLE else {"extract_href": False, "extract_https": False, "extract_any_protocol": False, "extract_markdown": False, "filter_text": ""},
                 "Email Extraction Tool": EmailExtractionTool().get_default_settings() if EMAIL_EXTRACTION_MODULE_AVAILABLE else {"omit_duplicates": False, "hide_counts": True, "sort_emails": False, "only_domain": False},
+                "Regex Extractor": RegexExtractor().get_default_settings() if REGEX_EXTRACTOR_MODULE_AVAILABLE else {"pattern": "", "match_mode": "all_per_line", "omit_duplicates": False, "hide_counts": True, "sort_results": False, "case_sensitive": False},
                 "Email Header Analyzer": EmailHeaderAnalyzer().get_default_settings() if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE else {"show_timestamps": True, "show_delays": True, "show_authentication": True, "show_spam_score": True},
                 "Folder File Reporter": {
                     "last_input_folder": "", "last_output_folder": "",
@@ -1176,6 +1211,16 @@ class PromeraAIApp(tk.Tk):
             self.url_link_extractor = URLLinkExtractor()
             self.logger.info("URL and Link Extractor module initialized")
         else:
+            self.url_link_extractor = None
+            self.logger.warning("URL and Link Extractor module not available")
+        
+        # Initialize Regex Extractor
+        if REGEX_EXTRACTOR_MODULE_AVAILABLE:
+            self.regex_extractor = RegexExtractor()
+            self.logger.info("Regex Extractor module initialized")
+        else:
+            self.regex_extractor = None
+            self.logger.warning("Regex Extractor module not available")
             self.url_link_extractor = None
             self.logger.warning("URL and Link Extractor module not available")
             
@@ -2848,7 +2893,7 @@ class PromeraAIApp(tk.Tk):
         self.tool_options = [
             "AI Tools", "Base64 Encoder/Decoder", "Case Tool", "Cron Tool", "Diff Viewer",
             "Email Extraction Tool", "Email Header Analyzer", "Find & Replace Text", "Folder File Reporter", "Generator Tools",
-            "HTML Extraction Tool", "JSON/XML Tool", "Sorter Tools", "Translator Tools",
+            "HTML Extraction Tool", "JSON/XML Tool", "Regex Extractor", "Sorter Tools", "Translator Tools",
             "URL Parser", "URL and Link Extractor", "Word Frequency Counter"
         ]
         self.filtered_tool_options = self.tool_options.copy()
@@ -3606,6 +3651,27 @@ class PromeraAIApp(tk.Tk):
                 )
             else:
                 ttk.Label(self.tool_settings_frame, text="Email Extraction Tool module not available").pack()
+        elif tool_name == "Regex Extractor":
+            if REGEX_EXTRACTOR_MODULE_AVAILABLE and self.regex_extractor:
+                tool_settings = self.settings["tool_settings"].get("Regex Extractor", {
+                    "pattern": "",
+                    "match_mode": "all_per_line",
+                    "omit_duplicates": False,
+                    "hide_counts": True,
+                    "sort_results": False,
+                    "case_sensitive": False
+                })
+                # Create settings manager adapter for pattern library access
+                settings_manager = PromeraAISettingsManager(self)
+                self.regex_extractor_ui = self.regex_extractor.create_ui(
+                    self.tool_settings_frame, 
+                    tool_settings,
+                    on_setting_change_callback=self.on_tool_setting_change,
+                    apply_tool_callback=self.apply_tool,
+                    settings_manager=settings_manager
+                )
+            else:
+                ttk.Label(self.tool_settings_frame, text="Regex Extractor module not available").pack()
         elif tool_name == "Email Header Analyzer":
             if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and self.email_header_analyzer:
                 tool_settings = self.settings["tool_settings"].get("Email Header Analyzer", {
@@ -4014,6 +4080,10 @@ class PromeraAIApp(tk.Tk):
         elif tool_name == "Email Extraction Tool":
             if EMAIL_EXTRACTION_MODULE_AVAILABLE and hasattr(self, 'email_extraction_ui'):
                 current_settings = self.email_extraction_ui.get_current_settings()
+                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Regex Extractor":
+            if REGEX_EXTRACTOR_MODULE_AVAILABLE and hasattr(self, 'regex_extractor_ui'):
+                current_settings = self.regex_extractor_ui.get_current_settings()
                 self.settings["tool_settings"][tool_name].update(current_settings)
         elif tool_name == "Email Header Analyzer":
             if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and hasattr(self, 'email_header_analyzer_ui'):
@@ -5002,6 +5072,12 @@ class PromeraAIApp(tk.Tk):
                 return self.url_link_extractor.process_text(input_text, settings)
             else:
                 return "URL and Link Extractor module not available"
+        elif tool_name == "Regex Extractor":
+            if REGEX_EXTRACTOR_MODULE_AVAILABLE and self.regex_extractor:
+                settings = self.settings["tool_settings"]["Regex Extractor"]
+                return self.regex_extractor.process_text(input_text, settings)
+            else:
+                return "Regex Extractor module not available"
         elif tool_name == "Word Frequency Counter":
             if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE and self.word_frequency_counter:
                 settings = self.settings["tool_settings"].get("Word Frequency Counter", {})
