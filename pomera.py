@@ -191,6 +191,14 @@ except ImportError:
     LIST_COMPARATOR_MODULE_AVAILABLE = False
     print("List Comparator module not available")
 
+# Notes Widget module import
+try:
+    from tools.notes_widget import NotesWidget
+    NOTES_WIDGET_MODULE_AVAILABLE = True
+except ImportError:
+    NOTES_WIDGET_MODULE_AVAILABLE = False
+    print("Notes Widget module not available")
+
 # Folder File Reporter module import
 try:
     from tools.folder_file_reporter_adapter import FolderFileReporterAdapter
@@ -778,6 +786,10 @@ class PromeraAIApp(tk.Tk):
         # Set up cURL tool keyboard shortcut
         if CURL_TOOL_MODULE_AVAILABLE:
             self.bind_all("<Control-u>", lambda e: self.open_curl_tool_window())
+        
+        # Set up Notes widget keyboard shortcut (Ctrl+S for Save as Note)
+        if NOTES_WIDGET_MODULE_AVAILABLE:
+            self.bind_all("<Control-s>", lambda e: self.save_as_note())
         
         # Set up window focus and minimize event handlers for visibility-aware updates
         if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
@@ -1684,6 +1696,9 @@ class PromeraAIApp(tk.Tk):
         
         # Initialize List Comparator window as None (will be created when needed)
         self.list_comparator_window = None
+        
+        # Initialize Notes widget window as None (will be created when needed)
+        self.notes_window = None
 
     def get_system_fonts(self):
         """Get list of available system fonts."""
@@ -2531,6 +2546,12 @@ class PromeraAIApp(tk.Tk):
             backup_menu.add_command(label="Cleanup Old Backups", command=self.cleanup_old_backups_dialog)
         
         file_menu.add_separator()
+        
+        # Add Save as Note if Notes widget is available
+        if NOTES_WIDGET_MODULE_AVAILABLE:
+            file_menu.add_command(label="Save as Note", command=self.save_as_note, accelerator="Ctrl+S")
+            file_menu.add_separator()
+        
         file_menu.add_command(label="Exit", command=self.on_closing)
         
         # Settings Menu
@@ -2564,6 +2585,13 @@ class PromeraAIApp(tk.Tk):
             label="List Comparator",
             command=self.open_list_comparator_window
         )
+        
+        # Add Notes widget if available
+        if NOTES_WIDGET_MODULE_AVAILABLE:
+            widgets_menu.add_command(
+                label="Notes",
+                command=self.open_notes_widget
+            )
         
         # Help Menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -3327,6 +3355,132 @@ class PromeraAIApp(tk.Tk):
             self.list_comparator_window.protocol("WM_DELETE_WINDOW", on_comparator_window_close)
             
             self.logger.info("List Comparator opened successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create List Comparator: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to open List Comparator: {str(e)}")
+            else:
+                messagebox.showerror("Error", f"Failed to open List Comparator: {str(e)}")
+            if self.list_comparator_window:
+                self.list_comparator_window.destroy()
+            self.list_comparator_window = None
+    
+    def open_notes_widget(self):
+        """Opens the Notes widget in a separate window."""
+        if not NOTES_WIDGET_MODULE_AVAILABLE:
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", "Notes Widget module is not available.")
+            else:
+                messagebox.showerror("Error", "Notes Widget module is not available.")
+            return
+        
+        if self.notes_window is not None and self.notes_window.winfo_exists():
+            self.notes_window.lift()
+            return
+        
+        self.notes_window = tk.Toplevel(self)
+        self.notes_window.title("Notes")
+        self.notes_window.geometry("1200x800")
+        
+        # Configure window grid
+        self.notes_window.grid_columnconfigure(0, weight=1)
+        self.notes_window.grid_rowconfigure(0, weight=1)
+        
+        try:
+            # Create the Notes widget with callback to send to input tabs
+            self.notes_widget = NotesWidget(
+                self.notes_window,
+                logger=self.logger,
+                send_to_input_callback=self.send_content_to_input_tab,
+                dialog_manager=self.dialog_manager
+            )
+            
+            # Add context menus to Notes widget if available
+            if CONTEXT_MENU_AVAILABLE:
+                add_context_menu_to_children(self.notes_window)
+                self.logger.debug("Added context menus to Notes widget")
+            
+            # Handle window closing
+            def on_notes_window_close():
+                self.notes_window.destroy()
+                self.notes_window = None
+                if hasattr(self, 'notes_widget') and hasattr(self.notes_widget, 'search_executor'):
+                    self.notes_widget.search_executor.shutdown(wait=False)
+            
+            self.notes_window.protocol("WM_DELETE_WINDOW", on_notes_window_close)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create Notes Widget: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to open Notes Widget: {str(e)}")
+            else:
+                messagebox.showerror("Error", f"Failed to open Notes Widget: {str(e)}")
+            if self.notes_window:
+                self.notes_window.destroy()
+            self.notes_window = None
+    
+    def save_as_note(self, event=None):
+        """Save active INPUT and OUTPUT tabs as a note."""
+        if not NOTES_WIDGET_MODULE_AVAILABLE:
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", "Notes Widget module is not available.")
+            else:
+                messagebox.showerror("Error", "Notes Widget module is not available.")
+            return
+        
+        try:
+            # Get active tab indices
+            input_index = self.input_notebook.index(self.input_notebook.select())
+            output_index = self.output_notebook.index(self.output_notebook.select())
+            
+            # Get content from active tabs
+            input_content = self.input_tabs[input_index].text.get("1.0", tk.END).strip()
+            output_content = self.output_tabs[output_index].text.get("1.0", tk.END).strip()
+            
+            # Generate title from first 144 chars of input (or output if input empty)
+            title_source = input_content or output_content
+            if title_source:
+                title = title_source[:144].replace('\n', ' ').strip()
+            else:
+                title = "Untitled Note"
+            
+            # Create a temporary NotesWidget instance to save the note
+            # We'll use a temporary window that we'll destroy immediately
+            temp_window = tk.Toplevel(self)
+            temp_window.withdraw()  # Hide the window
+            
+            notes_widget = NotesWidget(
+                temp_window,
+                logger=self.logger,
+                send_to_input_callback=self.send_content_to_input_tab,
+                dialog_manager=self.dialog_manager
+            )
+            
+            # Save the note
+            note_id = notes_widget.save_note(title, input_content, output_content)
+            
+            # Clean up
+            temp_window.destroy()
+            
+            if note_id:
+                if self.dialog_manager:
+                    self.dialog_manager.show_info("Success", f"Note saved successfully (ID: {note_id})")
+                else:
+                    messagebox.showinfo("Success", f"Note saved successfully (ID: {note_id})")
+                self.logger.info(f"Saved note with ID {note_id} from tabs {input_index+1} and {output_index+1}")
+            else:
+                if self.dialog_manager:
+                    self.dialog_manager.show_error("Error", "Failed to save note.")
+                else:
+                    messagebox.showerror("Error", "Failed to save note.")
+                    
+        except Exception as e:
+            self.logger.error(f"Error saving as note: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to save note: {str(e)}")
+            else:
+                messagebox.showerror("Error", f"Failed to save note: {str(e)}")
             
         except Exception as e:
             self.logger.error(f"Failed to open List Comparator: {e}")
