@@ -137,6 +137,14 @@ except ImportError:
     GENERATOR_TOOLS_MODULE_AVAILABLE = False
     print("Generator Tools module not available")
 
+# Extraction Tools module import
+try:
+    from tools.extraction_tools import ExtractionTools
+    EXTRACTION_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    EXTRACTION_TOOLS_MODULE_AVAILABLE = False
+    print("Extraction Tools module not available")
+
 # Base64 Tools module import
 try:
     from tools.base64_tools import Base64Tools, Base64ToolsWidget
@@ -682,9 +690,12 @@ class PromeraAIApp(tk.Tk):
 
         self.manual_process_tools = [
             "Case Tool", "Find & Replace Text", "AI Tools",
-            "Email Extraction Tool", "Email Header Analyzer", "URL and Link Extractor", "Folder File Reporter", "Generator Tools", "Sorter Tools",
-            "Word Frequency Counter", "URL Parser",
-            "Base64 Encoder/Decoder", "Translator Tools", "Diff Viewer", "HTML Extraction Tool"
+            "Email Header Analyzer", "Extraction Tools", "Folder File Reporter", "Generator Tools", "Sorter Tools",
+            "URL Parser",
+            "Base64 Encoder/Decoder", "Translator Tools", "Diff Viewer",
+            "Line Tools", "Whitespace Tools", "Text Statistics", "Markdown Tools",
+            "String Escape Tool", "Number Base Converter", "Text Wrapper",
+            "Column Tools", "Timestamp Converter"
         ]
 
         # CORRECTED ORDER: Load settings BEFORE setting up logging
@@ -1389,6 +1400,13 @@ class PromeraAIApp(tk.Tk):
             self.logger.info("Generator Tools module initialized")
         else:
             self.generator_tools = None
+
+        # Initialize Extraction Tools
+        if EXTRACTION_TOOLS_MODULE_AVAILABLE:
+            self.extraction_tools = ExtractionTools()
+            self.logger.info("Extraction Tools module initialized")
+        else:
+            self.extraction_tools = None
         
         # Initialize Base64 Tools
         if BASE64_TOOLS_MODULE_AVAILABLE:
@@ -3128,14 +3146,13 @@ class PromeraAIApp(tk.Tk):
         self.tool_var = tk.StringVar(value=self.settings.get("selected_tool", "Case Tool"))
         
         self.tool_options = [
-            "AI Tools", "ASCII Art Generator", "Base64 Encoder/Decoder", "Case Tool", "Column Tools",
-            "Cron Tool", "Diff Viewer", "Email Extraction Tool", "Email Header Analyzer",
-            "Find & Replace Text", "Folder File Reporter", "Generator Tools", "Hash Generator",
-            "HTML Extraction Tool", "JSON/XML Tool", "Line Tools", "Markdown Tools",
-            "Number Base Converter", "Regex Extractor", "Slug Generator", "Sorter Tools",
+            "AI Tools", "Base64 Encoder/Decoder", "Case Tool", "Column Tools",
+            "Cron Tool", "Diff Viewer", "Email Header Analyzer", "Extraction Tools",
+            "Find & Replace Text", "Folder File Reporter", "Generator Tools",
+            "JSON/XML Tool", "Line Tools", "Markdown Tools",
+            "Number Base Converter", "Sorter Tools",
             "String Escape Tool", "Text Statistics", "Text Wrapper", "Timestamp Converter",
-            "Translator Tools", "URL Parser", "URL and Link Extractor", "Whitespace Tools",
-            "Word Frequency Counter"
+            "Translator Tools", "URL Parser", "Whitespace Tools"
         ]
         self.filtered_tool_options = self.tool_options.copy()
         
@@ -3813,8 +3830,8 @@ class PromeraAIApp(tk.Tk):
             self.create_jsonxml_tool_widget(self.tool_settings_frame)
         elif tool_name == "Cron Tool":
             self.create_cron_tool_widget(self.tool_settings_frame)
-        elif tool_name == "HTML Extraction Tool":
-            self.create_html_extraction_tool_widget(self.tool_settings_frame)
+        elif tool_name == "Extraction Tools":
+            self.create_extraction_tools_widget(self.tool_settings_frame)
         elif tool_name == "Sorter Tools":
             self.create_sorter_tools_widget(self.tool_settings_frame)
         elif tool_name == "Find & Replace Text":
@@ -3835,23 +3852,6 @@ class PromeraAIApp(tk.Tk):
                 ttk.Label(self.tool_settings_frame, text="Find & Replace module not available").pack()
         elif tool_name == "Generator Tools":
             self.create_generator_tools_widget(self.tool_settings_frame)
-        elif tool_name == "URL and Link Extractor":
-            if URL_LINK_EXTRACTOR_MODULE_AVAILABLE and self.url_link_extractor:
-                tool_settings = self.settings["tool_settings"].get("URL and Link Extractor", {
-                    "extract_href": False,
-                    "extract_https": False,
-                    "extract_any_protocol": False,
-                    "extract_markdown": False,
-                    "filter_text": ""
-                })
-                self.url_link_extractor_ui = self.url_link_extractor.create_ui(
-                    self.tool_settings_frame, 
-                    tool_settings,
-                    on_setting_change_callback=self.on_tool_setting_change,
-                    apply_tool_callback=self.apply_tool
-                )
-            else:
-                ttk.Label(self.tool_settings_frame, text="URL and Link Extractor module not available").pack()
         elif tool_name == "URL Parser":
             if URL_PARSER_MODULE_AVAILABLE and self.url_parser:
                 tool_settings = self.settings["tool_settings"].get("URL Parser", {
@@ -3892,27 +3892,6 @@ class PromeraAIApp(tk.Tk):
                 )
             else:
                 ttk.Label(self.tool_settings_frame, text="Email Extraction Tool module not available").pack()
-        elif tool_name == "Regex Extractor":
-            if REGEX_EXTRACTOR_MODULE_AVAILABLE and self.regex_extractor:
-                tool_settings = self.settings["tool_settings"].get("Regex Extractor", {
-                    "pattern": "",
-                    "match_mode": "all_per_line",
-                    "omit_duplicates": False,
-                    "hide_counts": True,
-                    "sort_results": False,
-                    "case_sensitive": False
-                })
-                # Create settings manager adapter for pattern library access
-                settings_manager = PromeraAISettingsManager(self)
-                self.regex_extractor_ui = self.regex_extractor.create_ui(
-                    self.tool_settings_frame, 
-                    tool_settings,
-                    on_setting_change_callback=self.on_tool_setting_change,
-                    apply_tool_callback=self.apply_tool,
-                    settings_manager=settings_manager
-                )
-            else:
-                ttk.Label(self.tool_settings_frame, text="Regex Extractor module not available").pack()
         elif tool_name == "Email Header Analyzer":
             if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and self.email_header_analyzer:
                 tool_settings = self.settings["tool_settings"].get("Email Header Analyzer", {
@@ -3939,17 +3918,26 @@ class PromeraAIApp(tk.Tk):
                 self.folder_file_reporter_ui = self.folder_file_reporter.create_ui(self.tool_settings_frame)
             else:
                 ttk.Label(self.tool_settings_frame, text="Folder File Reporter module not available").pack()
-        elif tool_name == "Word Frequency Counter":
-            if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE and self.word_frequency_counter:
-                tool_settings = self.settings["tool_settings"].get("Word Frequency Counter", {})
-                self.word_frequency_counter_ui = self.word_frequency_counter.create_ui(
-                    self.tool_settings_frame, 
-                    tool_settings,
-                    on_setting_change_callback=self.on_tool_setting_change,
-                    apply_tool_callback=self.apply_tool
-                )
-            else:
-                ttk.Label(self.tool_settings_frame, text="Word Frequency Counter module not available").pack()
+        elif tool_name == "Line Tools":
+            self.create_line_tools_widget(self.tool_settings_frame)
+        elif tool_name == "Whitespace Tools":
+            self.create_whitespace_tools_widget(self.tool_settings_frame)
+        elif tool_name == "Text Statistics":
+            self.create_text_statistics_widget(self.tool_settings_frame)
+        elif tool_name == "Markdown Tools":
+            self.create_markdown_tools_widget(self.tool_settings_frame)
+        elif tool_name == "String Escape Tool":
+            self.create_string_escape_tool_widget(self.tool_settings_frame)
+        elif tool_name == "Number Base Converter":
+            self.create_number_base_converter_widget(self.tool_settings_frame)
+        elif tool_name == "Text Wrapper":
+            self.create_text_wrapper_widget(self.tool_settings_frame)
+        elif tool_name == "Slug Generator":
+            self.create_slug_generator_widget(self.tool_settings_frame)
+        elif tool_name == "Column Tools":
+            self.create_column_tools_widget(self.tool_settings_frame)
+        elif tool_name == "Timestamp Converter":
+            self.create_timestamp_converter_widget(self.tool_settings_frame)
 
 
 
@@ -3988,11 +3976,21 @@ class PromeraAIApp(tk.Tk):
         if not GENERATOR_TOOLS_MODULE_AVAILABLE:
             ttk.Label(parent, text="Generator Tools module not available").pack(padx=10, pady=10)
             return
-        
+
         # Create and pack the generator tools widget
         self.generator_tools_widget = GeneratorToolsWidget(self.generator_tools)
         self.generator_tools_widget_frame = self.generator_tools_widget.create_widget(parent, self)
         self.generator_tools_widget_frame.pack(fill=tk.BOTH, expand=True)
+
+    def create_extraction_tools_widget(self, parent):
+        """Creates the Extraction Tools tabbed interface widget."""
+        if not EXTRACTION_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Extraction Tools module not available").pack(padx=10, pady=10)
+            return
+
+        # Create and pack the extraction tools widget
+        self.extraction_tools_widget = self.extraction_tools.create_widget(parent, self)
+        self.extraction_tools_widget.pack(fill=tk.BOTH, expand=True)
 
     def create_translator_tools_widget(self, parent):
         """Creates the Translator Tools tabbed interface widget."""
@@ -4265,6 +4263,86 @@ class PromeraAIApp(tk.Tk):
             else:
                 messagebox.showerror("Error", error_msg)
 
+    def create_line_tools_widget(self, parent):
+        """Creates the Line Tools widget."""
+        if not LINE_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Line Tools module not available").pack(padx=10, pady=10)
+            return
+        self.line_tools_widget = self.line_tools.create_widget(parent, self)
+        self.line_tools_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_whitespace_tools_widget(self, parent):
+        """Creates the Whitespace Tools widget."""
+        if not WHITESPACE_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Whitespace Tools module not available").pack(padx=10, pady=10)
+            return
+        self.whitespace_tools_widget = self.whitespace_tools.create_widget(parent, self)
+        self.whitespace_tools_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_text_statistics_widget(self, parent):
+        """Creates the Text Statistics widget."""
+        if not TEXT_STATISTICS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Text Statistics module not available").pack(padx=10, pady=10)
+            return
+        self.text_statistics_widget = self.text_statistics.create_widget(parent, self)
+        self.text_statistics_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_hash_generator_widget(self, parent):
+        """Creates the Hash Generator widget."""
+        if not HASH_GENERATOR_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Hash Generator module not available").pack(padx=10, pady=10)
+            return
+        self.hash_generator_widget = self.hash_generator.create_widget(parent, self)
+        self.hash_generator_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_markdown_tools_widget(self, parent):
+        """Creates the Markdown Tools widget."""
+        if not MARKDOWN_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Markdown Tools module not available").pack(padx=10, pady=10)
+            return
+        self.markdown_tools_widget = self.markdown_tools.create_widget(parent, self)
+        self.markdown_tools_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_string_escape_tool_widget(self, parent):
+        """Creates the String Escape Tool widget."""
+        if not STRING_ESCAPE_TOOL_MODULE_AVAILABLE:
+            ttk.Label(parent, text="String Escape Tool module not available").pack(padx=10, pady=10)
+            return
+        self.string_escape_tool_widget = self.string_escape_tool.create_widget(parent, self)
+        self.string_escape_tool_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_number_base_converter_widget(self, parent):
+        """Creates the Number Base Converter widget."""
+        if not NUMBER_BASE_CONVERTER_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Number Base Converter module not available").pack(padx=10, pady=10)
+            return
+        self.number_base_converter_widget = self.number_base_converter.create_widget(parent, self)
+        self.number_base_converter_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_text_wrapper_widget(self, parent):
+        """Creates the Text Wrapper widget."""
+        if not TEXT_WRAPPER_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Text Wrapper module not available").pack(padx=10, pady=10)
+            return
+        self.text_wrapper_widget = self.text_wrapper.create_widget(parent, self)
+        self.text_wrapper_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_column_tools_widget(self, parent):
+        """Creates the Column Tools widget."""
+        if not COLUMN_TOOLS_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Column Tools module not available").pack(padx=10, pady=10)
+            return
+        self.column_tools_widget = self.column_tools.create_widget(parent, self)
+        self.column_tools_widget.pack(fill=tk.BOTH, expand=True)
+
+    def create_timestamp_converter_widget(self, parent):
+        """Creates the Timestamp Converter widget."""
+        if not TIMESTAMP_CONVERTER_MODULE_AVAILABLE:
+            ttk.Label(parent, text="Timestamp Converter module not available").pack(padx=10, pady=10)
+            return
+        self.timestamp_converter_widget = self.timestamp_converter.create_widget(parent, self)
+        self.timestamp_converter_widget.pack(fill=tk.BOTH, expand=True)
+
     def on_tool_setting_change(self, *args):
         """
         Handles changes in tool-specific settings.
@@ -4297,6 +4375,9 @@ class PromeraAIApp(tk.Tk):
             if hasattr(self, 'cron_tool') and self.cron_tool:
                 current_settings = self.cron_tool.get_settings()
                 self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Extraction Tools":
+            # Settings are handled by the individual extraction tool widgets
+            pass
         elif tool_name == "HTML Extraction Tool":
             # Settings are handled by the on_html_tool_setting_change method
             pass
@@ -4314,18 +4395,9 @@ class PromeraAIApp(tk.Tk):
         elif tool_name == "Generator Tools":
             # Settings are handled by the GeneratorToolsWidget itself
             pass
-        elif tool_name == "URL and Link Extractor":
-            if URL_LINK_EXTRACTOR_MODULE_AVAILABLE and hasattr(self, 'url_link_extractor_ui'):
-                current_settings = self.url_link_extractor_ui.get_current_settings()
-                self.settings["tool_settings"][tool_name].update(current_settings)
-        elif tool_name == "Email Extraction Tool":
-            if EMAIL_EXTRACTION_MODULE_AVAILABLE and hasattr(self, 'email_extraction_ui'):
-                current_settings = self.email_extraction_ui.get_current_settings()
-                self.settings["tool_settings"][tool_name].update(current_settings)
-        elif tool_name == "Regex Extractor":
-            if REGEX_EXTRACTOR_MODULE_AVAILABLE and hasattr(self, 'regex_extractor_ui'):
-                current_settings = self.regex_extractor_ui.get_current_settings()
-                self.settings["tool_settings"][tool_name].update(current_settings)
+        elif tool_name == "Extraction Tools":
+            # Settings are handled by the individual extraction tool widgets
+            pass
         elif tool_name == "Email Header Analyzer":
             if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and hasattr(self, 'email_header_analyzer_ui'):
                 current_settings = self.email_header_analyzer_ui.get_current_settings()
@@ -5295,12 +5367,9 @@ class PromeraAIApp(tk.Tk):
                 return self.find_replace_widget.replace_all()
             else:
                 return "Find & Replace module not available"
-        elif tool_name == "Email Extraction Tool":
-            if EMAIL_EXTRACTION_MODULE_AVAILABLE and self.email_extraction_tool:
-                settings = self.settings["tool_settings"]["Email Extraction Tool"]
-                return self.email_extraction_tool.process_text(input_text, settings)
-            else:
-                return "Email Extraction Tool module not available"
+        elif tool_name == "Extraction Tools":
+            # Extraction Tools is a manual tool - processing handled by individual tool widgets
+            return "Extraction Tools processing handled by widget interface"
         elif tool_name == "Email Header Analyzer":
             if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and self.email_header_analyzer:
                 settings = self.settings["tool_settings"]["Email Header Analyzer"]
@@ -5343,12 +5412,6 @@ class PromeraAIApp(tk.Tk):
                 return "Cron Tool processing handled by widget interface"
             else:
                 return "Cron Tool module not available"
-        elif tool_name == "HTML Extraction Tool":
-            if HTML_EXTRACTION_TOOL_MODULE_AVAILABLE and self.html_extraction_tool:
-                settings = self.settings["tool_settings"]["HTML Extraction Tool"]
-                return self.html_extraction_tool.process_text(input_text, settings)
-            else:
-                return "HTML Extraction Tool module not available"
         else: 
             return f"Unknown tool: {tool_name}"
 

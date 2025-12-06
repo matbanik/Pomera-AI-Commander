@@ -36,16 +36,16 @@ The application is built around several core components:
 
 ### Available Tools Overview
 
-The application includes **20 primary tools** organized into 6 categories:
+The application includes **30+ primary tools** organized into 6 categories:
 
 | Category | Tool Count | Examples |
 |----------|------------|----------|
-| Text Transformation | 4 | Case Tool, Find & Replace, Sorters |
+| Text Transformation | 8 | Case Tool, Find & Replace, Sorters, Line Tools, Whitespace Tools, Text Wrapper |
 | AI Integration | 1 | Multi-provider AI Tools Widget |
-| Data Extraction | 4 | Email Extractor, URL Extractor, Header Analyzer, HTML Extractor |
-| Encoding/Decoding | 3 | Base64, Binary, Morse Code |
-| Analysis & Comparison | 2 | Diff Viewer, Word Frequency |
-| Utility | 6 | Cron Tool, cURL Tool, Generator Tools, JSON/XML Tool, Folder File Reporter, URL Parser |
+| Data Extraction | 1 | Extraction Tools (Email, HTML, Regex, URL/Link) |
+| Encoding/Decoding | 5 | Base64, Binary, Morse Code, String Escape, Number Base Converter |
+| Analysis & Comparison | 3 | Diff Viewer, Text Statistics (includes Word Frequency), Column Tools |
+| Utility | 8 | Cron Tool, cURL Tool, Generator Tools, Extraction Tools, JSON/XML Tool, Folder File Reporter, URL Parser, Timestamp Converter |
 
 ### Dialog Configuration System
 
@@ -219,7 +219,7 @@ The core `DialogManager` class provides:
 
 ## Tool Categories
 
-### Text Transformation Tools (4 tools)
+### Text Transformation Tools (8 tools)
 
 Tools for modifying and transforming text content:
 
@@ -247,6 +247,30 @@ Tools for modifying and transforming text content:
   - **Features**: Intelligent number parsing, error handling
   - **Availability**: Always available
 
+- **Line Tools**: Comprehensive line manipulation utilities
+  - **Implementation**: `tools/line_tools.py`
+  - **Features**: Remove duplicates, remove empty lines, add/remove line numbers, reverse lines, shuffle lines
+  - **Options**: Case-sensitive duplicate detection, preserve single empty lines, customizable number formats
+  - **Availability**: Always available
+
+- **Whitespace Tools**: Whitespace manipulation and normalization
+  - **Implementation**: `tools/whitespace_tools.py`
+  - **Features**: Trim lines, remove extra spaces, tabs to spaces conversion, normalize line endings
+  - **Options**: Trim mode (leading/trailing/both), tab size configuration, line ending formats (LF/CRLF/CR)
+  - **Availability**: Always available
+
+- **Text Wrapper**: Text formatting and wrapping utilities
+  - **Implementation**: `tools/text_wrapper.py`
+  - **Features**: Word wrap, text justification, prefix/suffix addition, indent/dedent, quote formatting
+  - **Options**: Configurable width, alignment modes, indent characters (spaces/tabs), quote styles
+  - **Availability**: Always available
+
+- **Markdown Tools**: Markdown processing and manipulation
+  - **Implementation**: `tools/markdown_tools.py`
+  - **Features**: Strip markdown, extract links/headers, table to CSV conversion, table formatting
+  - **Options**: Preserve link text, include images, header format styles, CSV delimiters
+  - **Availability**: Always available
+
 ### AI Integration Tools (1 tool)
 
 AI-powered text processing capabilities:
@@ -258,15 +282,39 @@ AI-powered text processing capabilities:
   - **Configuration**: API key management, service account JSON upload (Vertex AI), model-specific settings
   - **Availability**: Conditional (requires ai_tools.py module and API keys/service account credentials)
 
-### Data Extraction Tools (5 tools)
+### Data Extraction Tools (1 tool group)
 
 Tools for extracting specific data from text:
 
-- **Email Extraction Tool**: Extract email addresses with advanced filtering
+- **Extraction Tools**: Comprehensive extraction utilities in a tabbed interface
+  - **Implementation**: `tools/extraction_tools.py`
+  - **Tabs**: Email Extraction, HTML Extraction, Regex Extractor, URL and Link Extractor
+  - **Features**: Unified interface for all extraction operations
+  - **Availability**: Always available
+  
+  **Email Extraction Tool**: Extract email addresses with advanced filtering
   - **TextProcessor Method**: `extract_emails_advanced()`
   - **Features**: Deduplication, counting, sorting, domain-only extraction
-  - **Options**: Omit duplicates, hide counts, sort results
-  - **Availability**: Always available
+  - **Options**: Omit duplicates, hide counts, sort results, domain-only mode
+  - **Availability**: Always available (within Extraction Tools)
+  
+  **HTML Extraction Tool**: Extract and process HTML content in multiple ways
+  - **TextProcessor Method**: `html_tool.HTMLExtractionTool.process_text()`
+  - **Features**: Visible text extraction, HTML cleaning, element-specific extraction
+  - **Options**: 7 extraction methods, attribute filtering, smart formatting
+  - **Availability**: Always available (within Extraction Tools)
+  
+  **Regex Extractor**: Extract text using custom regex patterns
+  - **TextProcessor Method**: `regex_extractor.RegexExtractor.process_text()`
+  - **Features**: Custom regex patterns, match modes, duplicate handling, pattern library integration
+  - **Options**: First match per line, all occurrences, omit duplicates, sort results, show counts, case-sensitive
+  - **Availability**: Always available (within Extraction Tools)
+  
+  **URL and Link Extractor**: Extract URLs with protocol and format options
+  - **TextProcessor Method**: `extract_urls()`
+  - **Features**: Protocol filtering, markdown support, href extraction
+  - **Options**: HTTPS only, any protocol, markdown links, text filtering
+  - **Availability**: Always available (within Extraction Tools)
 
 - **Email Header Analyzer**: Analyze email headers for routing and authentication
   - **TextProcessor Method**: `analyze_email_headers()`
@@ -274,25 +322,7 @@ Tools for extracting specific data from text:
   - **Analysis**: SPF, DKIM, DMARC authentication, hop analysis
   - **Availability**: Always available
 
-- **URL and Link Extractor**: Extract URLs with protocol and format options
-  - **TextProcessor Method**: `extract_urls()`
-  - **Features**: Protocol filtering, markdown support, href extraction
-  - **Options**: HTTPS only, any protocol, markdown links, text filtering
-  - **Availability**: Always available
-
-- **Regex Extractor**: Extract text using custom regex patterns
-  - **TextProcessor Method**: `regex_extractor.RegexExtractor.process_text()`
-  - **Features**: Custom regex patterns, match modes, duplicate handling
-  - **Options**: First match per line, all occurrences, omit duplicates, sort results, show counts, case-sensitive
-  - **Availability**: Always available
-
-- **HTML Extraction Tool**: Extract and process HTML content in multiple ways
-  - **TextProcessor Method**: `html_tool.HTMLExtractionTool.process_text()`
-  - **Features**: Visible text extraction, HTML cleaning, element-specific extraction
-  - **Options**: 7 extraction methods, attribute filtering, smart formatting
-  - **Availability**: Always available
-
-### Encoding/Decoding Tools (3 tools)
+### Encoding/Decoding Tools (5 tools)
 
 Tools for encoding and decoding text in various formats:
 
@@ -314,7 +344,21 @@ Tools for encoding and decoding text in various formats:
   - **Audio**: Requires PyAudio for sound generation
   - **Availability**: Always available (audio features conditional)
 
-### Analysis & Comparison Tools (2 tools)
+- **String Escape Tool**: Escape/unescape strings in multiple formats
+  - **Implementation**: `tools/string_escape_tool.py`
+  - **Formats**: JSON, HTML, URL, XML, JavaScript, SQL
+  - **Features**: Bidirectional conversion, format-specific options
+  - **Options**: URL form encoding (+ for spaces), case options
+  - **Availability**: Always available
+
+- **Number Base Converter**: Convert numbers between different bases
+  - **Implementation**: `tools/number_base_converter.py`
+  - **Bases**: Binary, Octal, Decimal, Hexadecimal
+  - **Features**: Auto-detect prefixes (0x, 0b, 0o), ASCII code conversion, batch processing
+  - **Options**: Uppercase/lowercase, show/hide prefixes
+  - **Availability**: Always available
+
+### Analysis & Comparison Tools (3 tools)
 
 Tools for analyzing and comparing text:
 
@@ -324,13 +368,21 @@ Tools for analyzing and comparing text:
   - **Algorithms**: Line-by-line, word-by-word, character-by-character
   - **Availability**: Always available
 
-- **Word Frequency Counter**: Statistical word analysis and frequency counting
-  - **TextProcessor Method**: `word_frequency()`
-  - **Features**: Frequency counting, statistical reporting
-  - **Output**: Sorted frequency list with counts and percentages
+- **Text Statistics**: Comprehensive text analysis and statistics
+  - **Implementation**: `tools/text_statistics_tool.py`
+  - **Features**: Character/word/line/sentence/paragraph counts, reading time estimate, unique word count, most frequent words
+  - **Options**: Configurable reading speed (WPM), word frequency display, top N words
+  - **Word Frequency Counter**: Integrated word frequency analysis with detailed reporting
+  - **Output**: Formatted statistics report with optional frequency analysis
   - **Availability**: Always available
 
-### Utility Tools (6 tools)
+- **Column Tools**: CSV and column manipulation utilities
+  - **Implementation**: `tools/column_tools.py`
+  - **Features**: Extract columns, reorder columns, delete columns, transpose, fixed-width conversion
+  - **Options**: Configurable delimiters, quote characters, column indices
+  - **Availability**: Always available
+
+### Utility Tools (8 tools)
 
 General-purpose utility tools:
 
@@ -346,10 +398,41 @@ General-purpose utility tools:
   - **Capabilities**: Request building, response inspection, cURL command import/export
   - **Availability**: Always available
 
-- **Generator Tools**: Text and data generation utilities
+- **Generator Tools**: Text and data generation utilities in a tabbed interface
   - **Implementation**: `tools/generator_tools.py`
-  - **Features**: Strong password generator, repeating text, Lorem Ipsum, UUID/GUID generator, random email generator
-  - **Options**: Configurable formats, character distribution, multiple output types
+  - **Tabs**: Strong Password Generator, Repeating Text Generator, Lorem Ipsum Generator, UUID/GUID Generator, Random Email Generator, ASCII Art Generator, Hash Generator, Slug Generator
+  - **Features**: Unified interface for all generation operations
+  - **Availability**: Always available
+  
+  **Strong Password Generator**: Generate secure passwords with configurable character distribution
+  - **Features**: Customizable length, character percentages, must-include characters
+  - **Options**: Letters/numbers/symbols distribution, included characters
+  
+  **Repeating Text Generator**: Repeat text with custom separators
+  - **Features**: Configurable repeat count, custom separators
+  
+  **Lorem Ipsum Generator**: Generate placeholder text in multiple formats
+  - **Features**: Words/sentences/paragraphs/bytes, plain/HTML/markdown/JSON formats
+  
+  **UUID/GUID Generator**: Generate UUIDs in various formats and versions
+  - **Features**: Versions 1, 3, 4, 5, multiple output formats, name-based UUIDs
+  
+  **Random Email Generator**: Generate random email addresses
+  - **Features**: Realistic name combinations, multiple domains, custom separators
+  
+  **ASCII Art Generator**: Convert text to ASCII art
+  - **Features**: Multiple font styles (standard, banner, block, small), preview
+  
+  **Hash Generator**: Generate cryptographic hashes
+  - **Features**: MD5, SHA-1, SHA-256, SHA-512, CRC32, uppercase/lowercase options
+  
+  **Slug Generator**: Generate URL-friendly slugs
+  - **Features**: Transliteration, separator options, max length, stop word removal
+
+- **Extraction Tools**: Data extraction utilities in a tabbed interface
+  - **Implementation**: `tools/extraction_tools.py`
+  - **Tabs**: Email Extraction, HTML Extraction, Regex Extractor, URL and Link Extractor
+  - **Features**: Unified interface for all extraction operations
   - **Availability**: Always available
 
 - **JSON/XML Tool**: JSON and XML parsing, formatting, validation, and conversion
@@ -370,15 +453,21 @@ General-purpose utility tools:
   - **Components**: Protocol, domain, subdomain, TLD, path, query parameters, fragments
   - **Availability**: Always available
 
+- **Timestamp Converter**: Date and time conversion utilities
+  - **Implementation**: `tools/timestamp_converter.py`
+  - **Features**: Unix timestamp conversion, multiple date formats, relative time display
+  - **Options**: Input/output format selection, UTC/local time, custom formats, relative time
+  - **Availability**: Always available
+
 ## Tool Availability Summary
 
-### Always Available (16 tools)
+### Always Available (30+ tools)
 All core text processing tools are always available without additional dependencies:
-- All Text Transformation Tools (4)
-- All Data Extraction Tools (3)
-- All Encoding/Decoding Tools (3)
-- All Analysis & Comparison Tools (2)
-- All Utility Tools (6)
+- All Text Transformation Tools (8)
+- All Data Extraction Tools (1 group with 4 tools)
+- All Encoding/Decoding Tools (5)
+- All Analysis & Comparison Tools (3)
+- All Utility Tools (8)
 
 ### Conditional Availability (3 features)
 Some tools have enhanced features that require optional dependencies:
@@ -7901,13 +7990,15 @@ Statistics update in real-time as you:
 ---
 ## Word Frequency Counter
 
+**Note**: Word Frequency Counter is now integrated into the **Text Statistics** tool as a dedicated button. The functionality remains the same, but it's accessed through the Text Statistics interface. See [Text Statistics Documentation](#text-statistics) for details.
+
 **Category**: Analysis & Comparison Tools  
-**Availability**: Always Available  
+**Availability**: Always Available (via Text Statistics)  
 **TextProcessor Method**: `word_frequency()`
 
 #### Description
 
-The Word Frequency Counter is a statistical text analysis tool that analyzes word usage patterns in text documents. It counts the occurrence of each word, calculates frequency percentages, and presents results in descending order of frequency, making it invaluable for content analysis, writing improvement, and linguistic research.
+The Word Frequency Counter is a statistical text analysis tool that analyzes word usage patterns in text documents. It counts the occurrence of each word, calculates frequency percentages, and presents results in descending order of frequency, making it invaluable for content analysis, writing improvement, and linguistic research. The tool is now accessible as a button within the Text Statistics tool interface.
 
 #### Key Features
 
@@ -11589,7 +11680,7 @@ CurlToolWidget (UI Layer)
 
 #### Description
 
-Generator Tools is a comprehensive collection of text and data generation utilities designed to streamline common development and testing tasks. The tool provides five specialized generators in a tabbed interface: Strong Password Generator for creating secure passwords with configurable character distribution, Repeating Text Generator for creating patterns and test data, Lorem Ipsum Generator for placeholder content in multiple formats, UUID/GUID Generator for creating unique identifiers in various versions and formats, and Random Email Generator for creating realistic email addresses with customizable domains and formatting.
+Generator Tools is a comprehensive collection of text and data generation utilities designed to streamline common development and testing tasks. The tool provides eight specialized generators in a tabbed interface: Strong Password Generator for creating secure passwords with configurable character distribution, Repeating Text Generator for creating patterns and test data, Lorem Ipsum Generator for placeholder content in multiple formats, UUID/GUID Generator for creating unique identifiers in various versions and formats, Random Email Generator for creating realistic email addresses with customizable domains and formatting, ASCII Art Generator for converting text to ASCII art with multiple font styles, Hash Generator for creating cryptographic hashes (MD5, SHA-1, SHA-256, SHA-512, CRC32), and Slug Generator for creating URL-friendly slugs with transliteration and formatting options.
 
 Each generator features an intuitive interface with real-time configuration options, instant generation capabilities, and settings persistence across sessions. The tool integrates seamlessly with Pomera AI Commander's architecture, storing settings in the centralized settings.json file and supporting the application's dialog management system.
 
@@ -11600,6 +11691,9 @@ Each generator features an intuitive interface with real-time configuration opti
 - **Lorem Ipsum Generator**: Placeholder text generation in multiple types (words, sentences, paragraphs, bytes) and formats (plain, HTML, Markdown, JSON)
 - **UUID/GUID Generator**: Unique identifier generation supporting UUID versions 1, 3, 4, and 5 with multiple output formats
 - **Random Email Generator**: Realistic email address generation with customizable domains and formatting options
+- **ASCII Art Generator**: Text to ASCII art conversion with multiple built-in fonts (standard, banner, block, small)
+- **Hash Generator**: Cryptographic hash generation supporting MD5, SHA-1, SHA-256, SHA-512, and CRC32 algorithms
+- **Slug Generator**: URL-friendly slug generation with transliteration, separator options, and stop word removal
 - **Tabbed Interface**: Organized tabs for each generator type with dedicated controls
 - **Real-time Configuration**: Interactive sliders, dropdowns, and input fields for instant customization
 - **Settings Persistence**: All generator settings saved and restored across sessions
@@ -13021,6 +13115,458 @@ GeneratorTools (Core Logic)
 - **JSON/XML Tool**: Format JSON Lorem Ipsum output
 
 ---
+
+### Extraction Tools
+
+**Category**: Utility Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/extraction_tools.py` - `ExtractionTools` class and `ExtractionToolsWidget` class  
+**Purpose**: Unified interface for data extraction utilities
+
+#### Description
+
+Extraction Tools provides a comprehensive collection of data extraction utilities in a convenient tabbed interface. The tool consolidates four powerful extraction capabilities: Email Extraction for finding email addresses, HTML Extraction for processing HTML content, Regex Extractor for pattern-based extraction, and URL and Link Extractor for finding URLs and links. Each extraction tool maintains its full functionality and settings while being organized in a unified interface.
+
+#### Key Features
+
+- **Tabbed Interface**: Four tabs for different extraction types
+- **Email Extraction**: Advanced email address extraction with filtering options
+- **HTML Extraction**: Multiple HTML processing methods
+- **Regex Extractor**: Pattern-based extraction with pattern library integration
+- **URL and Link Extractor**: Comprehensive URL and link finding capabilities
+- **Settings Persistence**: Individual settings for each extraction tool
+- **Unified Workflow**: Easy switching between extraction methods
+
+#### Available Tabs
+
+1. **Email Extraction**: Extract email addresses with deduplication, counting, and sorting
+2. **HTML Extraction**: Extract and process HTML content using 7 different methods
+3. **Regex Extractor**: Extract text using custom regex patterns with pattern library support
+4. **URL and Link Extractor**: Extract URLs and links with protocol and format filtering
+
+Each tab provides the full functionality of its standalone tool version. See individual tool documentation for detailed capabilities.
+
+---
+
+### Line Tools
+
+**Category**: Text Transformation Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/line_tools.py` - `LineToolsProcessor` class and `LineToolsWidget` class  
+**Purpose**: Comprehensive line manipulation utilities
+
+#### Description
+
+Line Tools provides a suite of line-based text manipulation utilities through a tabbed interface. The tool offers five distinct operations: Remove Duplicates for eliminating duplicate lines, Remove Empty Lines for cleaning up whitespace, Add/Remove Line Numbers for numbering and unnumbering lines, Reverse Lines for inverting line order, and Shuffle Lines for randomizing line order. Each operation includes configurable options for fine-tuned control.
+
+#### Key Features
+
+- **Remove Duplicates**: Eliminate duplicate lines with case-sensitive/insensitive options
+- **Remove Empty Lines**: Clean up empty lines with optional preservation of single empty lines
+- **Add Line Numbers**: Number lines with customizable formats and starting numbers
+- **Remove Line Numbers**: Strip existing line numbers using pattern matching
+- **Reverse Lines**: Invert the order of all lines
+- **Shuffle Lines**: Randomize line order using secure randomization
+- **Tabbed Interface**: Organized tabs for each operation type
+- **Settings Persistence**: All options saved across sessions
+
+#### Capabilities
+
+**Remove Duplicates Tab**:
+- **Modes**: Keep first occurrence, keep last occurrence
+- **Case Sensitivity**: Case-sensitive or case-insensitive comparison
+- **Preserve Single**: Option to preserve single empty lines when removing duplicates
+
+**Remove Empty Lines Tab**:
+- **Preserve Single**: Collapse multiple empty lines while preserving single empty lines
+- **Complete Removal**: Remove all empty lines including single ones
+
+**Add Line Numbers Tab**:
+- **Number Formats**: 1. (dot), 1) (parenthesis), [1] (brackets), 1: (colon)
+- **Start Number**: Configurable starting number (default: 1)
+- **Skip Empty Lines**: Option to skip numbering empty lines
+
+**Remove Line Numbers Tab**:
+- **Pattern Matching**: Automatically detects and removes common number formats
+- **Preserves Content**: Only removes number prefixes, preserves line content
+
+**Reverse Lines Tab**:
+- **Simple Operation**: Reverses the order of all lines
+- **Preserves Content**: Maintains exact line content, only changes order
+
+**Shuffle Lines Tab**:
+- **Randomization**: Uses secure random number generation
+- **Preserves Content**: Maintains exact line content, only changes order
+
+---
+
+### Whitespace Tools
+
+**Category**: Text Transformation Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/whitespace_tools.py` - `WhitespaceToolsProcessor` class and `WhitespaceToolsWidget` class  
+**Purpose**: Whitespace manipulation and normalization utilities
+
+#### Description
+
+Whitespace Tools provides comprehensive whitespace manipulation capabilities through a tabbed interface. The tool offers five operations: Trim Lines for removing leading/trailing whitespace, Remove Extra Spaces for cleaning up multiple spaces, Tabs to Spaces for converting tab characters, Spaces to Tabs for converting spaces to tabs, and Normalize Line Endings for standardizing line break formats. Each operation includes configurable options for precise control.
+
+#### Key Features
+
+- **Trim Lines**: Remove leading/trailing whitespace with mode selection
+- **Remove Extra Spaces**: Collapse multiple spaces to single spaces
+- **Tabs to Spaces**: Convert tab characters to spaces with configurable tab size
+- **Spaces to Tabs**: Convert leading spaces to tabs with configurable tab size
+- **Normalize Line Endings**: Standardize line breaks (LF/CRLF/CR)
+- **Tabbed Interface**: Organized tabs for each operation type
+- **Settings Persistence**: All options saved across sessions
+
+#### Capabilities
+
+**Trim Lines Tab**:
+- **Trim Modes**: Leading only, trailing only, both (default)
+- **Preserve Indent**: Option to preserve indentation when trimming
+
+**Remove Extra Spaces Tab**:
+- **Collapse Multiple Spaces**: Reduces multiple consecutive spaces to single space
+- **Preserves Single Spaces**: Maintains single spaces between words
+
+**Tabs to Spaces Tab**:
+- **Tab Size**: Configurable spaces per tab (default: 4)
+- **Preserves Content**: Only converts tabs, preserves other characters
+
+**Spaces to Tabs Tab**:
+- **Tab Size**: Configurable spaces per tab (default: 4)
+- **Leading Spaces Only**: Converts only leading spaces to tabs
+
+**Normalize Line Endings Tab**:
+- **Line Ending Formats**: LF (Unix), CRLF (Windows), CR (Mac)
+- **Cross-Platform Compatibility**: Ensures consistent line endings
+
+---
+
+### Text Statistics
+
+**Category**: Analysis & Comparison Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/text_statistics_tool.py` - `TextStatisticsProcessor` class and `TextStatisticsWidget` class  
+**Purpose**: Comprehensive text analysis and statistical reporting
+
+#### Description
+
+Text Statistics provides detailed analysis of text content including character counts, word counts, line counts, sentence and paragraph analysis, reading time estimates, unique word counts, and most frequent words. The tool includes an integrated Word Frequency Counter button that generates detailed word frequency reports with counts and percentages. All statistics are presented in a formatted, readable report.
+
+#### Key Features
+
+- **Comprehensive Statistics**: Character, word, line, sentence, paragraph counts
+- **Reading Time Estimate**: Calculates reading time based on configurable WPM
+- **Word Frequency Analysis**: Most frequent words with occurrence counts
+- **Unique Word Count**: Count of distinct words in the text
+- **Word Frequency Counter**: Integrated detailed word frequency reporting
+- **Formatted Output**: Professional statistics report with sections
+- **Configurable Options**: Reading speed, frequency display, top N words
+- **Stop Word Filtering**: Excludes common words from frequency analysis
+
+#### Capabilities
+
+**Statistics Provided**:
+- **Character Count**: Total characters and characters without spaces
+- **Word Count**: Total words in the text
+- **Line Count**: Total lines and non-empty lines
+- **Sentence Count**: Approximate sentence count based on punctuation
+- **Paragraph Count**: Paragraphs separated by blank lines
+- **Average Word Length**: Mean length of words
+- **Reading Time**: Estimated reading time in human-readable format
+- **Unique Words**: Count of distinct words
+- **Most Frequent Words**: Top N words with occurrence counts
+
+**Word Frequency Counter**:
+- **Detailed Reporting**: Word-by-word frequency with counts and percentages
+- **Sorted Output**: Words sorted by frequency (most common first)
+- **Percentage Calculation**: Shows percentage of total words for each word
+- **Formatted Display**: Clean, readable frequency report
+
+**Configuration Options**:
+- **Reading Speed (WPM)**: Words per minute for reading time calculation (100-500, default: 200)
+- **Show Word Frequency**: Toggle frequency analysis in main report
+- **Top Words to Show**: Number of most frequent words to display (5-50, default: 10)
+
+---
+
+### Markdown Tools
+
+**Category**: Text Transformation Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/markdown_tools.py` - `MarkdownToolsProcessor` class and `MarkdownToolsWidget` class  
+**Purpose**: Markdown processing and manipulation utilities
+
+#### Description
+
+Markdown Tools provides comprehensive markdown processing capabilities through a tabbed interface. The tool offers five operations: Strip Markdown for removing all markdown formatting, Extract Links for finding all links in markdown, Extract Headers for extracting heading structure, Table to CSV for converting markdown tables to CSV format, and Format Table for auto-aligning markdown tables. Each operation includes configurable options for precise control.
+
+#### Key Features
+
+- **Strip Markdown**: Remove all markdown syntax while preserving text content
+- **Extract Links**: Find all links including inline and reference-style links
+- **Extract Headers**: Extract heading hierarchy with multiple format options
+- **Table to CSV**: Convert markdown tables to CSV with configurable delimiters
+- **Format Table**: Auto-align markdown tables for better readability
+- **Tabbed Interface**: Organized tabs for each operation type
+- **Settings Persistence**: All options saved across sessions
+
+#### Capabilities
+
+**Strip Markdown Tab**:
+- **Preserve Link Text**: Option to keep link text when removing markdown
+- **Removes**: Headers, bold, italic, links, images, code blocks, lists, blockquotes, horizontal rules
+
+**Extract Links Tab**:
+- **Include Images**: Option to include image URLs in extraction
+- **Link Types**: Inline links, reference-style links, bare URLs
+- **Formatted Output**: Organized list with link text and URLs
+
+**Extract Headers Tab**:
+- **Format Styles**: Indented (hierarchy), Flat (H1, H2, etc.), Numbered
+- **Header Levels**: Extracts all heading levels (H1-H6)
+
+**Table to CSV Tab**:
+- **Delimiters**: Comma, semicolon, tab, pipe
+- **Auto-Detection**: Automatically finds markdown tables in text
+- **Multiple Tables**: Handles multiple tables in single text
+
+**Format Table Tab**:
+- **Auto-Alignment**: Automatically pads cells for proper column alignment
+- **Preserves Content**: Only adjusts spacing, preserves all content
+
+---
+
+### String Escape Tool
+
+**Category**: Encoding/Decoding Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/string_escape_tool.py` - `StringEscapeProcessor` class and `StringEscapeWidget` class  
+**Purpose**: String escape/unescape utilities for multiple formats
+
+#### Description
+
+String Escape Tool provides escape and unescape functionality for strings in various formats commonly used in programming and web development. The tool supports JSON, HTML, URL, XML, JavaScript, and SQL formats with bidirectional conversion (escape and unescape). Each format has specific escape rules and the tool handles format-specific requirements correctly.
+
+#### Key Features
+
+- **Multiple Formats**: JSON, HTML, URL, XML, JavaScript, SQL
+- **Bidirectional**: Both escape and unescape operations
+- **Format-Specific Rules**: Correct handling of each format's escape sequences
+- **URL Options**: Form encoding option (+ for spaces)
+- **Unicode Support**: Proper handling of Unicode characters
+- **Error Handling**: Clear error messages for invalid sequences
+
+#### Capabilities
+
+**JSON Escape/Unescape**:
+- **Escape**: Converts special characters to JSON escape sequences
+- **Unescape**: Converts JSON escape sequences back to characters
+- **Supports**: Unicode escapes, control characters, quotes
+
+**HTML Escape/Unescape**:
+- **Escape**: Converts special characters to HTML entities
+- **Unescape**: Converts HTML entities back to characters
+- **Entities**: &amp;, &lt;, &gt;, &quot;, &#39;
+
+**URL Encode/Decode**:
+- **Encode**: Percent-encodes special characters
+- **Decode**: Decodes percent-encoded characters
+- **Form Encoding**: Option to use + for spaces (application/x-www-form-urlencoded)
+
+**XML Escape/Unescape**:
+- **Escape**: Converts special characters to XML entities
+- **Unescape**: Converts XML entities back to characters
+- **Numeric Entities**: Supports both named and numeric entities
+
+**JavaScript Escape/Unescape**:
+- **Escape**: Converts special characters to JavaScript escape sequences
+- **Unescape**: Converts JavaScript escapes back to characters
+- **Unicode Escapes**: Handles \uXXXX format
+
+**SQL Escape/Unescape**:
+- **Escape**: Escapes single quotes for SQL (doubles quotes)
+- **Unescape**: Converts doubled quotes back to single quotes
+
+---
+
+### Number Base Converter
+
+**Category**: Encoding/Decoding Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/number_base_converter.py` - `NumberBaseConverterProcessor` class and `NumberBaseConverterWidget` class  
+**Purpose**: Number base conversion and ASCII code utilities
+
+#### Description
+
+Number Base Converter provides conversion between different number bases (binary, octal, decimal, hexadecimal) with support for auto-detection of prefixes, batch conversion, and ASCII code conversion. The tool handles common prefixes (0x for hex, 0b for binary, 0o for octal) and provides options for uppercase/lowercase output and prefix display.
+
+#### Key Features
+
+- **Base Conversion**: Binary, Octal, Decimal, Hexadecimal
+- **Auto-Detection**: Automatically detects base from prefixes (0x, 0b, 0o)
+- **Batch Processing**: Convert multiple numbers (one per line)
+- **ASCII Conversion**: Text to ASCII codes and ASCII codes to text
+- **Format Options**: Uppercase/lowercase, show/hide prefixes
+- **Error Handling**: Clear error messages for invalid numbers
+
+#### Capabilities
+
+**Number Conversion**:
+- **Input Bases**: Binary (2), Octal (8), Decimal (10), Hexadecimal (16)
+- **Output Bases**: Binary (2), Octal (8), Decimal (10), Hexadecimal (16)
+- **Prefix Support**: Auto-detects 0x (hex), 0b (binary), 0o (octal)
+- **Batch Mode**: Processes multiple numbers separated by spaces or newlines
+
+**ASCII Code Conversion**:
+- **Text to ASCII**: Converts each character to its ASCII code in selected base
+- **ASCII to Text**: Converts ASCII codes back to text characters
+- **Format Options**: Same base and format options as number conversion
+
+---
+
+### Text Wrapper
+
+**Category**: Text Transformation Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/text_wrapper.py` - `TextWrapperProcessor` class and `TextWrapperWidget` class  
+**Purpose**: Text wrapping and formatting utilities
+
+#### Description
+
+Text Wrapper provides comprehensive text formatting capabilities through a tabbed interface. The tool offers five operations: Word Wrap for wrapping text at specified column width, Justify Text for text alignment, Add Prefix/Suffix for adding text to line starts/ends, Indent/Dedent for adding or removing indentation, and Quote Text for wrapping text in quotes or code blocks. Each operation includes configurable options for precise formatting control.
+
+#### Key Features
+
+- **Word Wrap**: Wrap text at specified column width with word breaking options
+- **Justify Text**: Left, right, center, and full justification
+- **Prefix/Suffix**: Add text to start/end of each line
+- **Indent/Dedent**: Add or remove indentation (spaces or tabs)
+- **Quote Text**: Wrap text in quotes or code blocks
+- **Tabbed Interface**: Organized tabs for each operation type
+- **Settings Persistence**: All options saved across sessions
+
+#### Capabilities
+
+**Word Wrap Tab**:
+- **Line Width**: Configurable column width (20-200, default: 80)
+- **Break Long Words**: Option to break words that exceed line width
+- **Break on Hyphens**: Option to break at hyphens
+
+**Justify Tab**:
+- **Alignment Modes**: Left, Right, Center, Full (justified)
+- **Width**: Target width for justification (20-200, default: 80)
+- **Full Justify**: Distributes spaces evenly between words
+
+**Prefix/Suffix Tab**:
+- **Prefix**: Text to add at start of each line
+- **Suffix**: Text to add at end of each line
+- **Skip Empty Lines**: Option to skip empty lines when adding prefix/suffix
+
+**Indent Tab**:
+- **Indent Size**: Number of spaces or tabs (1-16, default: 4)
+- **Indent Character**: Spaces or tabs
+- **Dedent**: Remove specified amount of indentation
+
+**Quote Tab**:
+- **Quote Styles**: Double quotes, Single quotes, Backticks, Code blocks, Blockquotes
+- **Code Blocks**: Wraps text in triple backticks (markdown format)
+- **Blockquotes**: Adds > prefix to each line (markdown format)
+
+---
+
+### Column Tools
+
+**Category**: Analysis & Comparison Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/column_tools.py` - `ColumnToolsProcessor` class and `ColumnToolsWidget` class  
+**Purpose**: CSV and column manipulation utilities
+
+#### Description
+
+Column Tools provides comprehensive CSV and column manipulation capabilities through a tabbed interface. The tool offers five operations: Extract Column for extracting specific columns, Reorder Columns for rearranging column order, Delete Column for removing columns, Transpose for swapping rows and columns, and Fixed Width for converting CSV to fixed-width format. The tool supports configurable delimiters and quote characters for flexible CSV handling.
+
+#### Key Features
+
+- **Extract Column**: Extract specific column by index (0-based)
+- **Reorder Columns**: Rearrange columns using comma-separated index list
+- **Delete Column**: Remove column by index
+- **Transpose**: Swap rows and columns
+- **Fixed Width**: Convert CSV to fixed-width columns
+- **Configurable Delimiters**: Comma, semicolon, tab, pipe, space
+- **Quote Handling**: Support for different quote characters
+- **Tabbed Interface**: Organized tabs for each operation type
+
+#### Capabilities
+
+**Extract Column Tab**:
+- **Column Index**: 0-based index of column to extract
+- **Error Handling**: Returns empty string for missing columns
+
+**Reorder Columns Tab**:
+- **Format**: Comma-separated indices (e.g., "2,0,1")
+- **Example**: "2,0,1" moves column 2 first, then 0, then 1
+
+**Delete Column Tab**:
+- **Column Index**: 0-based index of column to delete
+- **Preserves**: All other columns remain in original order
+
+**Transpose Tab**:
+- **Row/Column Swap**: First row becomes first column, etc.
+- **Padding**: Automatically pads rows to same length
+
+**Fixed Width Tab**:
+- **Auto-Alignment**: Calculates column widths and pads cells
+- **Readability**: Creates properly aligned fixed-width format
+
+---
+
+### Timestamp Converter
+
+**Category**: Utility Tools  
+**Availability**: Always Available  
+**Implementation**: `tools/timestamp_converter.py` - `TimestampConverterProcessor` class and `TimestampConverterWidget` class  
+**Purpose**: Date and time conversion utilities
+
+#### Description
+
+Timestamp Converter provides comprehensive date and time conversion capabilities between Unix timestamps and human-readable date formats. The tool supports multiple input and output formats including ISO 8601, US date formats, EU date formats, long format, short format, RFC 2822, and custom formats. It includes features like relative time display, UTC/local time options, and batch conversion of multiple timestamps.
+
+#### Key Features
+
+- **Unix Timestamp Conversion**: Convert between Unix timestamps and readable dates
+- **Multiple Formats**: ISO 8601, US, EU, Long, Short, RFC 2822, Custom
+- **Relative Time**: Display time relative to now (e.g., "2 hours ago")
+- **UTC/Local Time**: Option to use UTC or local timezone
+- **Custom Formats**: Support for strftime format strings
+- **Batch Processing**: Convert multiple timestamps (one per line)
+- **Current Time**: Insert current timestamp in selected format
+- **Auto-Detection**: Automatically detects Unix timestamps in input
+
+#### Capabilities
+
+**Input Formats**:
+- **Unix Timestamp**: 10 or 13 digit numbers (seconds or milliseconds)
+- **ISO 8601**: Standard ISO format (YYYY-MM-DDTHH:MM:SS)
+- **US Format**: MM/DD/YYYY HH:MM:SS AM/PM
+- **EU Format**: DD/MM/YYYY HH:MM:SS
+- **Auto-Detect**: Automatically detects format from input
+
+**Output Formats**:
+- **Unix Timestamp**: Seconds since epoch
+- **ISO 8601**: Standard ISO format
+- **US/EU Formats**: Regional date formats
+- **Long/Short**: Human-readable formats
+- **RFC 2822**: Email header format
+- **Custom**: User-defined strftime format
+
+**Relative Time Display**:
+- **Format**: "X hours ago" or "X hours from now"
+- **Units**: Seconds, minutes, hours, days, months, years
+- **Future Dates**: Shows "from now" for future timestamps
 
 ---
 
@@ -18186,16 +18732,22 @@ This comprehensive configuration and troubleshooting guide provides users with a
 | Find & Replace Text | Text Transformation | Pattern replacement | Regex, pattern library, history |
 | Alphabetical Sorter | Text Transformation | Line sorting | Ascending/descending, unique, trim |
 | Number Sorter | Text Transformation | Numerical sorting | Integer/float support, error handling |
-| AI Tools | AI Integration | Multi-provider AI | 7 providers, model selection, parameters |
-| Email Extraction Tool | Data Extraction | Email extraction | Advanced filtering, deduplication |
+| Line Tools | Text Transformation | Line manipulation | Remove duplicates, empty lines, numbers, reverse, shuffle |
+| Whitespace Tools | Text Transformation | Whitespace manipulation | Trim, remove spaces, tabs conversion, line endings |
+| Text Wrapper | Text Transformation | Text formatting | Word wrap, justify, prefix/suffix, indent, quote |
+| Markdown Tools | Text Transformation | Markdown processing | Strip markdown, extract links/headers, table conversion |
+| AI Tools | AI Integration | Multi-provider AI | 11 providers, model selection, parameters |
+| Extraction Tools | Data Extraction | Unified extraction | Email, HTML, Regex, URL extraction in tabs |
 | Email Header Analyzer | Data Extraction | Header analysis | Routing, authentication, security |
-| URL and Link Extractor | Data Extraction | URL extraction | Multiple formats, filtering |
-| HTML Extraction Tool | Data Extraction | HTML processing | 7 extraction methods, element-specific |
 | Base64 Encoder/Decoder | Encoding/Decoding | Base64 conversion | Bidirectional, UTF-8 support |
 | Binary Code Translator | Encoding/Decoding | Binary conversion | Auto-detection, 8-bit format |
 | Morse Code Translator | Encoding/Decoding | Morse conversion | Audio support, complete character set |
+| String Escape Tool | Encoding/Decoding | String escaping | JSON, HTML, URL, XML, JavaScript, SQL formats |
+| Number Base Converter | Encoding/Decoding | Base conversion | Binary, octal, decimal, hex, ASCII codes |
 | Diff Viewer | Analysis & Comparison | Text comparison | Side-by-side, multiple algorithms |
-| Word Frequency Counter | Analysis & Comparison | Statistical analysis | Frequency ranking, percentages |
+| Text Statistics | Analysis & Comparison | Statistical analysis | Comprehensive stats, word frequency, reading time |
+| Column Tools | Analysis & Comparison | CSV manipulation | Extract, reorder, delete columns, transpose |
+| Generator Tools | Utility | Data generation | 8 generators: passwords, UUIDs, Lorem Ipsum, ASCII art, hashes, slugs |
 | Strong Password Generator | Utility | Password creation | Configurable, secure, compliance |
 | URL Parser | Utility | URL analysis | Component breakdown, validation |
 | Repeating Text Generator | Utility | Text repetition | Custom separators, pattern creation |

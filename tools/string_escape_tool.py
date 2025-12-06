@@ -288,7 +288,7 @@ class StringEscapeWidget(ttk.Frame):
     
     def process(self):
         """Process the input text."""
-        active_input_tab = self.app.input_tabs[self.app.input_notebook.index("current")]
+        active_input_tab = self.app.input_tabs[self.app.input_notebook.index(self.app.input_notebook.select())]
         input_text = active_input_tab.text.get("1.0", tk.END).rstrip('\n')
         
         if not input_text:
@@ -302,9 +302,11 @@ class StringEscapeWidget(ttk.Frame):
             settings
         )
         
-        active_output_tab = self.app.output_tabs[self.app.output_notebook.index("current")]
+        active_output_tab = self.app.output_tabs[self.app.output_notebook.index(self.app.output_notebook.select())]
+        active_output_tab.text.config(state="normal")
         active_output_tab.text.delete("1.0", tk.END)
         active_output_tab.text.insert("1.0", result)
+        active_output_tab.text.config(state="disabled")
         
         self.app.update_all_stats()
 

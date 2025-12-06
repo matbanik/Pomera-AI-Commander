@@ -24,7 +24,6 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
 
 # Testing
 .pytest_cache/

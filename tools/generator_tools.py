@@ -44,7 +44,10 @@ class GeneratorTools:
             "Repeating Text Generator": {"times": 5, "separator": "+"},
             "Lorem Ipsum Generator": {"count": 5, "type": "paragraphs", "format": "plain", "ordered": False},
             "UUID/GUID Generator": {"version": 4, "format": "standard", "case": "lowercase", "count": 1, "namespace": "dns", "name": ""},
-            "Random Email Generator": {"count": 5, "separator_type": "list", "separator": ",", "domain_type": "random", "domain": "example.com"}
+            "Random Email Generator": {"count": 5, "separator_type": "list", "separator": ",", "domain_type": "random", "domain": "example.com"},
+            "ASCII Art Generator": {"font": "standard", "width": 80},
+            "Hash Generator": {"algorithms": ["md5", "sha256"], "uppercase": False},
+            "Slug Generator": {"separator": "-", "lowercase": True, "transliterate": True, "max_length": 0, "remove_stopwords": False}
         }
     
     def process_text(self, input_text, tool_name, settings):
@@ -488,6 +491,9 @@ class GeneratorToolsWidget:
         self.create_lorem_ipsum_tab()
         self.create_uuid_generator_tab()
         self.create_email_generator_tab()
+        self.create_ascii_art_generator_tab()
+        self.create_hash_generator_tab()
+        self.create_slug_generator_tab()
         
         return main_frame
     
@@ -1135,5 +1141,77 @@ class GeneratorToolsWidget:
         except (ValueError, AttributeError):
             pass
         
+        # Save ASCII Art Generator settings
+        try:
+            if hasattr(self.main_app, 'ascii_art_generator') and self.main_app.ascii_art_generator:
+                if "ASCII Art Generator" not in self.main_app.settings["tool_settings"]:
+                    self.main_app.settings["tool_settings"]["ASCII Art Generator"] = {}
+                # Settings are saved by the widget itself
+        except (ValueError, AttributeError):
+            pass
+        
+        # Save Hash Generator settings
+        try:
+            if hasattr(self.main_app, 'hash_generator') and self.main_app.hash_generator:
+                if "Hash Generator" not in self.main_app.settings["tool_settings"]:
+                    self.main_app.settings["tool_settings"]["Hash Generator"] = {}
+                # Settings are saved by the widget itself
+        except (ValueError, AttributeError):
+            pass
+        
+        # Save Slug Generator settings
+        try:
+            if hasattr(self.main_app, 'slug_generator') and self.main_app.slug_generator:
+                if "Slug Generator" not in self.main_app.settings["tool_settings"]:
+                    self.main_app.settings["tool_settings"]["Slug Generator"] = {}
+                # Settings are saved by the widget itself
+        except (ValueError, AttributeError):
+            pass
+        
         # Save settings to file
         self.main_app.save_settings()
+    
+    def create_ascii_art_generator_tab(self):
+        """Create the ASCII Art Generator tab."""
+        tab_frame = ttk.Frame(self.notebook)
+        self.notebook.add(tab_frame, text="ASCII Art Generator")
+        
+        try:
+            from tools.ascii_art_generator import ASCIIArtGenerator
+            if hasattr(self.main_app, 'ascii_art_generator') and self.main_app.ascii_art_generator:
+                widget = self.main_app.ascii_art_generator.create_widget(tab_frame, self.main_app)
+                widget.pack(fill=tk.BOTH, expand=True)
+            else:
+                ttk.Label(tab_frame, text="ASCII Art Generator module not available").pack(padx=10, pady=10)
+        except ImportError:
+            ttk.Label(tab_frame, text="ASCII Art Generator module not available").pack(padx=10, pady=10)
+    
+    def create_hash_generator_tab(self):
+        """Create the Hash Generator tab."""
+        tab_frame = ttk.Frame(self.notebook)
+        self.notebook.add(tab_frame, text="Hash Generator")
+        
+        try:
+            from tools.hash_generator import HashGenerator
+            if hasattr(self.main_app, 'hash_generator') and self.main_app.hash_generator:
+                widget = self.main_app.hash_generator.create_widget(tab_frame, self.main_app)
+                widget.pack(fill=tk.BOTH, expand=True)
+            else:
+                ttk.Label(tab_frame, text="Hash Generator module not available").pack(padx=10, pady=10)
+        except ImportError:
+            ttk.Label(tab_frame, text="Hash Generator module not available").pack(padx=10, pady=10)
+    
+    def create_slug_generator_tab(self):
+        """Create the Slug Generator tab."""
+        tab_frame = ttk.Frame(self.notebook)
+        self.notebook.add(tab_frame, text="Slug Generator")
+        
+        try:
+            from tools.slug_generator import SlugGenerator
+            if hasattr(self.main_app, 'slug_generator') and self.main_app.slug_generator:
+                widget = self.main_app.slug_generator.create_widget(tab_frame, self.main_app)
+                widget.pack(fill=tk.BOTH, expand=True)
+            else:
+                ttk.Label(tab_frame, text="Slug Generator module not available").pack(padx=10, pady=10)
+        except ImportError:
+            ttk.Label(tab_frame, text="Slug Generator module not available").pack(padx=10, pady=10)
