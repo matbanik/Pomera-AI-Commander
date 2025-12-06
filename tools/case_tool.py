@@ -175,10 +175,25 @@ class CaseTool:
         return self.processor.process_text(input_text, mode, exclusions)
         
     def get_default_settings(self):
-        """Get default settings for the Case Tool."""
+        """Get default settings for the Case Tool.
+        
+        Uses the centralized Settings Defaults Registry if available,
+        otherwise falls back to hardcoded defaults.
+        """
+        try:
+            from core.settings_defaults_registry import get_registry
+            registry = get_registry()
+            return registry.get_tool_defaults("Case Tool")
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        
+        # Fallback to hardcoded defaults with updated exclusions
+        # Exclusions: a, an, the, and, but, or, for, nor, on, at, to, from, by, with, in, of
         return {
             "mode": "Sentence",
-            "exclusions": "a\nan\nand\nas\nat\nbut\nby\nen\nfor\nif\nin\nis\nof\non\nor\nthe\nto\nvia\nvs"
+            "exclusions": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"
         }
 
 

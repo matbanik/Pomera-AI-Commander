@@ -285,6 +285,25 @@ except ImportError as e:
     CONTEXT_MENU_AVAILABLE = False
     print(f"Context Menu not available: {e}")
 
+# Streaming Text Handler import
+try:
+    from core.streaming_text_handler import (
+        StreamingTextHandler, StreamingTextManager, IncrementalTextUpdater,
+        StreamConfig, StreamMetrics
+    )
+    STREAMING_TEXT_HANDLER_AVAILABLE = True
+except ImportError as e:
+    STREAMING_TEXT_HANDLER_AVAILABLE = False
+    print(f"Streaming Text Handler not available: {e}")
+
+# Settings Defaults Registry import
+try:
+    from core.settings_defaults_registry import get_registry, SettingsDefaultsRegistry
+    SETTINGS_DEFAULTS_REGISTRY_AVAILABLE = True
+except ImportError as e:
+    SETTINGS_DEFAULTS_REGISTRY_AVAILABLE = False
+    print(f"Settings Defaults Registry not available: {e}")
+
 class AppConfig:
     """Configuration constants for the application."""
     DEFAULT_WINDOW_SIZE = "1200x900"
@@ -832,7 +851,21 @@ class PromeraAIApp(tk.Tk):
                         settings["dialog_settings"][category]["locked"] = True
     
     def _get_default_settings(self):
-        """Returns default settings when none exist or are invalid."""
+        """Returns default settings when none exist or are invalid.
+        
+        Uses the centralized Settings Defaults Registry for consistent defaults
+        across the application. Falls back to hardcoded defaults if registry
+        is not available.
+        """
+        # Use the centralized Settings Defaults Registry if available
+        if SETTINGS_DEFAULTS_REGISTRY_AVAILABLE:
+            try:
+                registry = get_registry()
+                return registry.get_all_defaults(tab_count=AppConfig.TAB_COUNT)
+            except Exception as e:
+                self.logger.warning(f"Failed to get defaults from registry: {e}, using fallback")
+        
+        # Fallback to hardcoded defaults if registry is not available
         default_path = os.path.join(os.path.expanduser('~'), 'Downloads')
         return {
             "export_path": default_path,
@@ -843,74 +876,73 @@ class PromeraAIApp(tk.Tk):
             "active_input_tab": 0,
             "active_output_tab": 0,
             "tool_settings": {
-                "Case Tool": CaseTool().get_default_settings() if CASE_TOOL_MODULE_AVAILABLE else {"mode": "Sentence", "exclusions": "a\nan\nand\nas\nat\nbut\nby\nen\nfor\nif\nin\nis\nof\non\nor\nthe\nto\nvia\nvs"},
-
-                "Base64 Encoder/Decoder": Base64Tools().get_default_settings() if BASE64_TOOLS_MODULE_AVAILABLE else {"mode": "encode"},
-                "JSON/XML Tool": JSONXMLTool(None).get_default_settings() if JSONXML_TOOL_MODULE_AVAILABLE else {"operation": "json_to_xml", "json_indent": 2, "xml_indent": 2, "preserve_attributes": True, "sort_keys": False, "array_wrapper": "item", "root_element": "root", "jsonpath_query": "$", "xpath_query": "//*"},
-                "Cron Tool": CronTool(None).get_default_settings() if CRON_TOOL_MODULE_AVAILABLE else {"action": "parse_explain", "preset_category": "Daily Schedules", "preset_pattern": "Daily at midnight", "compare_expressions": "", "next_runs_count": 10},
+                "Case Tool": {"mode": "Sentence", "exclusions": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"},
+                "Base64 Encoder/Decoder": {"mode": "encode"},
+                "JSON/XML Tool": {"operation": "json_to_xml", "json_indent": 2, "xml_indent": 2, "preserve_attributes": True, "sort_keys": False, "array_wrapper": "item", "root_element": "root", "jsonpath_query": "$", "xpath_query": "//*"},
+                "Cron Tool": {"action": "parse_explain", "preset_category": "Daily Schedules", "preset_pattern": "Daily at midnight", "compare_expressions": "", "next_runs_count": 10},
                 "Find & Replace Text": {"find": "", "replace": "", "mode": "Text", "option": "ignore_case", "find_history": [], "replace_history": []},
-                "Generator Tools": GeneratorTools().get_default_settings() if GENERATOR_TOOLS_MODULE_AVAILABLE else {"Strong Password Generator": {"length": 20, "numbers": "", "symbols": ""}, "Repeating Text Generator": {"times": 5, "separator": "+"}},
-                "Sorter Tools": SorterTools().get_default_settings() if SORTER_TOOLS_MODULE_AVAILABLE else {"Number Sorter": {"order": "ascending"}, "Alphabetical Sorter": {"order": "ascending", "unique_only": False, "trim": False}},
-                "URL and Link Extractor": URLLinkExtractor().get_default_settings() if URL_LINK_EXTRACTOR_MODULE_AVAILABLE else {"extract_href": False, "extract_https": False, "extract_any_protocol": False, "extract_markdown": False, "filter_text": ""},
-                "Email Extraction Tool": EmailExtractionTool().get_default_settings() if EMAIL_EXTRACTION_MODULE_AVAILABLE else {"omit_duplicates": False, "hide_counts": True, "sort_emails": False, "only_domain": False},
-                "Regex Extractor": RegexExtractor().get_default_settings() if REGEX_EXTRACTOR_MODULE_AVAILABLE else {"pattern": "", "match_mode": "all_per_line", "omit_duplicates": False, "hide_counts": True, "sort_results": False, "case_sensitive": False},
-                "Email Header Analyzer": EmailHeaderAnalyzer().get_default_settings() if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE else {"show_timestamps": True, "show_delays": True, "show_authentication": True, "show_spam_score": True},
+                "Generator Tools": {"Strong Password Generator": {"length": 20, "numbers": "", "symbols": ""}, "Repeating Text Generator": {"times": 5, "separator": "+"}},
+                "Sorter Tools": {"Number Sorter": {"order": "ascending"}, "Alphabetical Sorter": {"order": "ascending", "unique_only": False, "trim": False}},
+                "URL and Link Extractor": {"extract_href": False, "extract_https": False, "extract_any_protocol": False, "extract_markdown": False, "filter_text": ""},
+                "Email Extraction Tool": {"omit_duplicates": False, "hide_counts": True, "sort_emails": False, "only_domain": False},
+                "Regex Extractor": {"pattern": "", "match_mode": "all_per_line", "omit_duplicates": False, "hide_counts": True, "sort_results": False, "case_sensitive": False},
+                "Email Header Analyzer": {"show_timestamps": True, "show_delays": True, "show_authentication": True, "show_spam_score": True},
                 "Folder File Reporter": {
                     "last_input_folder": "", "last_output_folder": "",
                     "field_selections": {"path": True, "name": True, "size": True, "date_modified": True},
                     "separator": " | ", "folders_only": False, "recursion_mode": "full", "recursion_depth": 2,
                     "size_format": "human", "date_format": "%Y-%m-%d %H:%M:%S"
                 },
-                "URL Parser": URLParser().get_default_settings() if URL_PARSER_MODULE_AVAILABLE else {"ascii_decode": True},
-                "Word Frequency Counter": WordFrequencyCounter().get_default_settings() if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE else {},
+                "URL Parser": {"ascii_decode": True},
+                "Word Frequency Counter": {},
                 "Google AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "gemini-1.5-pro-latest", "MODELS_LIST": ["gemini-1.5-pro-latest", "gemini-1.5-flash-latest", "gemini-1.0-pro"],
+                    "API_KEY": "putinyourkey", "MODEL": "gemini-2.5-pro", "MODELS_LIST": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-pro-latest"],
                     "system_prompt": "You are a helpful assistant.",
                     "temperature": 0.7, "topK": 40, "topP": 0.95, "candidateCount": 1, "maxOutputTokens": 8192, "stopSequences": ""
                 },
                 "Azure AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "gpt-4.1", "MODELS_LIST": ["gpt-4.1", "gpt-4o", "gpt-4-turbo", "gpt-35-turbo"],
+                    "API_KEY": "putinyourkey", "MODEL": "gpt-4.1", "MODELS_LIST": ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini"],
                     "ENDPOINT": "", "API_VERSION": "2024-10-21",
                     "system_prompt": "You are a helpful assistant.",
                     "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "frequency_penalty": 0.0,
                     "presence_penalty": 0.0, "seed": "", "stop": ""
                 },
                 "Anthropic AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "claude-3-5-sonnet-20240620", "MODELS_LIST": ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
+                    "API_KEY": "putinyourkey", "MODEL": "claude-sonnet-4-5-20250929", "MODELS_LIST": ["claude-sonnet-4-5-20250929", "claude-opus-4-5-20251124", "claude-sonnet-4-20250522", "claude-3-5-sonnet-20241022"],
                     "system": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.9, "top_k": 40, "stop_sequences": ""
                 },
                 "OpenAI": {
-                    "API_KEY": "putinyourkey", "MODEL": "gpt-4o", "MODELS_LIST": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o-mini"],
+                    "API_KEY": "putinyourkey", "MODEL": "gpt-4.1", "MODELS_LIST": ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini", "o1-preview"],
                     "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "frequency_penalty": 0.0,
                     "presence_penalty": 0.0, "seed": "", "response_format": "text", "stop": ""
                 },
                 "Cohere AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "command-r-plus", "MODELS_LIST": ["command-r-plus", "command-r", "command", "command-light"],
+                    "API_KEY": "putinyourkey", "MODEL": "command-a-03-2025", "MODELS_LIST": ["command-a-03-2025", "command-r-plus-08-2024", "command-r-08-2024", "command-r-plus"],
                     "preamble": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4000, "k": 50, "p": 0.75, "frequency_penalty": 0.0,
                     "presence_penalty": 0.0, "stop_sequences": "", "citation_quality": "accurate"
                 },
                 "HuggingFace AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "meta-llama/Meta-Llama-3-8B-Instruct", "MODELS_LIST": ["meta-llama/Meta-Llama-3-8B-Instruct", "mistralai/Mistral-7B-Instruct-v0.2", "google/gemma-7b-it"],
+                    "API_KEY": "putinyourkey", "MODEL": "meta-llama/Llama-3.3-70B-Instruct", "MODELS_LIST": ["meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Meta-Llama-3.1-70B-Instruct", "mistralai/Mistral-Small-3-Instruct"],
                     "system_prompt": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.95, "stop_sequences": "", "seed": ""
                 },
                 "Groq AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "llama3-70b-8192", "MODELS_LIST": ["llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"],
+                    "API_KEY": "putinyourkey", "MODEL": "llama-3.3-70b-versatile", "MODELS_LIST": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
                     "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 8192, "top_p": 1.0, "frequency_penalty": 0.0,
                     "presence_penalty": 0.0, "stop": "", "seed": "", "response_format": "text"
                 },
                 "OpenRouterAI": {
-                    "API_KEY": "putinyourkey", "MODEL": "anthropic/claude-3.5-sonnet", "MODELS_LIST": ["anthropic/claude-3.5-sonnet", "google/gemini-flash-1.5:free", "meta-llama/llama-3-8b-instruct:free", "openai/gpt-4o-mini"],
+                    "API_KEY": "putinyourkey", "MODEL": "anthropic/claude-sonnet-4.5", "MODELS_LIST": ["anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5", "openai/gpt-4.1", "google/gemini-2.5-pro", "deepseek/deepseek-chat"],
                     "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "top_k": 0, "frequency_penalty": 0.0,
                     "presence_penalty": 0.0, "repetition_penalty": 1.0, "seed": "", "stop": ""
                 },
-                "AI Tools": {},  # Settings managed by AIToolsWidget
+                "AI Tools": {},
                 "Diff Viewer": {"option": "ignore_case"}
             },
             "performance_settings": {
-                "mode": "automatic",  # automatic, always_on, always_off
+                "mode": "automatic",
                 "async_processing": {
                     "enabled": True,
-                    "threshold_kb": 10,  # KB threshold for async processing
+                    "threshold_kb": 10,
                     "max_workers": 2,
                     "chunk_size_kb": 50
                 },
@@ -934,23 +966,22 @@ class PromeraAIApp(tk.Tk):
                     "progressive_search": True,
                     "debounce_delay_ms": 300,
                     "lazy_updates": True
-                },
-
+                }
             },
             "font_settings": {
                 "text_font": {
                     "family": "Source Code Pro",
                     "size": 11,
-                    "fallback_family": "Consolas",  # Windows fallback
-                    "fallback_family_mac": "Monaco",  # Mac fallback
-                    "fallback_family_linux": "DejaVu Sans Mono"  # Linux fallback
+                    "fallback_family": "Consolas",
+                    "fallback_family_mac": "Monaco",
+                    "fallback_family_linux": "DejaVu Sans Mono"
                 },
                 "interface_font": {
                     "family": "Segoe UI",
                     "size": 9,
-                    "fallback_family": "Arial",  # Windows fallback
-                    "fallback_family_mac": "Helvetica",  # Mac fallback
-                    "fallback_family_linux": "Ubuntu"  # Linux fallback
+                    "fallback_family": "Arial",
+                    "fallback_family_mac": "Helvetica",
+                    "fallback_family_linux": "Ubuntu"
                 }
             },
             "dialog_settings": {
@@ -1341,6 +1372,31 @@ class PromeraAIApp(tk.Tk):
         else:
             self.progressive_stats_calculator = None
             self.logger.warning("Progressive Statistics Calculator not available - using standard calculation for all content sizes")
+        
+        # Initialize Streaming Text Handler
+        if STREAMING_TEXT_HANDLER_AVAILABLE:
+            # Get streaming settings from performance settings
+            streaming_settings = perf_settings.get("streaming", {})
+            self._streaming_enabled = streaming_settings.get("enabled", True)
+            self._streaming_chunk_delay_ms = streaming_settings.get("chunk_delay_ms", 10)
+            self._streaming_batch_size = streaming_settings.get("batch_size", 5)
+            self._streaming_auto_scroll = streaming_settings.get("auto_scroll", True)
+            
+            # Create default streaming config
+            self._default_stream_config = StreamConfig(
+                chunk_delay_ms=self._streaming_chunk_delay_ms,
+                batch_size=self._streaming_batch_size,
+                auto_scroll=self._streaming_auto_scroll,
+                highlight_new_text=False,
+                use_threading=True
+            )
+            
+            self.logger.info(f"Streaming Text Handler initialized (enabled: {self._streaming_enabled})")
+            self.logger.info(f"Streaming config - delay: {self._streaming_chunk_delay_ms}ms, batch: {self._streaming_batch_size}")
+        else:
+            self._streaming_enabled = False
+            self._default_stream_config = None
+            self.logger.warning("Streaming Text Handler not available - text will be displayed at once")
     
     def _should_enable_optimizations(self):
         """Determine if optimizations should be enabled in automatic mode."""
@@ -5137,6 +5193,142 @@ class PromeraAIApp(tk.Tk):
                 self.find_replace_widget.highlight_processed_results()
         
         self.update_tab_labels()
+    
+    # ==================== Streaming Text Methods ====================
+    
+    def is_streaming_available(self):
+        """Check if streaming text handler is available."""
+        return STREAMING_TEXT_HANDLER_AVAILABLE and getattr(self, '_streaming_enabled', False)
+    
+    def get_streaming_manager(self, text_widget=None):
+        """
+        Get a streaming text manager for a text widget.
+        
+        Args:
+            text_widget: The text widget to stream to. If None, uses current output tab.
+            
+        Returns:
+            StreamingTextManager instance or None if not available
+        """
+        if not self.is_streaming_available():
+            return None
+        
+        if text_widget is None:
+            current_tab_index = self.output_notebook.index(self.output_notebook.select())
+            text_widget = self.output_tabs[current_tab_index].text
+        
+        try:
+            return StreamingTextManager(
+                text_widget,
+                stream_config=self._default_stream_config
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to create streaming manager: {e}")
+            return None
+    
+    def update_output_text_streaming(self, text, chunk_size=100):
+        """
+        Update output text using streaming display for progressive rendering.
+        
+        Args:
+            text: The text to display
+            chunk_size: Size of each chunk to display progressively
+        """
+        if not self.is_streaming_available() or len(text) < 500:
+            # Fall back to regular update for small text or if streaming unavailable
+            self.update_output_text(text)
+            return
+        
+        current_tab_index = self.output_notebook.index(self.output_notebook.select())
+        active_output_tab = self.output_tabs[current_tab_index]
+        text_widget = active_output_tab.text
+        
+        # Clear stored filter content
+        self.output_original_content[current_tab_index] = ""
+        
+        # Enable widget for editing
+        text_widget.config(state="normal")
+        text_widget.delete("1.0", tk.END)
+        
+        try:
+            manager = StreamingTextManager(
+                text_widget,
+                stream_config=self._default_stream_config
+            )
+            
+            def on_complete(metrics):
+                self.logger.info(
+                    f"Streaming complete: {metrics.total_characters} chars "
+                    f"in {metrics.duration:.2f}s"
+                )
+                # Disable widget after streaming
+                self.after(0, lambda: text_widget.config(state="disabled"))
+                # Update stats and save
+                self.after(10, self.update_all_stats)
+                self.after(20, self.save_settings)
+                self.after(30, self.update_tab_labels)
+            
+            manager.start_streaming(
+                clear_existing=False,  # Already cleared
+                on_complete=on_complete
+            )
+            
+            # Stream text in chunks
+            def stream_chunks():
+                for i in range(0, len(text), chunk_size):
+                    chunk = text[i:i + chunk_size]
+                    if not manager.add_stream_chunk(chunk):
+                        break
+                manager.end_streaming()
+            
+            # Run in background thread
+            import threading
+            thread = threading.Thread(target=stream_chunks, daemon=True)
+            thread.start()
+            
+        except Exception as e:
+            self.logger.error(f"Streaming failed, falling back to regular update: {e}")
+            text_widget.insert("1.0", text)
+            text_widget.config(state="disabled")
+            self.save_settings()
+            self.after(10, self.update_all_stats)
+    
+    def update_text_incrementally(self, text_widget, new_text, preserve_state=True):
+        """
+        Update a text widget using incremental diff-based updates.
+        
+        This is more efficient than full replacement for large texts
+        with small changes.
+        
+        Args:
+            text_widget: The text widget to update
+            new_text: The new text content
+            preserve_state: Whether to preserve cursor and scroll position
+            
+        Returns:
+            Tuple of (insertions, deletions) or None if not available
+        """
+        if not STREAMING_TEXT_HANDLER_AVAILABLE:
+            # Fall back to full replacement
+            text_widget.config(state="normal")
+            text_widget.delete("1.0", tk.END)
+            text_widget.insert("1.0", new_text)
+            return None
+        
+        try:
+            updater = IncrementalTextUpdater(text_widget)
+            return updater.update_text(
+                new_text,
+                preserve_cursor=preserve_state,
+                preserve_scroll=preserve_state
+            )
+        except Exception as e:
+            self.logger.error(f"Incremental update failed: {e}")
+            # Fall back to full replacement
+            text_widget.config(state="normal")
+            text_widget.delete("1.0", tk.END)
+            text_widget.insert("1.0", new_text)
+            return None
 
     def _get_search_pattern(self):
         """Helper to build the regex pattern for Find & Replace."""

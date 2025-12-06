@@ -42,6 +42,17 @@ try:
 except ImportError:
     ENCRYPTION_AVAILABLE = False
 
+try:
+    from core.streaming_text_handler import (
+        StreamingTextHandler,
+        StreamingTextManager,
+        StreamConfig,
+        StreamMetrics
+    )
+    STREAMING_AVAILABLE = True
+except ImportError:
+    STREAMING_AVAILABLE = False
+
 def get_system_encryption_key():
     """Generate encryption key based on system characteristics"""
     if not ENCRYPTION_AVAILABLE:
@@ -168,8 +179,10 @@ class AIToolsWidget(ttk.Frame):
                 "local_service": True
             },
             "AWS Bedrock": {
-                "url": "https://bedrock-runtime.{region}.amazonaws.com/model/{model}/invoke",
-                "headers_template": {"Content-Type": "application/json"},
+                # Using Converse API (recommended) - provides unified interface across all models
+                "url": "https://bedrock-runtime.{region}.amazonaws.com/model/{model}/converse",
+                "url_invoke": "https://bedrock-runtime.{region}.amazonaws.com/model/{model}/invoke",  # Fallback for legacy
+                "headers_template": {"Content-Type": "application/json", "Accept": "application/json"},
                 "api_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/getting-started.html",
                 "aws_service": True
             }
@@ -179,6 +192,11 @@ class AIToolsWidget(ttk.Frame):
         self.ai_widgets = {}
         self._ai_thread = None
         
+        # Streaming support - enabled by default when available
+        self._streaming_enabled = STREAMING_AVAILABLE
+        self._streaming_handler = None
+        self._streaming_manager = None
+        
         self.create_widgets()
         
         # Show encryption status in logs
@@ -186,6 +204,12 @@ class AIToolsWidget(ttk.Frame):
             self.logger.info("API Key encryption is ENABLED - keys will be encrypted at rest")
         else:
             self.logger.warning("API Key encryption is DISABLED - cryptography library not found. Install with: pip install cryptography")
+        
+        # Show streaming status in logs
+        if STREAMING_AVAILABLE:
+            self.logger.info("Streaming text handler is ENABLED - AI responses will be streamed progressively")
+        else:
+            self.logger.warning("Streaming text handler is NOT AVAILABLE - AI responses will be displayed at once")
     
     def apply_font_to_widgets(self, font_tuple):
         """Apply font to all text widgets in AI Tools."""
@@ -1516,7 +1540,8 @@ class AIToolsWidget(ttk.Frame):
                 try:
                     # Use the huggingface_helper module for proper task detection
                     def update_callback(response):
-                        self.app.after(0, self.app.update_output_text, response)
+                        # Use unified display method (handles streaming automatically)
+                        self.display_ai_response(response)
                     
                     self.logger.debug(f"Calling HuggingFace helper with model: {settings.get('MODEL', 'unknown')}")
                     process_huggingface_request(api_key, prompt, settings, update_callback, self.logger)
@@ -1578,7 +1603,9 @@ class AIToolsWidget(ttk.Frame):
 
                     result_text = self._extract_response_text(provider_name, data)
                     self.logger.debug(f"FINAL: About to display result_text: {str(result_text)[:100]}...")
-                    self.app.after(0, self.app.update_output_text, result_text)
+                    
+                    # Use unified display method (handles streaming automatically)
+                    self.display_ai_response(result_text)
                     return
 
                 except requests.exceptions.HTTPError as e:
@@ -1630,6 +1657,28 @@ class AIToolsWidget(ttk.Frame):
                         # Check for AWS Bedrock specific errors
                         if provider_name == "AWS Bedrock":
                             model_id = settings.get("MODEL", "unknown")
+                            auth_method = settings.get("AUTH_METHOD", "api_key")
+                            
+                            if e.response.status_code == 403:
+                                error_msg = f"AWS Bedrock 403 Forbidden Error\n\n"
+                                error_msg += f"Model: {model_id}\n"
+                                error_msg += f"Auth Method: {auth_method}\n\n"
+                                error_msg += "This error typically means:\n"
+                                error_msg += "1. Your credentials don't have permission to access this model\n"
+                                error_msg += "2. The model is not enabled in your AWS account\n"
+                                error_msg += "3. The model is not available in your selected region\n"
+                                error_msg += "4. Your API key may be invalid or expired\n\n"
+                                error_msg += "Solutions:\n"
+                                error_msg += "1. Go to AWS Bedrock Console and enable model access\n"
+                                error_msg += "2. Verify your IAM permissions include 'bedrock:InvokeModel'\n"
+                                error_msg += "3. Try a different model (e.g., amazon.nova-lite-v1:0)\n"
+                                error_msg += "4. Try a different region (us-east-1, us-west-2)\n"
+                                error_msg += "5. If using API Key auth, try IAM credentials instead\n\n"
+                                error_msg += f"Original error: {error_response}"
+                                
+                                self.logger.error(error_msg)
+                                self.app.after(0, self.app.update_output_text, error_msg)
+                                return
                             
                             if "on-demand throughput isn't supported" in error_response:
                                 error_msg = f"AWS Bedrock Model Error: {model_id}\n\n"
@@ -1772,34 +1821,34 @@ class AIToolsWidget(ttk.Frame):
                     model_id = ":".join(parts[:2])
                     self.logger.debug(f"Cleaned model ID: {original_model_id} -> {model_id}")
             
-            # AWS Bedrock requires inference profiles for newer Claude models
-            # Based on AWS documentation and current model availability
-            inference_profile_mapping = {
-                # Claude 4.5 models (newest)
-                "anthropic.claude-haiku-4-5-20251001-v1:0": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                "anthropic.claude-sonnet-4-5-20250929-v1:0": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",  # Global profile available
-                
-                # Claude 4.1 models  
-                "anthropic.claude-opus-4-1-20250805-v1:0": "us.anthropic.claude-opus-4-1-20250805-v1:0",
-                
-                # Claude 3.7 models
-                "anthropic.claude-3-7-sonnet-20250219-v1:0": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                
-                # Claude 3.5 models (v2)
-                "anthropic.claude-3-5-haiku-20241022-v1:0": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
-                "anthropic.claude-3-5-sonnet-20241022-v2:0": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-                
-                # Claude 3.5 models (v1)
-                "anthropic.claude-3-5-sonnet-20240620-v1:0": "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-                
-                # Claude 3 models (original)
-                "anthropic.claude-3-opus-20240229-v1:0": "us.anthropic.claude-3-opus-20240229-v1:0",
-                "anthropic.claude-3-sonnet-20240229-v1:0": "us.anthropic.claude-3-sonnet-20240229-v1:0",
-                "anthropic.claude-3-haiku-20240307-v1:0": "us.anthropic.claude-3-haiku-20240307-v1:0"
-            }
+            # Check if model_id is already an inference profile (has regional prefix)
+            # If so, don't apply the mapping - use it as-is
+            already_has_prefix = any(model_id.startswith(prefix) for prefix in ['us.', 'eu.', 'apac.', 'global.'])
             
-            # Use inference profile if available, otherwise use direct model ID
-            final_model_id = inference_profile_mapping.get(model_id, model_id)
+            if already_has_prefix:
+                # Model already has inference profile prefix, use as-is
+                final_model_id = model_id
+                self.logger.debug(f"AWS Bedrock: Model '{model_id}' already has inference profile prefix")
+            else:
+                # AWS Bedrock requires inference profiles for newer Claude models
+                # Based on AWS documentation and current model availability
+                # Note: Only map base model IDs to inference profiles
+                inference_profile_mapping = {
+                    # Claude 3.5 models (v2) - these require inference profiles
+                    "anthropic.claude-3-5-haiku-20241022-v1:0": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                    "anthropic.claude-3-5-sonnet-20241022-v2:0": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    
+                    # Claude 3.5 models (v1)
+                    "anthropic.claude-3-5-sonnet-20240620-v1:0": "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+                    
+                    # Claude 3 models (original) - some may work without profiles
+                    "anthropic.claude-3-opus-20240229-v1:0": "us.anthropic.claude-3-opus-20240229-v1:0",
+                    "anthropic.claude-3-sonnet-20240229-v1:0": "us.anthropic.claude-3-sonnet-20240229-v1:0",
+                    "anthropic.claude-3-haiku-20240307-v1:0": "us.anthropic.claude-3-haiku-20240307-v1:0"
+                }
+                
+                # Use inference profile if available, otherwise use direct model ID
+                final_model_id = inference_profile_mapping.get(model_id, model_id)
             
             # If we're using an inference profile, log the conversion for debugging
             if final_model_id != model_id:
@@ -1816,7 +1865,11 @@ class AIToolsWidget(ttk.Frame):
                 self.logger.info(f"AWS Bedrock: Using APAC inference profile '{apac_model_id}' for region '{region}'")
                 final_model_id = apac_model_id
             
-            url = provider_config["url"].format(region=region, model=final_model_id)
+            # Always use InvokeModel API - it's more reliable and works with both
+            # inference profiles and base model IDs
+            # The Converse API has compatibility issues with some authentication methods
+            url = provider_config["url_invoke"].format(region=region, model=final_model_id)
+            self.logger.info(f"AWS Bedrock: Using InvokeModel API for model '{final_model_id}'")
         elif "url_template" in provider_config:
             url = provider_config["url_template"].format(model=settings.get("MODEL"), api_key=api_key)
         else:
@@ -2015,109 +2068,90 @@ class AIToolsWidget(ttk.Frame):
                     self._add_param_if_valid(payload, settings, 'repetition_penalty', float)
         
         elif provider_name == "AWS Bedrock":
-            # AWS Bedrock payload structure varies by model
-            model_id = settings.get("MODEL", "meta.llama3-1-70b-instruct-v1:0")
+            # AWS Bedrock InvokeModel API - model-specific payload formats
+            # Using InvokeModel API for better compatibility with API Key authentication
+            model_id = settings.get("MODEL", "")
             system_prompt = settings.get("system_prompt", "").strip()
+            
+            max_tokens = settings.get("MAX_OUTPUT_TOKENS", "4096")
+            try:
+                max_tokens_int = int(max_tokens)
+            except ValueError:
+                max_tokens_int = 4096
+            
+            self.logger.debug(f"Building InvokeModel payload for model: {model_id}")
             
             if "anthropic.claude" in model_id:
                 # Anthropic Claude models
                 payload = {
                     "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": max_tokens_int,
                     "messages": [{"role": "user", "content": prompt}]
                 }
                 if system_prompt:
                     payload["system"] = system_prompt
-                
-                max_tokens = settings.get("MAX_OUTPUT_TOKENS", "4096")
-                try:
-                    payload["max_tokens"] = int(max_tokens)
-                except ValueError:
-                    payload["max_tokens"] = 4096
-                    
             elif "amazon.nova" in model_id:
-                # Amazon Nova models (use messages format but different parameter structure)
+                # Amazon Nova models
                 payload = {
-                    "messages": [{"role": "user", "content": [{"text": prompt}]}]
+                    "messages": [{"role": "user", "content": [{"text": prompt}]}],
+                    "inferenceConfig": {"maxTokens": max_tokens_int}
                 }
                 if system_prompt:
-                    # Nova models expect system as an array of objects, not a string
                     payload["system"] = [{"text": system_prompt}]
-                
-                # Nova models use inferenceConfig instead of max_tokens
-                max_tokens = settings.get("MAX_OUTPUT_TOKENS", "4096")
-                try:
-                    payload["inferenceConfig"] = {
-                        "maxTokens": int(max_tokens)
-                    }
-                except ValueError:
-                    payload["inferenceConfig"] = {
-                        "maxTokens": 4096
-                    }
-                    
-            elif "meta.llama" in model_id:
-                # Meta Llama models
-                full_prompt = f"{system_prompt}\n\nHuman: {prompt}\n\nAssistant:" if system_prompt else f"Human: {prompt}\n\nAssistant:"
-                payload = {
-                    "prompt": full_prompt,
-                    "max_gen_len": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
-                    "temperature": 0.7,
-                    "top_p": 0.9
-                }
             elif "amazon.titan" in model_id:
                 # Amazon Titan models
                 payload = {
                     "inputText": f"{system_prompt}\n\n{prompt}" if system_prompt else prompt,
                     "textGenerationConfig": {
-                        "maxTokenCount": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                        "maxTokenCount": max_tokens_int,
                         "temperature": 0.7,
                         "topP": 0.9
                     }
+                }
+            elif "meta.llama" in model_id:
+                # Meta Llama models
+                full_prompt = f"{system_prompt}\n\nHuman: {prompt}\n\nAssistant:" if system_prompt else f"Human: {prompt}\n\nAssistant:"
+                payload = {
+                    "prompt": full_prompt,
+                    "max_gen_len": max_tokens_int,
+                    "temperature": 0.7,
+                    "top_p": 0.9
+                }
+            elif "mistral." in model_id or "mixtral." in model_id:
+                # Mistral models
+                payload = {
+                    "prompt": f"<s>[INST] {system_prompt}\n\n{prompt} [/INST]" if system_prompt else f"<s>[INST] {prompt} [/INST]",
+                    "max_tokens": max_tokens_int,
+                    "temperature": 0.7,
+                    "top_p": 0.9
                 }
             elif "cohere.command" in model_id:
                 # Cohere Command models
                 payload = {
                     "message": prompt,
-                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "max_tokens": max_tokens_int,
                     "temperature": 0.7,
                     "p": 0.9
                 }
                 if system_prompt:
                     payload["preamble"] = system_prompt
-                    
-            elif "mistral." in model_id or "mixtral." in model_id:
-                # Mistral models
-                payload = {
-                    "prompt": f"<s>[INST] {system_prompt}\n\n{prompt} [/INST]" if system_prompt else f"<s>[INST] {prompt} [/INST]",
-                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
-                    "temperature": 0.7,
-                    "top_p": 0.9
-                }
             elif "ai21." in model_id:
                 # AI21 models
                 payload = {
                     "prompt": f"{system_prompt}\n\n{prompt}" if system_prompt else prompt,
-                    "maxTokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "maxTokens": max_tokens_int,
                     "temperature": 0.7,
                     "topP": 0.9
                 }
-            elif any(provider in model_id for provider in ["openai.", "qwen.", "twelvelabs."]):
-                # Third-party models that may have different requirements
-                # Use a more generic messages format that many models support
+            else:
+                # Default format - try messages format first (works for many models)
                 payload = {
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
+                    "max_tokens": max_tokens_int,
                     "temperature": 0.7
                 }
                 if system_prompt:
                     payload["messages"].insert(0, {"role": "system", "content": system_prompt})
-            else:
-                # Default structure for other models
-                payload = {
-                    "prompt": f"{system_prompt}\n\n{prompt}" if system_prompt else prompt,
-                    "max_tokens": int(settings.get("MAX_OUTPUT_TOKENS", "4096")),
-                    "temperature": 0.7,
-                    "top_p": 0.9
-                }
         
         return payload
     
@@ -2145,66 +2179,47 @@ class AIToolsWidget(ttk.Frame):
         elif provider_name == "Cohere AI":
             result_text = data.get('text', result_text)
         elif provider_name == "AWS Bedrock":
-            # Extract response based on model type
+            # Extract response from AWS Bedrock Converse API
+            # Converse API response format: {'output': {'message': {'content': [{'text': '...'}], 'role': 'assistant'}}}
             self.logger.debug(f"AWS Bedrock response data: {data}")
             
             try:
-                # Handle Nova format with output wrapper
-                if 'output' in data and 'message' in data['output'] and 'content' in data['output']['message']:
-                    # Amazon Nova format with output wrapper: {'output': {'message': {'content': [{'text': '...'}], 'role': 'assistant'}}}
-                    self.logger.debug("Found Nova message format with output wrapper")
+                # Primary: Converse API format (recommended)
+                if 'output' in data and 'message' in data['output']:
                     message_data = data['output']['message']
-                    self.logger.debug(f"Message content type: {type(message_data['content'])}")
-                    self.logger.debug(f"Message content: {message_data['content']}")
+                    self.logger.debug("Using Converse API response format")
                     
-                    if isinstance(message_data['content'], list) and len(message_data['content']) > 0:
-                        first_content = message_data['content'][0]
-                        self.logger.debug(f"First content item: {first_content}")
-                        self.logger.debug(f"First content type: {type(first_content)}")
+                    if 'content' in message_data and isinstance(message_data['content'], list):
+                        # Extract text from content array
+                        text_parts = []
+                        for content_item in message_data['content']:
+                            if isinstance(content_item, dict) and 'text' in content_item:
+                                text_parts.append(content_item['text'])
                         
-                        if isinstance(first_content, dict) and 'text' in first_content:
-                            extracted_text = first_content['text']
-                            self.logger.debug(f"Extracted text: '{extracted_text}'")
-                            if extracted_text:
-                                result_text = extracted_text
-                                self.logger.debug(f"SUCCESS: Set result_text to Nova response")
-                            else:
-                                self.logger.debug("Text field was empty")
-                                result_text = "Error: Nova response text field was empty"
+                        if text_parts:
+                            result_text = ''.join(text_parts)
+                            self.logger.debug(f"Successfully extracted Converse API text: {result_text[:100]}...")
                         else:
-                            self.logger.debug(f"First content item doesn't have text field: {first_content}")
-                            result_text = str(first_content)
+                            self.logger.warning("Converse API response had no text content")
+                            result_text = str(message_data.get('content', ''))
                     else:
-                        self.logger.debug(f"Content is not a list or is empty: {message_data['content']}")
-                        result_text = str(message_data['content'])
-                elif 'message' in data and 'content' in data['message']:
-                    # Amazon Nova format: {'message': {'content': [{'text': '...'}], 'role': 'assistant'}}
-                    self.logger.debug("Found Nova message format")
-                    if isinstance(data['message']['content'], list) and len(data['message']['content']) > 0:
-                        extracted_text = data['message']['content'][0].get('text', '')
-                        if extracted_text:
-                            result_text = extracted_text
-                            self.logger.debug(f"Successfully extracted Nova text: {result_text[:100]}...")
-                        else:
-                            self.logger.debug("Nova text field was empty")
-                    else:
-                        result_text = str(data['message']['content'])
-                        self.logger.debug(f"Nova content as string: {result_text}")
+                        result_text = str(message_data)
+                
+                # Fallback: Legacy InvokeModel API formats
                 elif 'content' in data and isinstance(data['content'], list) and len(data['content']) > 0:
-                    # Anthropic Claude format
-                    self.logger.debug("Using Claude content format")
+                    # Anthropic Claude format (InvokeModel)
+                    self.logger.debug("Using legacy Claude content format")
                     result_text = data['content'][0].get('text', result_text)
                 elif 'generation' in data:
-                    # Meta Llama format
+                    # Meta Llama format (InvokeModel)
+                    self.logger.debug("Using legacy Llama generation format")
                     result_text = data['generation']
                 elif 'results' in data and len(data['results']) > 0:
-                    # Amazon Titan format
+                    # Amazon Titan format (InvokeModel)
+                    self.logger.debug("Using legacy Titan results format")
                     result_text = data['results'][0].get('outputText', result_text)
-                elif 'completions' in data and len(data['completions']) > 0:
-                    # Other model formats
-                    result_text = data['completions'][0].get('data', {}).get('text', result_text)
                 elif 'text' in data:
-                    # Cohere and other models that return text directly
+                    # Direct text format
                     self.logger.debug("Using direct text format")
                     result_text = data['text']
                 elif 'response' in data:
@@ -2212,21 +2227,13 @@ class AIToolsWidget(ttk.Frame):
                     self.logger.debug("Using response field format")
                     result_text = data['response']
                 elif 'choices' in data and len(data['choices']) > 0:
-                    # OpenAI-style format used by some third-party models
+                    # OpenAI-style format
                     self.logger.debug("Using OpenAI-style choices format")
                     choice = data['choices'][0]
                     if 'message' in choice and 'content' in choice['message']:
                         result_text = choice['message']['content']
                     elif 'text' in choice:
                         result_text = choice['text']
-                elif 'outputs' in data and len(data['outputs']) > 0:
-                    # Some models use 'outputs' array
-                    self.logger.debug("Using outputs array format")
-                    output = data['outputs'][0]
-                    if isinstance(output, dict):
-                        result_text = output.get('text', output.get('content', str(output)))
-                    else:
-                        result_text = str(output)
                 else:
                     # Fallback - try to find text in common locations
                     self.logger.debug("Using fallback format - no recognized structure")
@@ -2378,3 +2385,213 @@ class AIToolsWidget(ttk.Frame):
         }
         
         return configs.get(provider_name, {})
+    
+    # ==================== Streaming Support Methods ====================
+    
+    def enable_streaming(self, enabled: bool = True) -> bool:
+        """
+        Enable or disable streaming mode for AI responses.
+        
+        Args:
+            enabled: Whether to enable streaming
+            
+        Returns:
+            True if streaming was enabled/disabled successfully
+        """
+        if not STREAMING_AVAILABLE:
+            self.logger.warning("Streaming is not available - module not loaded")
+            return False
+        
+        self._streaming_enabled = enabled
+        self.logger.info(f"Streaming mode {'enabled' if enabled else 'disabled'}")
+        return True
+    
+    def is_streaming_enabled(self) -> bool:
+        """Check if streaming mode is enabled."""
+        return self._streaming_enabled and STREAMING_AVAILABLE
+    
+    def _get_output_text_widget(self):
+        """Get the current output text widget from the app."""
+        try:
+            current_tab_index = self.app.output_notebook.index(self.app.output_notebook.select())
+            active_output_tab = self.app.output_tabs[current_tab_index]
+            return active_output_tab.text
+        except Exception as e:
+            self.logger.error(f"Failed to get output text widget: {e}")
+            return None
+    
+    def _init_streaming_handler(self, text_widget):
+        """Initialize the streaming handler for a text widget."""
+        if not STREAMING_AVAILABLE:
+            return None
+        
+        try:
+            config = StreamConfig(
+                chunk_delay_ms=10,
+                batch_size=3,
+                auto_scroll=True,
+                highlight_new_text=False,
+                use_threading=True
+            )
+            
+            self._streaming_manager = StreamingTextManager(
+                text_widget,
+                stream_config=config
+            )
+            
+            return self._streaming_manager
+        except Exception as e:
+            self.logger.error(f"Failed to initialize streaming handler: {e}")
+            return None
+    
+    def start_streaming_response(self, clear_existing: bool = True) -> bool:
+        """
+        Start streaming an AI response to the output widget.
+        
+        Args:
+            clear_existing: Whether to clear existing content
+            
+        Returns:
+            True if streaming started successfully
+        """
+        if not self.is_streaming_enabled():
+            return False
+        
+        text_widget = self._get_output_text_widget()
+        if not text_widget:
+            return False
+        
+        # Enable the text widget for editing
+        text_widget.config(state="normal")
+        
+        manager = self._init_streaming_handler(text_widget)
+        if not manager:
+            return False
+        
+        def on_progress(chars_received, total):
+            self.logger.debug(f"Streaming progress: {chars_received} chars received")
+        
+        def on_complete(metrics):
+            self.logger.info(
+                f"Streaming complete: {metrics.total_characters} chars "
+                f"in {metrics.duration:.2f}s ({metrics.chars_per_second:.0f} chars/s)"
+            )
+            # Disable the text widget after streaming
+            self.app.after(0, lambda: text_widget.config(state="disabled"))
+            # Update stats
+            self.app.after(10, self.app.update_all_stats)
+        
+        return manager.start_streaming(
+            clear_existing=clear_existing,
+            on_progress=on_progress,
+            on_complete=on_complete
+        )
+    
+    def add_streaming_chunk(self, chunk: str) -> bool:
+        """
+        Add a chunk of text to the streaming response.
+        
+        Args:
+            chunk: Text chunk to add
+            
+        Returns:
+            True if chunk was added successfully
+        """
+        if not self._streaming_manager:
+            return False
+        
+        return self._streaming_manager.add_stream_chunk(chunk)
+    
+    def end_streaming_response(self):
+        """End the streaming response and finalize."""
+        if not self._streaming_manager:
+            return None
+        
+        metrics = self._streaming_manager.end_streaming()
+        
+        # Save settings after streaming completes
+        self.app.save_settings()
+        
+        return metrics
+    
+    def cancel_streaming(self):
+        """Cancel the current streaming operation."""
+        if self._streaming_manager:
+            self._streaming_manager.cancel()
+            self._streaming_manager = None
+    
+    def process_streaming_response(self, response_iterator):
+        """
+        Process a streaming response from an API.
+        
+        This method handles the full streaming lifecycle:
+        1. Start streaming
+        2. Process each chunk from the iterator
+        3. End streaming
+        
+        Args:
+            response_iterator: Iterator yielding response chunks
+            
+        Returns:
+            The complete accumulated text, or None if streaming failed
+        """
+        if not self.start_streaming_response():
+            self.logger.warning("Failed to start streaming, falling back to non-streaming")
+            return None
+        
+        try:
+            for chunk in response_iterator:
+                if not self.add_streaming_chunk(chunk):
+                    self.logger.warning("Failed to add chunk, stopping stream")
+                    break
+            
+            self.end_streaming_response()
+            return self._streaming_manager.get_accumulated_text() if self._streaming_manager else None
+            
+        except Exception as e:
+            self.logger.error(f"Error during streaming: {e}")
+            self.cancel_streaming()
+            return None
+    
+    def display_text_with_streaming(self, text: str, chunk_size: int = 50):
+        """
+        Display text progressively using streaming, simulating a streaming response.
+        
+        Useful for displaying large text content progressively.
+        
+        Args:
+            text: The text to display
+            chunk_size: Size of each chunk to display
+        """
+        if not self.is_streaming_enabled():
+            # Fall back to regular display
+            self.app.after(0, self.app.update_output_text, text)
+            return
+        
+        def chunk_generator():
+            for i in range(0, len(text), chunk_size):
+                yield text[i:i + chunk_size]
+        
+        # Run in background thread
+        def stream_text():
+            self.process_streaming_response(chunk_generator())
+        
+        thread = threading.Thread(target=stream_text, daemon=True)
+        thread.start()
+    
+    def display_ai_response(self, text: str, min_streaming_length: int = 500):
+        """
+        Unified method to display AI response with automatic streaming for large responses.
+        
+        This method should be used by all AI providers to display their responses.
+        It automatically decides whether to use streaming based on response length.
+        
+        Args:
+            text: The AI response text to display
+            min_streaming_length: Minimum text length to trigger streaming (default 500)
+        """
+        if self.is_streaming_enabled() and len(text) > min_streaming_length:
+            self.logger.debug(f"Using streaming display for response ({len(text)} chars)")
+            self.app.after(0, lambda t=text: self.display_text_with_streaming(t))
+        else:
+            self.app.after(0, self.app.update_output_text, text)

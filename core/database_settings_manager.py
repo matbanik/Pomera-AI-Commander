@@ -489,7 +489,22 @@ class DatabaseSettingsManager:
             )
     
     def _get_minimal_default_settings(self) -> Dict[str, Any]:
-        """Get minimal default settings for emergency fallback."""
+        """Get minimal default settings for emergency fallback.
+        
+        Uses the centralized Settings Defaults Registry if available,
+        otherwise falls back to the provided default settings provider
+        or hardcoded minimal defaults.
+        """
+        # Try to use the centralized Settings Defaults Registry first
+        try:
+            from .settings_defaults_registry import get_registry
+            registry = get_registry()
+            return registry.get_all_defaults(tab_count=7)
+        except ImportError:
+            self.logger.debug("Settings Defaults Registry not available")
+        except Exception as e:
+            self.logger.warning(f"Failed to get defaults from registry: {e}")
+        
         # Use provided default settings provider if available
         if self._default_settings_provider:
             try:
