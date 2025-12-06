@@ -190,6 +190,103 @@ try:
 except ImportError:
     FOLDER_FILE_REPORTER_MODULE_AVAILABLE = False
     print("Folder File Reporter module not available")
+
+# Line Tools module import
+try:
+    from tools.line_tools import LineTools
+    LINE_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    LINE_TOOLS_MODULE_AVAILABLE = False
+    print("Line Tools module not available")
+
+# Whitespace Tools module import
+try:
+    from tools.whitespace_tools import WhitespaceTools
+    WHITESPACE_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    WHITESPACE_TOOLS_MODULE_AVAILABLE = False
+    print("Whitespace Tools module not available")
+
+# Text Statistics module import
+try:
+    from tools.text_statistics_tool import TextStatistics
+    TEXT_STATISTICS_MODULE_AVAILABLE = True
+except ImportError:
+    TEXT_STATISTICS_MODULE_AVAILABLE = False
+    print("Text Statistics module not available")
+
+# Hash Generator module import
+try:
+    from tools.hash_generator import HashGenerator
+    HASH_GENERATOR_MODULE_AVAILABLE = True
+except ImportError:
+    HASH_GENERATOR_MODULE_AVAILABLE = False
+    print("Hash Generator module not available")
+
+# Markdown Tools module import
+try:
+    from tools.markdown_tools import MarkdownTools
+    MARKDOWN_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    MARKDOWN_TOOLS_MODULE_AVAILABLE = False
+    print("Markdown Tools module not available")
+
+# String Escape Tool module import
+try:
+    from tools.string_escape_tool import StringEscapeTool
+    STRING_ESCAPE_TOOL_MODULE_AVAILABLE = True
+except ImportError:
+    STRING_ESCAPE_TOOL_MODULE_AVAILABLE = False
+    print("String Escape Tool module not available")
+
+# Number Base Converter module import
+try:
+    from tools.number_base_converter import NumberBaseConverter
+    NUMBER_BASE_CONVERTER_MODULE_AVAILABLE = True
+except ImportError:
+    NUMBER_BASE_CONVERTER_MODULE_AVAILABLE = False
+    print("Number Base Converter module not available")
+
+# Text Wrapper module import
+try:
+    from tools.text_wrapper import TextWrapper
+    TEXT_WRAPPER_MODULE_AVAILABLE = True
+except ImportError:
+    TEXT_WRAPPER_MODULE_AVAILABLE = False
+    print("Text Wrapper module not available")
+
+# Slug Generator module import
+try:
+    from tools.slug_generator import SlugGenerator
+    SLUG_GENERATOR_MODULE_AVAILABLE = True
+except ImportError:
+    SLUG_GENERATOR_MODULE_AVAILABLE = False
+    print("Slug Generator module not available")
+
+# Column Tools module import
+try:
+    from tools.column_tools import ColumnTools
+    COLUMN_TOOLS_MODULE_AVAILABLE = True
+except ImportError:
+    COLUMN_TOOLS_MODULE_AVAILABLE = False
+    print("Column Tools module not available")
+
+# Timestamp Converter module import
+try:
+    from tools.timestamp_converter import TimestampConverter
+    TIMESTAMP_CONVERTER_MODULE_AVAILABLE = True
+except ImportError:
+    TIMESTAMP_CONVERTER_MODULE_AVAILABLE = False
+    print("Timestamp Converter module not available")
+
+# ASCII Art Generator module import
+try:
+    from tools.ascii_art_generator import ASCIIArtGenerator
+    ASCII_ART_GENERATOR_MODULE_AVAILABLE = True
+except ImportError:
+    ASCII_ART_GENERATOR_MODULE_AVAILABLE = False
+    print("ASCII Art Generator module not available")
+
 try:
     from huggingface_hub import InferenceClient
     from huggingface_hub.utils import HfHubHTTPError
@@ -1320,7 +1417,91 @@ class PromeraAIApp(tk.Tk):
         else:
             self.html_extraction_tool = None
             self.logger.warning("HTML Extraction Tool module not available")
-        
+
+        # Initialize Line Tools
+        if LINE_TOOLS_MODULE_AVAILABLE:
+            self.line_tools = LineTools()
+            self.logger.info("Line Tools module initialized")
+        else:
+            self.line_tools = None
+
+        # Initialize Whitespace Tools
+        if WHITESPACE_TOOLS_MODULE_AVAILABLE:
+            self.whitespace_tools = WhitespaceTools()
+            self.logger.info("Whitespace Tools module initialized")
+        else:
+            self.whitespace_tools = None
+
+        # Initialize Text Statistics
+        if TEXT_STATISTICS_MODULE_AVAILABLE:
+            self.text_statistics = TextStatistics()
+            self.logger.info("Text Statistics module initialized")
+        else:
+            self.text_statistics = None
+
+        # Initialize Hash Generator
+        if HASH_GENERATOR_MODULE_AVAILABLE:
+            self.hash_generator = HashGenerator()
+            self.logger.info("Hash Generator module initialized")
+        else:
+            self.hash_generator = None
+
+        # Initialize Markdown Tools
+        if MARKDOWN_TOOLS_MODULE_AVAILABLE:
+            self.markdown_tools = MarkdownTools()
+            self.logger.info("Markdown Tools module initialized")
+        else:
+            self.markdown_tools = None
+
+        # Initialize String Escape Tool
+        if STRING_ESCAPE_TOOL_MODULE_AVAILABLE:
+            self.string_escape_tool = StringEscapeTool()
+            self.logger.info("String Escape Tool module initialized")
+        else:
+            self.string_escape_tool = None
+
+        # Initialize Number Base Converter
+        if NUMBER_BASE_CONVERTER_MODULE_AVAILABLE:
+            self.number_base_converter = NumberBaseConverter()
+            self.logger.info("Number Base Converter module initialized")
+        else:
+            self.number_base_converter = None
+
+        # Initialize Text Wrapper
+        if TEXT_WRAPPER_MODULE_AVAILABLE:
+            self.text_wrapper = TextWrapper()
+            self.logger.info("Text Wrapper module initialized")
+        else:
+            self.text_wrapper = None
+
+        # Initialize Slug Generator
+        if SLUG_GENERATOR_MODULE_AVAILABLE:
+            self.slug_generator = SlugGenerator()
+            self.logger.info("Slug Generator module initialized")
+        else:
+            self.slug_generator = None
+
+        # Initialize Column Tools
+        if COLUMN_TOOLS_MODULE_AVAILABLE:
+            self.column_tools = ColumnTools()
+            self.logger.info("Column Tools module initialized")
+        else:
+            self.column_tools = None
+
+        # Initialize Timestamp Converter
+        if TIMESTAMP_CONVERTER_MODULE_AVAILABLE:
+            self.timestamp_converter = TimestampConverter()
+            self.logger.info("Timestamp Converter module initialized")
+        else:
+            self.timestamp_converter = None
+
+        # Initialize ASCII Art Generator
+        if ASCII_ART_GENERATOR_MODULE_AVAILABLE:
+            self.ascii_art_generator = ASCIIArtGenerator()
+            self.logger.info("ASCII Art Generator module initialized")
+        else:
+            self.ascii_art_generator = None
+
         # Initialize Event Consolidator
         if EVENT_CONSOLIDATOR_AVAILABLE:
             # Create debounce configuration based on performance settings
@@ -2947,10 +3128,14 @@ class PromeraAIApp(tk.Tk):
         self.tool_var = tk.StringVar(value=self.settings.get("selected_tool", "Case Tool"))
         
         self.tool_options = [
-            "AI Tools", "Base64 Encoder/Decoder", "Case Tool", "Cron Tool", "Diff Viewer",
-            "Email Extraction Tool", "Email Header Analyzer", "Find & Replace Text", "Folder File Reporter", "Generator Tools",
-            "HTML Extraction Tool", "JSON/XML Tool", "Regex Extractor", "Sorter Tools", "Translator Tools",
-            "URL Parser", "URL and Link Extractor", "Word Frequency Counter"
+            "AI Tools", "ASCII Art Generator", "Base64 Encoder/Decoder", "Case Tool", "Column Tools",
+            "Cron Tool", "Diff Viewer", "Email Extraction Tool", "Email Header Analyzer",
+            "Find & Replace Text", "Folder File Reporter", "Generator Tools", "Hash Generator",
+            "HTML Extraction Tool", "JSON/XML Tool", "Line Tools", "Markdown Tools",
+            "Number Base Converter", "Regex Extractor", "Slug Generator", "Sorter Tools",
+            "String Escape Tool", "Text Statistics", "Text Wrapper", "Timestamp Converter",
+            "Translator Tools", "URL Parser", "URL and Link Extractor", "Whitespace Tools",
+            "Word Frequency Counter"
         ]
         self.filtered_tool_options = self.tool_options.copy()
         
