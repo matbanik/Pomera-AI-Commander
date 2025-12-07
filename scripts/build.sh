@@ -30,6 +30,14 @@ if [ -f "requirements.txt" ]; then
     fi
 fi
 
+# Install additional AI SDK dependencies (may fail gracefully)
+echo "Installing additional AI SDK dependencies..."
+pip3 install google-genai>=1.0.0 2>/dev/null || echo "google-genai installation skipped"
+pip3 install azure-ai-inference>=1.0.0b1 azure-core>=1.30.0 2>/dev/null || echo "azure-ai-inference installation skipped"
+pip3 install tenacity>=8.2.0 2>/dev/null || echo "tenacity installation skipped"
+pip3 install aiohttp>=3.9.0 2>/dev/null || echo "aiohttp installation skipped"
+echo "AI SDK dependencies installation completed."
+
 # Clean previous build
 rm -rf build dist
 

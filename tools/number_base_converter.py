@@ -314,3 +314,60 @@ class NumberBaseConverter:
             "uppercase": True,
             "show_prefix": True
         }
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class NumberBaseConverterV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of NumberBaseConverter.
+        """
+        
+        TOOL_NAME = "Number Base Converter"
+        TOOL_DESCRIPTION = "Convert numbers between binary, octal, decimal, and hex"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Decimal to Hex", "dec_to_hex"),
+            ("Hex to Decimal", "hex_to_dec"),
+            ("Decimal to Binary", "dec_to_bin"),
+            ("Binary to Decimal", "bin_to_dec"),
+            ("Decimal to Octal", "dec_to_oct"),
+            ("Octal to Decimal", "oct_to_dec"),
+            ("Text to ASCII", "text_to_ascii"),
+            ("ASCII to Text", "ascii_to_text"),
+        ]
+        OPTIONS_LABEL = "Conversion"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "dec_to_hex"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified conversion."""
+            mode = settings.get("mode", "dec_to_hex")
+            
+            conversions = {
+                "dec_to_hex": ("decimal", "hex"),
+                "hex_to_dec": ("hex", "decimal"),
+                "dec_to_bin": ("decimal", "binary"),
+                "bin_to_dec": ("binary", "decimal"),
+                "dec_to_oct": ("decimal", "octal"),
+                "oct_to_dec": ("octal", "decimal"),
+            }
+            
+            if mode == "text_to_ascii":
+                return NumberBaseConverterProcessor.text_to_ascii_codes(input_text, "decimal")
+            elif mode == "ascii_to_text":
+                return NumberBaseConverterProcessor.ascii_codes_to_text(input_text, "decimal")
+            elif mode in conversions:
+                input_base, output_base = conversions[mode]
+                return NumberBaseConverterProcessor.convert_batch(
+                    input_text, input_base, output_base, True, True
+                )
+            else:
+                return input_text
+
+except ImportError:
+    pass

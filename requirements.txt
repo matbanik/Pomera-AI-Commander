@@ -2,12 +2,23 @@
 requests>=2.25.0
 reportlab>=3.6.0
 python-docx>=0.8.11
+aiohttp>=3.9.0
 
 # AI Tools dependencies
 huggingface-hub>=0.16.0
 google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.1.1
+
+# Google AI SDK (recommended for better error handling and streaming)
+google-genai>=1.0.0
+
+# Azure AI SDK (recommended - Microsoft recommends migrating to this)
+azure-ai-inference>=1.0.0b1
+azure-core>=1.30.0
+
+# Retry logic with exponential backoff
+tenacity>=8.2.0
 
 # Optional audio dependencies (for advanced features)
 # Uncomment if you need audio processing capabilities

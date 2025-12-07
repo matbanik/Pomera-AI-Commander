@@ -476,3 +476,48 @@ def morse_translator(text, mode, morse_dict=None, reversed_morse_dict=None):
 def binary_translator(text):
     """Translate text to/from binary code."""
     return TranslatorToolsProcessor.binary_translator(text)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class TranslatorToolsV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of TranslatorTools.
+        """
+        
+        TOOL_NAME = "Translator Tools"
+        TOOL_DESCRIPTION = "Translate text to/from Morse code and binary"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Text to Morse", "to_morse"),
+            ("Morse to Text", "from_morse"),
+            ("Text to Binary", "to_binary"),
+            ("Binary to Text", "from_binary"),
+        ]
+        OPTIONS_LABEL = "Translation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "to_morse"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = TranslatorToolsProcessor()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified translation mode."""
+            mode = settings.get("mode", "to_morse")
+            
+            if mode == "to_morse":
+                return TranslatorToolsProcessor.morse_translator(input_text, "morse")
+            elif mode == "from_morse":
+                return TranslatorToolsProcessor.morse_translator(input_text, "text")
+            elif mode in ("to_binary", "from_binary"):
+                return TranslatorToolsProcessor.binary_translator(input_text)
+            else:
+                return input_text
+
+except ImportError:
+    pass

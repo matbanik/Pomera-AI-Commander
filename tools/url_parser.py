@@ -164,3 +164,42 @@ def parse_url(text, ascii_decode=True):
 def process_url_parsing(input_text, settings):
     """Process URL parsing with the specified settings."""
     return URLParserProcessor.process_text(input_text, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class URLParserV2(BaseTool):
+        """
+        BaseTool-compatible version of URLParser.
+        """
+        
+        TOOL_NAME = "URL Parser"
+        TOOL_DESCRIPTION = "Parse URL into components (scheme, host, path, query)"
+        TOOL_VERSION = "2.0.0"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Parse URL and return components."""
+            return URLParserProcessor.parse_url(
+                input_text, 
+                settings.get("ascii_decode", True)
+            )
+        
+        def get_default_settings(self) -> Dict[str, Any]:
+            return {"ascii_decode": True}
+        
+        def create_ui(self, parent: tk.Widget, settings: Dict[str, Any], 
+                     on_change=None, on_apply=None) -> tk.Widget:
+            """Create a simple UI for URL Parser."""
+            frame = ttk.Frame(parent)
+            ttk.Label(frame, text="Parse URL components").pack(side=tk.LEFT, padx=5)
+            if on_apply:
+                ttk.Button(frame, text="Parse", command=on_apply).pack(side=tk.LEFT, padx=5)
+            return frame
+
+except ImportError:
+    pass

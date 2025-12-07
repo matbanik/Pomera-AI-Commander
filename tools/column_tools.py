@@ -347,3 +347,50 @@ class ColumnTools:
             "quote_char": '"',
             "has_header": True
         }
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class ColumnToolsV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of ColumnTools.
+        """
+        
+        TOOL_NAME = "Column Tools"
+        TOOL_DESCRIPTION = "Manipulate CSV/column data"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Extract Column", "extract"),
+            ("Delete Column", "delete"),
+            ("Transpose", "transpose"),
+            ("To Fixed Width", "fixed_width"),
+        ]
+        OPTIONS_LABEL = "Operation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "extract"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process CSV/column data."""
+            mode = settings.get("mode", "extract")
+            delimiter = settings.get("delimiter", ",")
+            column_index = settings.get("column_index", 0)
+            
+            if mode == "extract":
+                return ColumnToolsProcessor.extract_column(input_text, column_index, delimiter)
+            elif mode == "delete":
+                return ColumnToolsProcessor.delete_column(input_text, column_index, delimiter)
+            elif mode == "transpose":
+                return ColumnToolsProcessor.transpose(input_text, delimiter)
+            elif mode == "fixed_width":
+                return ColumnToolsProcessor.to_fixed_width(input_text, delimiter)
+            else:
+                return input_text
+
+except ImportError:
+    pass

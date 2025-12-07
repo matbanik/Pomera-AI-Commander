@@ -502,3 +502,61 @@ class MarkdownTools:
     def process_text(self, input_text, tool_type, settings):
         """Process text using the specified tool and settings."""
         return MarkdownToolsProcessor.process_text(input_text, tool_type, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class MarkdownToolsV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of MarkdownTools.
+        """
+        
+        TOOL_NAME = "Markdown Tools"
+        TOOL_DESCRIPTION = "Process and manipulate markdown text"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Strip Markdown", "strip"),
+            ("Extract Links", "extract_links"),
+            ("Extract Headers", "extract_headers"),
+            ("Table to CSV", "table_to_csv"),
+            ("Format Table", "format_table"),
+        ]
+        OPTIONS_LABEL = "Operation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "strip"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process markdown text."""
+            mode = settings.get("mode", "strip")
+            
+            if mode == "strip":
+                return MarkdownToolsProcessor.strip_markdown(
+                    input_text, 
+                    settings.get("preserve_links_text", True)
+                )
+            elif mode == "extract_links":
+                return MarkdownToolsProcessor.extract_links(
+                    input_text,
+                    settings.get("include_images", False)
+                )
+            elif mode == "extract_headers":
+                return MarkdownToolsProcessor.extract_headers(
+                    input_text,
+                    settings.get("header_format", "indented")
+                )
+            elif mode == "table_to_csv":
+                return MarkdownToolsProcessor.table_to_csv(
+                    input_text,
+                    settings.get("csv_delimiter", ",")
+                )
+            elif mode == "format_table":
+                return MarkdownToolsProcessor.format_table(input_text)
+            else:
+                return input_text
+
+except ImportError:
+    pass

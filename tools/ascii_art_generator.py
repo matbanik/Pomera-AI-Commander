@@ -317,3 +317,37 @@ class ASCIIArtGenerator:
             "font": "standard",
             "width": 80
         }
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class ASCIIArtGeneratorV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of ASCIIArtGenerator.
+        """
+        
+        TOOL_NAME = "ASCII Art Generator"
+        TOOL_DESCRIPTION = "Convert text to ASCII art"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Standard", "standard"),
+            ("Banner", "banner"),
+            ("Block", "block"),
+        ]
+        OPTIONS_LABEL = "Font"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "standard"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Generate ASCII art from text."""
+            font = settings.get("mode", "standard")
+            return ASCIIArtGeneratorProcessor.generate_ascii_art(input_text, font)
+
+except ImportError:
+    pass

@@ -20,6 +20,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Install additional AI SDK dependencies (may fail gracefully)
+echo Installing additional AI SDK dependencies...
+pip install google-genai>=1.0.0 2>nul
+pip install azure-ai-inference>=1.0.0b1 azure-core>=1.30.0 2>nul
+pip install tenacity>=8.2.0 2>nul
+pip install aiohttp>=3.9.0 2>nul
+echo AI SDK dependencies installation completed.
+
 REM Clean previous build
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist

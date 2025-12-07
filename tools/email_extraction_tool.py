@@ -200,3 +200,50 @@ def extract_emails_advanced(text, omit_duplicates, hide_counts, sort_emails, onl
 def process_email_extraction(input_text, settings):
     """Process email extraction with the specified settings."""
     return EmailExtractionProcessor.process_text(input_text, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class EmailExtractionToolV2(BaseTool):
+        """
+        BaseTool-compatible version of EmailExtractionTool.
+        """
+        
+        TOOL_NAME = "Email Extraction Tool"
+        TOOL_DESCRIPTION = "Extract email addresses from text"
+        TOOL_VERSION = "2.0.0"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Extract emails from text."""
+            return EmailExtractionProcessor.extract_emails_advanced(
+                input_text,
+                settings.get("omit_duplicates", False),
+                settings.get("hide_counts", True),
+                settings.get("sort_emails", False),
+                settings.get("only_domain", False)
+            )
+        
+        def get_default_settings(self) -> Dict[str, Any]:
+            return {
+                "omit_duplicates": False,
+                "hide_counts": True,
+                "sort_emails": False,
+                "only_domain": False
+            }
+        
+        def create_ui(self, parent: tk.Widget, settings: Dict[str, Any], 
+                     on_change=None, on_apply=None) -> tk.Widget:
+            """Create UI for Email Extraction Tool."""
+            frame = ttk.Frame(parent)
+            ttk.Label(frame, text="Extract email addresses").pack(side=tk.LEFT, padx=5)
+            if on_apply:
+                ttk.Button(frame, text="Extract", command=on_apply).pack(side=tk.LEFT, padx=5)
+            return frame
+
+except ImportError:
+    pass

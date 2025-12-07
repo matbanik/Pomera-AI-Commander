@@ -416,17 +416,37 @@ class NotesWidget:
         
         self.current_search_future = self.search_executor.submit(search_worker, search_term)
         self.current_search_future.add_done_callback(
-            lambda future: self.parent.after(0, lambda: self._handle_search_results(future, select_item_id, select_first))
+            lambda future: self._safe_after(lambda: self._handle_search_results(future, select_item_id, select_first))
         )
+    
+    def _safe_after(self, callback, delay: int = 0) -> None:
+        """Schedule a callback only if the parent widget still exists."""
+        try:
+            if self.parent.winfo_exists():
+                self.parent.after(delay, callback)
+        except Exception:
+            # Widget was destroyed, ignore
+            pass
     
     def _handle_search_results(self, future: Future, select_item_id: Optional[int] = None, select_first: bool = False) -> None:
         """Process search results in the main UI thread."""
         if future.cancelled():
             return
         
+        # Check if widget still exists before updating
+        try:
+            if not self.parent.winfo_exists():
+                return
+        except Exception:
+            return
+        
         if hasattr(self, 'status_bar'):
-            self.status_bar.config(text="Ready")
-            self.parent.config(cursor="")
+            try:
+                self.status_bar.config(text="Ready")
+                self.parent.config(cursor="")
+            except Exception:
+                # Widget was destroyed, ignore
+                return
         
         error = future.exception()
         if error:
@@ -442,9 +462,18 @@ class NotesWidget:
         self.refresh_search_view()
         
         if select_item_id:
-            self.parent.after_idle(lambda: self._select_item_in_tree(select_item_id))
+            self._safe_after_idle(lambda: self._select_item_in_tree(select_item_id))
         elif select_first:
-            self.parent.after_idle(self._select_first_item_in_tree)
+            self._safe_after_idle(self._select_first_item_in_tree)
+    
+    def _safe_after_idle(self, callback) -> None:
+        """Schedule an idle callback only if the parent widget still exists."""
+        try:
+            if self.parent.winfo_exists():
+                self.parent.after_idle(callback)
+        except Exception:
+            # Widget was destroyed, ignore
+            pass
     
     def sort_by_column(self, column: str) -> None:
         """Sort the treeview by a specified column, cycling through directions."""

@@ -365,3 +365,55 @@ class LineTools:
         """Process text using the specified tool and settings."""
         return LineToolsProcessor.process_text(input_text, tool_type, settings)
 
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class LineToolsV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of LineTools.
+        """
+        
+        TOOL_NAME = "Line Tools"
+        TOOL_DESCRIPTION = "Line manipulation: remove duplicates, add numbers, reverse, shuffle"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Remove Duplicates", "remove_duplicates"),
+            ("Remove Empty Lines", "remove_empty"),
+            ("Add Line Numbers", "add_numbers"),
+            ("Remove Line Numbers", "remove_numbers"),
+            ("Reverse Lines", "reverse"),
+            ("Shuffle Lines", "shuffle"),
+        ]
+        OPTIONS_LABEL = "Operation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "remove_duplicates"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = LineToolsProcessor()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified line operation."""
+            mode = settings.get("mode", "remove_duplicates")
+            
+            if mode == "remove_duplicates":
+                return LineToolsProcessor.remove_duplicates(input_text)
+            elif mode == "remove_empty":
+                return LineToolsProcessor.remove_empty_lines(input_text)
+            elif mode == "add_numbers":
+                return LineToolsProcessor.add_line_numbers(input_text)
+            elif mode == "remove_numbers":
+                return LineToolsProcessor.remove_line_numbers(input_text)
+            elif mode == "reverse":
+                return LineToolsProcessor.reverse_lines(input_text)
+            elif mode == "shuffle":
+                return LineToolsProcessor.shuffle_lines(input_text)
+            else:
+                return input_text
+
+except ImportError:
+    pass

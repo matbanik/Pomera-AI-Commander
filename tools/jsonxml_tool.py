@@ -624,3 +624,107 @@ class JSONXMLTool:
             "jsonpath_query": self.jsonpath_var.get(),
             "xpath_query": self.xpath_var.get()
         }
+
+
+# Static utility functions for BaseTool
+def _json_prettify_static(text, indent=2):
+    """Prettify JSON without UI dependencies."""
+    try:
+        data = json.loads(text)
+        return json.dumps(data, indent=indent, ensure_ascii=False)
+    except json.JSONDecodeError as e:
+        return f"Invalid JSON: {e}"
+
+def _json_minify_static(text):
+    """Minify JSON without UI dependencies."""
+    try:
+        data = json.loads(text)
+        return json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+    except json.JSONDecodeError as e:
+        return f"Invalid JSON: {e}"
+
+def _json_validate_static(text):
+    """Validate JSON without UI dependencies."""
+    try:
+        json.loads(text)
+        return "✓ Valid JSON"
+    except json.JSONDecodeError as e:
+        return f"✗ Invalid JSON: {e}"
+
+def _xml_prettify_static(text, indent=2):
+    """Prettify XML without UI dependencies."""
+    try:
+        root = ET.fromstring(text)
+        rough_string = ET.tostring(root, encoding='unicode')
+        reparsed = xml.dom.minidom.parseString(rough_string)
+        pretty = reparsed.toprettyxml(indent=" " * indent)
+        lines = [line for line in pretty.split('\n') if line.strip()]
+        return '\n'.join(lines)
+    except ET.ParseError as e:
+        return f"Invalid XML: {e}"
+
+def _xml_minify_static(text):
+    """Minify XML without UI dependencies."""
+    try:
+        root = ET.fromstring(text)
+        return ET.tostring(root, encoding='unicode')
+    except ET.ParseError as e:
+        return f"Invalid XML: {e}"
+
+def _xml_validate_static(text):
+    """Validate XML without UI dependencies."""
+    try:
+        ET.fromstring(text)
+        return "✓ Valid XML"
+    except ET.ParseError as e:
+        return f"✗ Invalid XML: {e}"
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class JSONXMLToolV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of JSONXMLTool.
+        """
+        
+        TOOL_NAME = "JSON/XML Tool"
+        TOOL_DESCRIPTION = "Convert, prettify, minify, and validate JSON/XML"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("JSON Prettify", "json_prettify"),
+            ("JSON Minify", "json_minify"),
+            ("JSON Validate", "json_validate"),
+            ("XML Prettify", "xml_prettify"),
+            ("XML Minify", "xml_minify"),
+            ("XML Validate", "xml_validate"),
+        ]
+        OPTIONS_LABEL = "Operation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "json_prettify"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified JSON/XML operation."""
+            mode = settings.get("mode", "json_prettify")
+            indent = settings.get("indent", 2)
+            
+            if mode == "json_prettify":
+                return _json_prettify_static(input_text, indent)
+            elif mode == "json_minify":
+                return _json_minify_static(input_text)
+            elif mode == "json_validate":
+                return _json_validate_static(input_text)
+            elif mode == "xml_prettify":
+                return _xml_prettify_static(input_text, indent)
+            elif mode == "xml_minify":
+                return _xml_minify_static(input_text)
+            elif mode == "xml_validate":
+                return _xml_validate_static(input_text)
+            else:
+                return input_text
+
+except ImportError:
+    pass

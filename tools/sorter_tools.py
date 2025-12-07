@@ -318,3 +318,142 @@ def number_sorter(text, order):
 def alphabetical_sorter(text, order, unique_only=False, trim=False):
     """Sort text alphabetically with specified options."""
     return SorterToolsProcessor.alphabetical_sorter(text, order, unique_only, trim)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any, Optional, Callable
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class SorterToolsV2(BaseTool):
+        """
+        BaseTool-compatible version of SorterTools.
+        
+        Provides both number and alphabetical sorting with a unified interface.
+        """
+        
+        TOOL_NAME = "Sorter Tools"
+        TOOL_DESCRIPTION = "Sort lines numerically or alphabetically"
+        TOOL_VERSION = "2.0.0"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = SorterToolsProcessor()
+            self._sort_type_var: Optional[tk.StringVar] = None
+            self._order_var: Optional[tk.StringVar] = None
+            self._unique_var: Optional[tk.BooleanVar] = None
+            self._trim_var: Optional[tk.BooleanVar] = None
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified sorter settings."""
+            sort_type = settings.get("sort_type", "alphabetical")
+            
+            if sort_type == "number":
+                return SorterToolsProcessor.number_sorter(
+                    input_text,
+                    settings.get("order", "ascending")
+                )
+            else:
+                return SorterToolsProcessor.alphabetical_sorter(
+                    input_text,
+                    settings.get("order", "ascending"),
+                    settings.get("unique_only", False),
+                    settings.get("trim", False)
+                )
+        
+        def create_ui(self,
+                      parent: tk.Frame,
+                      settings: Dict[str, Any],
+                      on_setting_change_callback: Optional[Callable] = None,
+                      apply_tool_callback: Optional[Callable] = None) -> tk.Frame:
+            """Create the Sorter Tools UI."""
+            self._settings = settings.copy()
+            self._on_setting_change = on_setting_change_callback
+            self._apply_callback = apply_tool_callback
+            self._initializing = True
+            
+            frame = ttk.Frame(parent)
+            frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Sort type selection
+            type_frame = ttk.LabelFrame(frame, text="Sort Type", padding=5)
+            type_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            self._sort_type_var = tk.StringVar(value=settings.get("sort_type", "alphabetical"))
+            ttk.Radiobutton(type_frame, text="Alphabetical", variable=self._sort_type_var,
+                           value="alphabetical", command=self._on_type_change).pack(side=tk.LEFT, padx=5)
+            ttk.Radiobutton(type_frame, text="Numeric", variable=self._sort_type_var,
+                           value="number", command=self._on_type_change).pack(side=tk.LEFT, padx=5)
+            
+            # Order selection
+            order_frame = ttk.LabelFrame(frame, text="Order", padding=5)
+            order_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            self._order_var = tk.StringVar(value=settings.get("order", "ascending"))
+            ttk.Radiobutton(order_frame, text="Ascending", variable=self._order_var,
+                           value="ascending", command=self._on_change).pack(side=tk.LEFT, padx=5)
+            ttk.Radiobutton(order_frame, text="Descending", variable=self._order_var,
+                           value="descending", command=self._on_change).pack(side=tk.LEFT, padx=5)
+            
+            # Options (for alphabetical)
+            self._options_frame = ttk.LabelFrame(frame, text="Options", padding=5)
+            self._options_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            self._trim_var = tk.BooleanVar(value=settings.get("trim", False))
+            ttk.Checkbutton(self._options_frame, text="Trim whitespace",
+                           variable=self._trim_var, command=self._on_change).pack(anchor=tk.W)
+            
+            self._unique_var = tk.BooleanVar(value=settings.get("unique_only", False))
+            ttk.Checkbutton(self._options_frame, text="Unique only",
+                           variable=self._unique_var, command=self._on_change).pack(anchor=tk.W)
+            
+            # Apply button
+            if apply_tool_callback:
+                ttk.Button(frame, text="Sort", command=apply_tool_callback).pack(pady=10)
+            
+            self._ui_frame = frame
+            self._initializing = False
+            self._update_options_visibility()
+            return frame
+        
+        def _on_type_change(self):
+            """Handle sort type change."""
+            self._update_options_visibility()
+            self._on_change()
+        
+        def _update_options_visibility(self):
+            """Show/hide options based on sort type."""
+            if self._sort_type_var and self._sort_type_var.get() == "number":
+                self._options_frame.pack_forget()
+            else:
+                self._options_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        def _on_change(self):
+            """Handle setting change."""
+            if not self._initializing and self._on_setting_change:
+                self._on_setting_change()
+        
+        def get_current_settings(self) -> Dict[str, Any]:
+            """Get current settings from UI."""
+            return {
+                "sort_type": self._sort_type_var.get() if self._sort_type_var else "alphabetical",
+                "order": self._order_var.get() if self._order_var else "ascending",
+                "trim": self._trim_var.get() if self._trim_var else False,
+                "unique_only": self._unique_var.get() if self._unique_var else False,
+            }
+        
+        @classmethod
+        def get_default_settings(cls) -> Dict[str, Any]:
+            """Get default settings."""
+            return {
+                "sort_type": "alphabetical",
+                "order": "ascending",
+                "trim": False,
+                "unique_only": False
+            }
+
+except ImportError:
+    # BaseTool not available
+    pass

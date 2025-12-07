@@ -46,6 +46,14 @@ a = Analysis(
         'tools.word_frequency_counter',
         # Core modules
         'core',
+        # MCP modules
+        'core.mcp',
+        'core.mcp.schema',
+        'core.mcp.protocol',
+        'core.mcp.tool_registry',
+        'core.mcp.server_stdio',
+        # MCP widget
+        'tools.mcp_widget',
         # External dependencies
         'requests',
         'reportlab.pdfgen.canvas',

@@ -169,7 +169,12 @@ class AIToolsWidget(ttk.Frame):
             },
             "OpenRouterAI": {
                 "url": "https://openrouter.ai/api/v1/chat/completions",
-                "headers_template": {"Authorization": "Bearer {api_key}", "Content-Type": "application/json"},
+                "headers_template": {
+                    "Authorization": "Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/matbanik/Pomera-AI-Commander",
+                    "X-Title": "Pomera AI Commander"
+                },
                 "api_url": "https://openrouter.ai/settings/keys"
             },
             "LM Studio": {
@@ -744,6 +749,20 @@ class AIToolsWidget(ttk.Frame):
         elif provider_name == "LM Studio":
             # Store model combobox reference for LM Studio
             pass  # LM Studio refresh button is in the configuration section
+        elif provider_name == "Google AI":
+            # Refresh Models button for Google AI (fetches from API)
+            ttk.Button(model_frame, text="Refresh", 
+                      command=lambda: self.refresh_google_ai_models(provider_name)).pack(side=tk.LEFT, padx=(0, 5))
+            # Model edit button
+            ttk.Button(model_frame, text="\u270E", 
+                      command=lambda: self.open_model_editor(provider_name), width=3).pack(side=tk.LEFT, padx=(0, 5))
+        elif provider_name == "OpenRouterAI":
+            # Refresh Models button for OpenRouter (fetches from API)
+            ttk.Button(model_frame, text="Refresh", 
+                      command=lambda: self.refresh_openrouter_models(provider_name)).pack(side=tk.LEFT, padx=(0, 5))
+            # Model edit button
+            ttk.Button(model_frame, text="\u270E", 
+                      command=lambda: self.open_model_editor(provider_name), width=3).pack(side=tk.LEFT, padx=(0, 5))
         else:
             # Model edit button for other providers
             ttk.Button(model_frame, text="\u270E", 
@@ -1185,6 +1204,146 @@ class AIToolsWidget(ttk.Frame):
         except Exception as e:
             self._show_error("Error", f"Error refreshing models: {e}")
     
+    def refresh_google_ai_models(self, provider_name):
+        """Refresh the model list from Google AI (Gemini) API."""
+        if provider_name != "Google AI":
+            return
+        
+        settings = self.get_current_settings()
+        api_key = self.get_api_key_for_provider(provider_name, settings)
+        
+        if not api_key or api_key == "putinyourkey":
+            self._show_error("Error", "Please enter a valid Google AI API key first")
+            return
+        
+        try:
+            # Google AI models endpoint
+            models_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            
+            response = requests.get(models_url, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            models = []
+            
+            # Filter for generative models (not embedding models)
+            for model in data.get("models", []):
+                model_name = model.get("name", "")
+                # Remove "models/" prefix
+                if model_name.startswith("models/"):
+                    model_name = model_name[7:]
+                
+                # Filter for text generation models (gemini models)
+                supported_methods = model.get("supportedGenerationMethods", [])
+                if "generateContent" in supported_methods:
+                    models.append(model_name)
+            
+            if models:
+                # Sort models (prefer newer versions)
+                models.sort(reverse=True)
+                
+                # Update the model combobox
+                if provider_name in self.ai_widgets and "MODEL" in self.ai_widgets[provider_name]:
+                    # Find and update the combobox in the tab
+                    for provider, tab_frame in self.tabs.items():
+                        if provider == provider_name:
+                            # Update the model variable and refresh the UI
+                            self.ai_widgets[provider_name]["MODEL"].set(models[0] if models else "")
+                            for widget in tab_frame.winfo_children():
+                                widget.destroy()
+                            self.create_provider_widgets(tab_frame, provider_name)
+                            break
+                
+                # Update settings
+                self.app.settings["tool_settings"][provider_name]["MODELS_LIST"] = models
+                self.app.settings["tool_settings"][provider_name]["MODEL"] = models[0] if models else ""
+                self.app.save_settings()
+                
+                self._show_info("Success", f"Found {len(models)} generative models from Google AI")
+            else:
+                self._show_warning("Warning", "No generative models found. Check your API key permissions.")
+                
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Could not connect to Google AI API\n\nError: {e}"
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    error_msg += f"\n\nDetails: {json.dumps(error_detail, indent=2)}"
+                except:
+                    error_msg += f"\n\nResponse: {e.response.text}"
+            self._show_error("Connection Error", error_msg)
+        except Exception as e:
+            self._show_error("Error", f"Error refreshing Google AI models: {e}")
+    
+    def refresh_openrouter_models(self, provider_name):
+        """Refresh the model list from OpenRouter API."""
+        if provider_name != "OpenRouterAI":
+            return
+        
+        settings = self.get_current_settings()
+        api_key = self.get_api_key_for_provider(provider_name, settings)
+        
+        # OpenRouter models endpoint is public, but API key is recommended
+        try:
+            headers = {"Content-Type": "application/json"}
+            if api_key and api_key != "putinyourkey":
+                headers["Authorization"] = f"Bearer {api_key}"
+            
+            # OpenRouter models endpoint
+            models_url = "https://openrouter.ai/api/v1/models"
+            
+            response = requests.get(models_url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            models = []
+            
+            # Extract model IDs from the response
+            for model in data.get("data", []):
+                model_id = model.get("id", "")
+                if model_id:
+                    models.append(model_id)
+            
+            if models:
+                # Sort models alphabetically
+                models.sort()
+                
+                # Update the model combobox
+                if provider_name in self.ai_widgets and "MODEL" in self.ai_widgets[provider_name]:
+                    # Find and update the combobox in the tab
+                    for provider, tab_frame in self.tabs.items():
+                        if provider == provider_name:
+                            # Update the model variable and refresh the UI
+                            current_model = self.ai_widgets[provider_name]["MODEL"].get()
+                            if not current_model or current_model not in models:
+                                self.ai_widgets[provider_name]["MODEL"].set(models[0] if models else "")
+                            for widget in tab_frame.winfo_children():
+                                widget.destroy()
+                            self.create_provider_widgets(tab_frame, provider_name)
+                            break
+                
+                # Update settings
+                self.app.settings["tool_settings"][provider_name]["MODELS_LIST"] = models
+                if not self.app.settings["tool_settings"].get(provider_name, {}).get("MODEL"):
+                    self.app.settings["tool_settings"][provider_name]["MODEL"] = models[0] if models else ""
+                self.app.save_settings()
+                
+                self._show_info("Success", f"Found {len(models)} models from OpenRouter")
+            else:
+                self._show_warning("Warning", "No models found from OpenRouter.")
+                
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Could not connect to OpenRouter API\n\nError: {e}"
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    error_msg += f"\n\nDetails: {json.dumps(error_detail, indent=2)}"
+                except:
+                    error_msg += f"\n\nResponse: {e.response.text}"
+            self._show_error("Connection Error", error_msg)
+        except Exception as e:
+            self._show_error("Error", f"Error refreshing OpenRouter models: {e}")
+    
     def refresh_bedrock_models(self, provider_name):
         """Refresh the model list from AWS Bedrock ListFoundationModels API."""
         if provider_name != "AWS Bedrock":
@@ -1589,24 +1748,41 @@ class AIToolsWidget(ttk.Frame):
                 safe_headers = {k: ('***REDACTED***' if k == 'Authorization' else v) for k, v in headers.items()}
                 self.logger.debug(f"Vertex AI Headers: {json.dumps(safe_headers, indent=2)}")
 
+            # Check if provider supports streaming and streaming is enabled
+            streaming_providers = ["OpenAI", "Groq AI", "OpenRouterAI", "Azure AI", "Anthropic AI"]
+            use_streaming = (
+                self.is_streaming_enabled() and 
+                provider_name in streaming_providers
+            )
+            
             # Retry logic with exponential backoff
             max_retries = 5
             base_delay = 1
 
             for i in range(max_retries):
                 try:
-                    response = requests.post(url, json=payload, headers=headers, timeout=60)
-                    response.raise_for_status()
+                    if use_streaming:
+                        # Use streaming API call
+                        self.logger.info(f"Using streaming mode for {provider_name}")
+                        streaming_payload = payload.copy()
+                        streaming_payload["stream"] = True
+                        
+                        self._call_streaming_api(url, streaming_payload, headers, provider_name)
+                        return
+                    else:
+                        # Non-streaming API call
+                        response = requests.post(url, json=payload, headers=headers, timeout=60)
+                        response.raise_for_status()
 
-                    data = response.json()
-                    self.logger.debug(f"{provider_name} Response: {data}")
+                        data = response.json()
+                        self.logger.debug(f"{provider_name} Response: {data}")
 
-                    result_text = self._extract_response_text(provider_name, data)
-                    self.logger.debug(f"FINAL: About to display result_text: {str(result_text)[:100]}...")
-                    
-                    # Use unified display method (handles streaming automatically)
-                    self.display_ai_response(result_text)
-                    return
+                        result_text = self._extract_response_text(provider_name, data)
+                        self.logger.debug(f"FINAL: About to display result_text: {str(result_text)[:100]}...")
+                        
+                        # Use unified display method (handles streaming automatically)
+                        self.display_ai_response(result_text)
+                        return
 
                 except requests.exceptions.HTTPError as e:
                     if e.response.status_code == 429 and i < max_retries - 1:
@@ -1950,8 +2126,16 @@ class AIToolsWidget(ttk.Frame):
         
         if provider_name in ["Google AI", "Vertex AI"]:
             system_prompt = settings.get("system_prompt", "").strip()
-            full_prompt = f"{system_prompt}\n\n{prompt}".strip() if system_prompt else prompt
-            payload = {"contents": [{"parts": [{"text": full_prompt}], "role": "user"}]}
+            
+            # Use proper systemInstruction field instead of prepending to prompt
+            # This is the recommended way to set system prompts for Gemini models
+            payload = {"contents": [{"parts": [{"text": prompt}], "role": "user"}]}
+            
+            # Add systemInstruction as a separate field (proper Gemini API format)
+            if system_prompt:
+                payload["systemInstruction"] = {
+                    "parts": [{"text": system_prompt}]
+                }
             
             gen_config = {}
             self._add_param_if_valid(gen_config, settings, 'temperature', float)
@@ -2243,6 +2427,117 @@ class AIToolsWidget(ttk.Frame):
                 result_text = str(data)
         
         return result_text
+    
+    def _call_streaming_api(self, url, payload, headers, provider_name):
+        """
+        Make a streaming API call and progressively display the response.
+        
+        Supports OpenAI-compatible streaming format (SSE with data: prefix).
+        Works with OpenAI, Groq, OpenRouter, Azure AI, and Anthropic.
+        
+        Args:
+            url: API endpoint URL
+            payload: Request payload (should include "stream": True)
+            headers: Request headers
+            provider_name: Name of the AI provider
+        """
+        try:
+            # Start streaming display
+            if not self.start_streaming_response():
+                self.logger.warning("Failed to start streaming display, falling back to non-streaming")
+                # Fall back to non-streaming
+                payload_copy = payload.copy()
+                payload_copy.pop("stream", None)
+                response = requests.post(url, json=payload_copy, headers=headers, timeout=60)
+                response.raise_for_status()
+                data = response.json()
+                result_text = self._extract_response_text(provider_name, data)
+                self.display_ai_response(result_text)
+                return
+            
+            # Make streaming request
+            response = requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
+            response.raise_for_status()
+            
+            accumulated_text = ""
+            
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                    
+                line_text = line.decode('utf-8')
+                
+                # Handle SSE format (data: prefix)
+                if line_text.startswith('data: '):
+                    data_str = line_text[6:]  # Remove 'data: ' prefix
+                    
+                    # Check for stream end marker
+                    if data_str.strip() == '[DONE]':
+                        break
+                    
+                    try:
+                        chunk_data = json.loads(data_str)
+                        
+                        # Extract content based on provider format
+                        content = self._extract_streaming_chunk(chunk_data, provider_name)
+                        
+                        if content:
+                            accumulated_text += content
+                            self.add_streaming_chunk(content)
+                            
+                    except json.JSONDecodeError as e:
+                        self.logger.debug(f"Skipping non-JSON line: {data_str[:50]}...")
+                        continue
+                        
+                # Handle Anthropic's event-based format
+                elif line_text.startswith('event: '):
+                    # Anthropic uses event: content_block_delta, etc.
+                    continue
+            
+            # End streaming
+            self.end_streaming_response()
+            
+            if not accumulated_text:
+                self.logger.warning("No content received from streaming response")
+                self.app.after(0, self.app.update_output_text, "Error: No content received from streaming response.")
+                
+        except requests.exceptions.RequestException as e:
+            self.cancel_streaming()
+            self.logger.error(f"Streaming API request failed: {e}")
+            self.app.after(0, self.app.update_output_text, f"Streaming API Error: {e}")
+        except Exception as e:
+            self.cancel_streaming()
+            self.logger.error(f"Streaming error: {e}", exc_info=True)
+            self.app.after(0, self.app.update_output_text, f"Streaming Error: {e}")
+    
+    def _extract_streaming_chunk(self, chunk_data, provider_name):
+        """
+        Extract text content from a streaming chunk based on provider format.
+        
+        Args:
+            chunk_data: Parsed JSON chunk data
+            provider_name: Name of the AI provider
+            
+        Returns:
+            Extracted text content or empty string
+        """
+        try:
+            if provider_name == "Anthropic AI":
+                # Anthropic format: {"type": "content_block_delta", "delta": {"text": "..."}}
+                if chunk_data.get("type") == "content_block_delta":
+                    return chunk_data.get("delta", {}).get("text", "")
+                return ""
+            else:
+                # OpenAI-compatible format (OpenAI, Groq, OpenRouter, Azure AI)
+                # Format: {"choices": [{"delta": {"content": "..."}}]}
+                choices = chunk_data.get("choices", [])
+                if choices and len(choices) > 0:
+                    delta = choices[0].get("delta", {})
+                    return delta.get("content", "")
+                return ""
+        except Exception as e:
+            self.logger.debug(f"Error extracting streaming chunk: {e}")
+            return ""
     
     def open_model_editor(self, provider_name):
         """Opens a Toplevel window to edit the model list for an AI provider."""

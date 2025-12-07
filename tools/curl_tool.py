@@ -1621,7 +1621,7 @@ class CurlToolWidget:
                         
                         # Create progress callback
                         def progress_callback(downloaded, total, speed):
-                            self.parent.after(0, lambda: self._update_download_progress(downloaded, total, speed))
+                            self._safe_after(0, lambda: self._update_download_progress(downloaded, total, speed))
                         
                         download_info = self.processor.download_file(
                             url=url,
@@ -1637,8 +1637,8 @@ class CurlToolWidget:
                             follow_redirects=follow_redirects
                         )
                         
-                        # Update UI in main thread
-                        self.parent.after(0, lambda: self._handle_download_success(download_info))
+                        # Update UI in main thread (with safety check)
+                        self._safe_after(0, lambda: self._handle_download_success(download_info))
                     else:
                         # Handle as regular request
                         # Prepare request parameters
@@ -1672,13 +1672,13 @@ class CurlToolWidget:
                             if files_to_cleanup:
                                 self._cleanup_multipart_files(files_to_cleanup)
                         
-                        # Update UI in main thread
-                        self.parent.after(0, lambda: self._handle_response_success(response_data))
+                        # Update UI in main thread (with safety check)
+                        self._safe_after(0, lambda: self._handle_response_success(response_data))
                     
                 except Exception as e:
                     # Update UI in main thread - capture exception to avoid lambda closure issues
                     error_to_handle = e
-                    self.parent.after(0, lambda err=error_to_handle: self._handle_response_error(err))
+                    self._safe_after(0, lambda err=error_to_handle: self._handle_response_error(err))
             
             # Start request in background thread
             thread = threading.Thread(target=execute_request, daemon=True)
@@ -1763,6 +1763,13 @@ class CurlToolWidget:
     
     def _handle_response_success(self, response_data):
         """Handle successful response."""
+        # Check if widget still exists before updating UI
+        try:
+            if not self.parent.winfo_exists():
+                return
+        except Exception:
+            return
+        
         # Re-enable send button
         self.send_button.config(state="normal", text="Send")
         
@@ -2010,8 +2017,24 @@ class CurlToolWidget:
         """Hide the resume download button."""
         self.resume_download_button.pack_forget()
     
+    def _safe_after(self, delay, callback):
+        """Schedule a callback only if the parent widget still exists."""
+        try:
+            if self.parent.winfo_exists():
+                self.parent.after(delay, callback)
+        except Exception:
+            # Widget was destroyed, ignore
+            pass
+    
     def _handle_response_error(self, error):
         """Handle request error with detailed diagnostics."""
+        # Check if widget still exists before updating UI
+        try:
+            if not self.parent.winfo_exists():
+                return
+        except Exception:
+            return
+        
         # Handle None error case
         if error is None:
             error = Exception("Unknown error occurred - received None in _handle_response_error")

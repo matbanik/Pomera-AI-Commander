@@ -5,9 +5,20 @@
 requests>=2.25.0
 reportlab>=3.6.0
 python-docx>=0.8.11
+aiohttp>=3.9.0
 
 # AI Tools (optional but core feature)
 huggingface-hub>=0.16.0
+
+# Google AI SDK (recommended for better error handling and streaming)
+google-genai>=1.0.0
+
+# Azure AI SDK (recommended - Microsoft recommends migrating to this)
+azure-ai-inference>=1.0.0b1
+azure-core>=1.30.0
+
+# Retry logic with exponential backoff
+tenacity>=8.2.0
 
 # Encryption for AI tools
 cryptography>=3.4.0

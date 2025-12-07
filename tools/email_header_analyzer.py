@@ -377,3 +377,50 @@ def analyze_email_headers(text, show_timestamps=True, show_delays=True, show_aut
 def process_email_header_analysis(input_text, settings):
     """Process email header analysis with the specified settings."""
     return EmailHeaderAnalyzerProcessor.process_text(input_text, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class EmailHeaderAnalyzerV2(BaseTool):
+        """
+        BaseTool-compatible version of EmailHeaderAnalyzer.
+        """
+        
+        TOOL_NAME = "Email Header Analyzer"
+        TOOL_DESCRIPTION = "Analyze email headers for routing, authentication, and timing"
+        TOOL_VERSION = "2.0.0"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Analyze email headers."""
+            return EmailHeaderAnalyzerProcessor.analyze_email_headers(
+                input_text,
+                settings.get("show_timestamps", True),
+                settings.get("show_delays", True),
+                settings.get("show_authentication", True),
+                settings.get("show_spam_score", True)
+            )
+        
+        def get_default_settings(self) -> Dict[str, Any]:
+            return {
+                "show_timestamps": True,
+                "show_delays": True,
+                "show_authentication": True,
+                "show_spam_score": True
+            }
+        
+        def create_ui(self, parent: tk.Widget, settings: Dict[str, Any], 
+                     on_change=None, on_apply=None) -> tk.Widget:
+            """Create UI for Email Header Analyzer."""
+            frame = ttk.Frame(parent)
+            ttk.Label(frame, text="Analyze email headers").pack(side=tk.LEFT, padx=5)
+            if on_apply:
+                ttk.Button(frame, text="Analyze", command=on_apply).pack(side=tk.LEFT, padx=5)
+            return frame
+
+except ImportError:
+    pass

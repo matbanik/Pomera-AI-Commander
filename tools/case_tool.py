@@ -69,7 +69,7 @@ class CaseToolUI:
         self.settings = settings
         self.on_setting_change_callback = on_setting_change_callback
         self.apply_tool_callback = apply_tool_callback
-        self._initializing = False
+        self._initializing = True  # Start as True to prevent callbacks during creation
         
         # Initialize UI variables
         self.case_mode_var = tk.StringVar(value=settings.get("mode", "Sentence"))
@@ -77,6 +77,9 @@ class CaseToolUI:
         self.title_case_frame = None
         
         self.create_widgets()
+        
+        # Now allow callbacks
+        self._initializing = False
 
     def create_widgets(self):
         """Creates the UI widgets for the Case Tool."""
@@ -136,9 +139,16 @@ class CaseToolUI:
             "mode": self.case_mode_var.get()
         }
         
-        if hasattr(self, 'title_case_exclusions') and self.title_case_exclusions:
-            settings["exclusions"] = self.title_case_exclusions.get("1.0", tk.END).strip()
-        else:
+        # Safely get exclusions - check widget exists and is valid
+        try:
+            if hasattr(self, 'title_case_exclusions') and self.title_case_exclusions:
+                if self.title_case_exclusions.winfo_exists():
+                    settings["exclusions"] = self.title_case_exclusions.get("1.0", tk.END).strip()
+                else:
+                    settings["exclusions"] = self.settings.get("exclusions", "")
+            else:
+                settings["exclusions"] = self.settings.get("exclusions", "")
+        except Exception:
             settings["exclusions"] = self.settings.get("exclusions", "")
             
         return settings
@@ -211,3 +221,89 @@ def title_case(text, exclusions):
 def process_case_text(input_text, mode, exclusions=""):
     """Process text with the specified case mode."""
     return CaseToolProcessor.process_text(input_text, mode, exclusions)
+
+
+# BaseTool-compatible wrapper (for future migration)
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any, Optional, Callable
+    
+    class CaseToolV2(BaseTool):
+        """
+        BaseTool-compatible version of CaseTool.
+        
+        This wrapper provides the standard BaseTool interface while using
+        the existing CaseToolProcessor and CaseToolUI for actual functionality.
+        """
+        
+        TOOL_NAME = "Case Tool"
+        TOOL_DESCRIPTION = "Convert text between different case formats"
+        TOOL_VERSION = "2.0.0"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = CaseToolProcessor()
+            self._ui_instance: Optional[CaseToolUI] = None
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified case mode."""
+            mode = settings.get("mode", "Sentence")
+            exclusions = settings.get("exclusions", "")
+            return self._processor.process_text(input_text, mode, exclusions)
+        
+        def create_ui(self,
+                      parent: tk.Frame,
+                      settings: Dict[str, Any],
+                      on_setting_change_callback: Optional[Callable] = None,
+                      apply_tool_callback: Optional[Callable] = None) -> CaseToolUI:
+            """Create the Case Tool UI."""
+            self._settings = settings.copy()
+            self._on_setting_change = on_setting_change_callback
+            self._apply_callback = apply_tool_callback
+            
+            self._ui_instance = CaseToolUI(
+                parent, 
+                settings, 
+                on_setting_change_callback, 
+                apply_tool_callback
+            )
+            return self._ui_instance
+        
+        @classmethod
+        def get_default_settings(cls) -> Dict[str, Any]:
+            """Get default settings for the Case Tool."""
+            try:
+                from core.settings_defaults_registry import get_registry
+                registry = get_registry()
+                return registry.get_tool_defaults("Case Tool")
+            except (ImportError, Exception):
+                pass
+            
+            return {
+                "mode": "Sentence",
+                "exclusions": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"
+            }
+        
+        def get_current_settings(self) -> Dict[str, Any]:
+            """Get current settings from the UI."""
+            if self._ui_instance:
+                return self._ui_instance.get_current_settings()
+            return self._settings.copy()
+        
+        def update_settings(self, settings: Dict[str, Any]) -> None:
+            """Update the UI with new settings."""
+            self._settings.update(settings)
+            if self._ui_instance:
+                self._ui_instance.update_settings(settings)
+        
+        def apply_font_to_widgets(self, font_tuple) -> None:
+            """Apply font to text widgets."""
+            if self._ui_instance and hasattr(self._ui_instance, 'title_case_exclusions'):
+                if self._ui_instance.title_case_exclusions:
+                    self._ui_instance.title_case_exclusions.configure(
+                        font=(font_tuple[0], font_tuple[1])
+                    )
+
+except ImportError:
+    # BaseTool not available, CaseToolV2 won't be defined
+    pass

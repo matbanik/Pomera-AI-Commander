@@ -145,3 +145,40 @@ class Base64ToolsWidget:
         
         # Save settings to file
         self.main_app.save_settings()
+
+
+# BaseTool-compatible wrapper (for future migration)
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class Base64ToolsV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of Base64Tools.
+        
+        Uses ToolWithOptions base class for automatic UI generation.
+        """
+        
+        TOOL_NAME = "Base64 Encoder/Decoder"
+        TOOL_DESCRIPTION = "Encode text to Base64 or decode Base64 back to text"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Encode", "encode"),
+            ("Decode", "decode"),
+        ]
+        OPTIONS_LABEL = "Mode"
+        DEFAULT_OPTION = "encode"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = Base64Tools()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using Base64 encoding/decoding."""
+            mode = settings.get("mode", "encode")
+            return self._processor.base64_processor(input_text, mode)
+
+except ImportError:
+    # BaseTool not available
+    pass

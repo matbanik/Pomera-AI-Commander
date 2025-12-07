@@ -19,6 +19,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Install additional AI SDK dependencies (may fail gracefully)
+RUN pip3 install --no-cache-dir google-genai>=1.0.0 || echo "google-genai installation skipped"
+RUN pip3 install --no-cache-dir azure-ai-inference>=1.0.0b1 azure-core>=1.30.0 || echo "azure-ai-inference installation skipped"
+RUN pip3 install --no-cache-dir tenacity>=8.2.0 || echo "tenacity installation skipped"
+RUN pip3 install --no-cache-dir aiohttp>=3.9.0 || echo "aiohttp installation skipped"
+
 # Copy source code
 COPY . .
 

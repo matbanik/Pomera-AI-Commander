@@ -304,3 +304,53 @@ class WhitespaceTools:
     def process_text(self, input_text, tool_type, settings):
         """Process text using the specified tool and settings."""
         return WhitespaceToolsProcessor.process_text(input_text, tool_type, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class WhitespaceToolsV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of WhitespaceTools.
+        """
+        
+        TOOL_NAME = "Whitespace Tools"
+        TOOL_DESCRIPTION = "Trim lines, remove extra spaces, convert tabs/spaces, normalize line endings"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Trim Lines", "trim"),
+            ("Remove Extra Spaces", "remove_extra"),
+            ("Tabs to Spaces", "tabs_to_spaces"),
+            ("Spaces to Tabs", "spaces_to_tabs"),
+            ("Normalize Line Endings", "normalize"),
+        ]
+        OPTIONS_LABEL = "Operation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "trim"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = WhitespaceToolsProcessor()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified whitespace operation."""
+            mode = settings.get("mode", "trim")
+            
+            if mode == "trim":
+                return WhitespaceToolsProcessor.trim_lines(input_text)
+            elif mode == "remove_extra":
+                return WhitespaceToolsProcessor.remove_extra_spaces(input_text)
+            elif mode == "tabs_to_spaces":
+                return WhitespaceToolsProcessor.tabs_to_spaces(input_text, settings.get("tab_size", 4))
+            elif mode == "spaces_to_tabs":
+                return WhitespaceToolsProcessor.spaces_to_tabs(input_text, settings.get("tab_size", 4))
+            elif mode == "normalize":
+                return WhitespaceToolsProcessor.normalize_line_endings(input_text, settings.get("line_ending", "lf"))
+            else:
+                return input_text
+
+except ImportError:
+    pass

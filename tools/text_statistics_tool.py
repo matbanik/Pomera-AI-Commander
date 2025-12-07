@@ -316,3 +316,51 @@ class TextStatistics:
             stats,
             settings.get("show_frequency", True)
         )
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class TextStatisticsV2(BaseTool):
+        """
+        BaseTool-compatible version of TextStatistics.
+        """
+        
+        TOOL_NAME = "Text Statistics"
+        TOOL_DESCRIPTION = "Analyze text and show character, word, line counts, etc."
+        TOOL_VERSION = "2.0.0"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text and return statistics."""
+            stats = TextStatisticsProcessor.analyze_text(
+                input_text,
+                settings.get("words_per_minute", 200),
+                settings.get("frequency_count", 10)
+            )
+            return TextStatisticsProcessor.format_statistics(
+                stats,
+                settings.get("show_frequency", True)
+            )
+        
+        def get_default_settings(self) -> Dict[str, Any]:
+            return {
+                "words_per_minute": 200,
+                "show_frequency": True,
+                "frequency_count": 10
+            }
+        
+        def create_ui(self, parent: tk.Widget, settings: Dict[str, Any], 
+                     on_change=None, on_apply=None) -> tk.Widget:
+            """Create a simple UI for Text Statistics."""
+            frame = ttk.Frame(parent)
+            ttk.Label(frame, text="Analyze text statistics").pack(side=tk.LEFT, padx=5)
+            if on_apply:
+                ttk.Button(frame, text="Analyze", command=on_apply).pack(side=tk.LEFT, padx=5)
+            return frame
+
+except ImportError:
+    pass

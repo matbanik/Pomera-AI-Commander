@@ -373,3 +373,50 @@ class TimestampConverter:
             "custom_format": "%Y-%m-%d %H:%M:%S",
             "show_relative": False
         }
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class TimestampConverterV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of TimestampConverter.
+        """
+        
+        TOOL_NAME = "Timestamp Converter"
+        TOOL_DESCRIPTION = "Convert between Unix timestamps and human-readable dates"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Unix to ISO", "unix_to_iso"),
+            ("Unix to US Format", "unix_to_us"),
+            ("Unix to EU Format", "unix_to_eu"),
+            ("Date to Unix", "date_to_unix"),
+            ("Current Time", "now"),
+        ]
+        OPTIONS_LABEL = "Conversion"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "unix_to_iso"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified conversion."""
+            mode = settings.get("mode", "unix_to_iso")
+            
+            if mode == "now":
+                import time
+                return str(int(time.time()))
+            elif mode == "unix_to_iso":
+                return TimestampConverterProcessor.convert_batch(input_text, "unix", "iso")
+            elif mode == "unix_to_us":
+                return TimestampConverterProcessor.convert_batch(input_text, "unix", "us")
+            elif mode == "unix_to_eu":
+                return TimestampConverterProcessor.convert_batch(input_text, "unix", "eu")
+            elif mode == "date_to_unix":
+                return TimestampConverterProcessor.convert_batch(input_text, "auto", "unix")
+            else:
+                return input_text
+
+except ImportError:
+    pass

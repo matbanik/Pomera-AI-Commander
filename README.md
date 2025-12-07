@@ -35,6 +35,7 @@ A comprehensive text processing GUI application built with Python and Tkinter, f
 
 ### Quick Links
 - **[Tools Documentation](docs/TOOLS_DOCUMENTATION.md)** - Comprehensive guide to all available tools
+- **[MCP Server Guide](docs/MCP_PROJECT.md)** - MCP server setup and integration
 - **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Solutions for common issues
 - **[Release Process Guide](docs/RELEASE_PROCESS.md)** - Detailed release procedures for maintainers
 - **[Release Testing Guide](docs/RELEASE_TESTING.md)** - Testing procedures for releases
@@ -60,6 +61,13 @@ A comprehensive text processing GUI application built with Python and Tkinter, f
 - **AI Tools Widget** - Integrated AI-powered text processing capabilities
 - **Multiple AI Providers** - Support for various AI services and models
 - **Smart Processing** - Context-aware text analysis and transformation
+
+### MCP Server (Model Context Protocol)
+- **Expose Tools to AI Assistants** - Run Pomera as an MCP server for AI IDE integration
+- **33 Text Processing Tools** - All major tools available via MCP protocol
+- **Notes Database** - Store, retrieve, and search notes via MCP
+- **Multiple Transports** - stdio transport for seamless subprocess integration
+- **Works with Cursor, Claude Desktop** - Compatible with any MCP-enabled client
 
 ### Performance Features
 - **Intelligent Caching** - Smart caching system for improved performance
@@ -211,7 +219,7 @@ graph LR
   - Steps you tried to resolve it
 
 Pomera-AI-Commander/
-├── pomera.py                 # Main application
+├── pomera.py                 # Main application (supports --mcp-server flag)
 ├── tools/                    # All tool modules
 │   ├── __init__.py
 │   ├── ai_tools.py
@@ -223,6 +231,7 @@ Pomera-AI-Commander/
 │   ├── find_replace.py
 │   ├── generator_tools.py
 │   ├── list_comparator.py
+│   ├── mcp_widget.py         # MCP Manager UI
 │   ├── sorter_tools.py
 │   ├── translator_tools.py
 │   ├── url_link_extractor.py
@@ -232,16 +241,18 @@ Pomera-AI-Commander/
 │   ├── __init__.py
 │   ├── async_text_processor.py
 │   ├── content_hash_cache.py
-│   ├── efficient_line_numbers.py
+│   ├── mcp/                  # MCP Server implementation
+│   │   ├── __init__.py
+│   │   ├── schema.py         # MCP message schemas
+│   │   ├── protocol.py       # JSON-RPC protocol handling
+│   │   ├── tool_registry.py  # Tool registration and adapters
+│   │   └── server_stdio.py   # stdio transport server
 │   ├── memory_efficient_text_widget.py
 │   ├── optimized_find_replace.py
-│   ├── optimized_search_highlighter.py
-│   ├── regex_pattern_cache.py
-│   ├── regex_pattern_library.py
-│   ├── search_operation_manager.py
-│   ├── smart_stats_calculator.py
-│   └── update_pattern_library.py
-└── [other files...]
+│   └── [other modules...]
+└── docs/
+    ├── MCP_PROJECT.md        # MCP server documentation
+    └── MCP_TASKS.md          # MCP implementation status
 
 
 ## 📖 Usage
@@ -261,12 +272,14 @@ For detailed information about all available tools, features, and usage examples
 - **Performance Dashboard** - Monitor application performance and optimize settings
 - **AI Tools** - Access AI-powered text processing capabilities
 - **Batch Processing** - Process multiple texts efficiently
+- **MCP Manager** - Configure and test MCP server integration (Widgets → MCP Manager)
 
 ### Keyboard Shortcuts
 - `Ctrl+Z` / `Ctrl+Y` - Undo/Redo
 - `Ctrl+S` - Save settings
 - `Ctrl+O` - Open file
 - `Ctrl+E` - Export current output
+- `Ctrl+M` - Open MCP Manager
 
 ## ⚙️ Configuration
 
@@ -282,6 +295,246 @@ The application automatically saves settings to `settings.json`, including:
 - **Manual Mode** - Fine-tune performance settings for your system
 - **Memory Management** - Optimize memory usage for large files
 - **Async Processing** - Enable background processing for better responsiveness
+
+## 🔌 MCP Server Integration
+
+Pomera can run as an MCP (Model Context Protocol) server, exposing all its text processing tools to AI assistants like Cursor, Claude Desktop, or any MCP-compatible client.
+
+### Quick Setup for Cursor
+
+1. Open MCP Manager: `Widgets → MCP Manager` or `Ctrl+M`
+2. Go to the **Configuration** tab
+3. Copy the JSON configuration
+4. Add it to your Cursor MCP settings (`~/.cursor/mcp.json`)
+
+### Running as MCP Server
+
+```bash
+# From source
+python pomera.py --mcp-server
+
+# From compiled executable
+pomera.exe --mcp-server
+```
+
+### Available MCP Tools (33 total)
+
+| Category | Tools |
+|----------|-------|
+| **Text Transform** | `pomera_case_transform`, `pomera_whitespace`, `pomera_line_tools`, `pomera_sort` |
+| **Encoding** | `pomera_base64`, `pomera_hash`, `pomera_string_escape`, `pomera_slug` |
+| **Data Formats** | `pomera_json_xml`, `pomera_markdown`, `pomera_column_tools` |
+| **Extraction** | `pomera_regex_extract`, `pomera_extract_emails`, `pomera_extract_urls`, `pomera_html`, `pomera_email_header_analyzer` |
+| **Utilities** | `pomera_url_parse`, `pomera_timestamp`, `pomera_cron`, `pomera_number_base`, `pomera_text_wrap`, `pomera_text_stats`, `pomera_word_frequency`, `pomera_list_compare` |
+| **Generators** | `pomera_generators`, `pomera_translator` |
+| **Notes** | `pomera_notes_save`, `pomera_notes_get`, `pomera_notes_list`, `pomera_notes_search`, `pomera_notes_update`, `pomera_notes_delete` |
+
+### MCP Configuration Example
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "python",
+      "args": ["C:/path/to/pomera.py", "--mcp-server"]
+    }
+  }
+}
+```
+
+For detailed MCP documentation, see [**MCP Server Guide**](docs/MCP_PROJECT.md).
+
+### Setting Up Pomera MCP Server with Cursor
+
+Cursor IDE supports MCP servers natively. Follow these steps to integrate Pomera:
+
+#### Step 1: Locate Your MCP Configuration File
+
+**Windows:**
+```
+%USERPROFILE%\.cursor\mcp.json
+```
+Example: `C:\Users\YourName\.cursor\mcp.json`
+
+**macOS:**
+```
+~/.cursor/mcp.json
+```
+
+**Linux:**
+```
+~/.cursor/mcp.json
+```
+
+#### Step 2: Add Pomera to MCP Configuration
+
+Open or create the `mcp.json` file and add the Pomera server configuration:
+
+**Using Python (from source):**
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "python",
+      "args": ["C:/path/to/Pomera-AI-Commander/pomera.py", "--mcp-server"]
+    }
+  }
+}
+```
+
+**Using Compiled Executable (Windows):**
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "C:/path/to/pomera.exe",
+      "args": ["--mcp-server"]
+    }
+  }
+}
+```
+
+**Using Compiled Executable (Linux/macOS):**
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "/path/to/pomera",
+      "args": ["--mcp-server"]
+    }
+  }
+}
+```
+
+#### Step 3: Restart Cursor
+
+After saving the configuration, restart Cursor IDE for the changes to take effect.
+
+#### Step 4: Verify the Connection
+
+1. Open Cursor's MCP panel (usually in settings or via command palette)
+2. You should see "pomera" listed as an available server
+3. The 33 Pomera tools will be available to the AI assistant
+
+#### Using Pomera Tools in Cursor
+
+Once configured, you can ask Cursor's AI to use Pomera tools:
+
+```
+"Use pomera_case_transform to convert this text to title case"
+"Hash this text using pomera_hash with SHA256"
+"Extract all URLs from this document using pomera_extract_urls"
+"Save this as a note using pomera_notes_save"
+```
+
+### Setting Up Pomera MCP Server with Visual Studio Code
+
+VS Code requires the [MCP extension](https://marketplace.visualstudio.com/items?itemName=anthropics.claude-mcp) or a compatible AI extension that supports MCP.
+
+#### Step 1: Install MCP Extension
+
+1. Open VS Code
+2. Go to Extensions (`Ctrl+Shift+X`)
+3. Search for "MCP" or "Claude MCP"
+4. Install the official MCP extension
+
+#### Step 2: Configure the MCP Server
+
+**Option A: Using VS Code Settings (settings.json)**
+
+Open your VS Code settings (`Ctrl+,` → Open Settings JSON) and add:
+
+```json
+{
+  "mcp.servers": {
+    "pomera": {
+      "command": "python",
+      "args": ["C:/path/to/Pomera-AI-Commander/pomera.py", "--mcp-server"]
+    }
+  }
+}
+```
+
+**Option B: Using Workspace Configuration**
+
+Create a `.vscode/mcp.json` file in your workspace:
+
+```json
+{
+  "servers": {
+    "pomera": {
+      "command": "python",
+      "args": ["${workspaceFolder}/../Pomera-AI-Commander/pomera.py", "--mcp-server"]
+    }
+  }
+}
+```
+
+#### Step 3: Reload VS Code
+
+Use `Ctrl+Shift+P` → "Developer: Reload Window" to apply the configuration.
+
+### Setting Up with Claude Desktop
+
+Claude Desktop also supports MCP servers. Add Pomera to your Claude configuration:
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "python",
+      "args": ["C:/path/to/Pomera-AI-Commander/pomera.py", "--mcp-server"]
+    }
+  }
+}
+```
+
+### Troubleshooting MCP Integration
+
+#### Server Not Starting
+
+1. **Check the path**: Ensure the path to `pomera.py` or the executable is correct
+2. **Check Python**: Make sure Python is in your system PATH
+3. **Test manually**: Run `python pomera.py --mcp-server` in terminal to see errors
+
+#### Tools Not Appearing
+
+1. **Restart the IDE**: Sometimes a full restart is needed
+2. **Check logs**: Look for MCP-related errors in the IDE's developer console
+3. **Verify JSON syntax**: Ensure your configuration file has valid JSON
+
+#### Permission Issues (Linux/macOS)
+
+```bash
+# Make the executable runnable
+chmod +x /path/to/pomera
+
+# If using Python, ensure it's accessible
+which python
+```
+
+#### Common Error Messages
+
+| Error | Solution |
+|-------|----------|
+| "Command not found" | Check the command path, ensure Python/executable is in PATH |
+| "Connection refused" | Server crashed on startup, check logs |
+| "Invalid JSON" | Fix syntax errors in your mcp.json file |
+| "Permission denied" | Add execute permissions to the file |
+
+### MCP Server Logs
+
+To debug issues, you can check the MCP server logs:
+
+```bash
+# Run with verbose output
+python pomera.py --mcp-server 2>&1 | tee mcp_debug.log
+```
+
+The server logs are also written to `mcp_filesystem.log` in the Pomera directory.
 
 ## 🏗️ Architecture
 
@@ -392,8 +645,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 ### Documentation
-- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Solutions for common issues
 - **[Tools Documentation](docs/TOOLS_DOCUMENTATION.md)** - Comprehensive tool reference
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Solutions for common issues
 - **[Release Testing Guide](docs/RELEASE_TESTING.md)** - Testing procedures
 - **[Release Process Guide](docs/RELEASE_PROCESS.md)** - Detailed release procedures
 - **[Testing Quick Start Guide](docs/TESTING_QUICK_START.md)** - Rapid testing setup
@@ -422,6 +675,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Pomera AI Commander** - Empowering text processing with AI and performance optimization.
+**Pomera AI Commander** - Empowering text processing with AI, performance optimization, and MCP server integration.
 
-*Last updated: October 2025*
+*Last updated: December 2025*

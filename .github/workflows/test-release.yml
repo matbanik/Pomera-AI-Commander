@@ -87,6 +87,11 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
+          # Install additional AI SDK dependencies (may fail gracefully on some platforms)
+          pip install google-genai>=1.0.0 || echo "google-genai installation skipped"
+          pip install azure-ai-inference>=1.0.0b1 azure-core>=1.30.0 || echo "azure-ai-inference installation skipped"
+          pip install tenacity>=8.2.0 || echo "tenacity installation skipped"
+          pip install aiohttp>=3.9.0 || echo "aiohttp installation skipped"
         timeout-minutes: 10
           
       - name: Test PyInstaller build

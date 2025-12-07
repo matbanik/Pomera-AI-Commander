@@ -203,3 +203,54 @@ class HashGenerator:
             settings.get("algorithms", ["md5", "sha256"]),
             settings.get("uppercase", False)
         )
+
+
+# BaseTool-compatible wrapper (for future migration)
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any, Optional, Callable
+    
+    class HashGeneratorV2(BaseTool):
+        """
+        BaseTool-compatible version of HashGenerator.
+        """
+        
+        TOOL_NAME = "Hash Generator"
+        TOOL_DESCRIPTION = "Generate MD5, SHA-1, SHA-256, SHA-512, and CRC32 hashes"
+        TOOL_VERSION = "2.0.0"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = HashGeneratorProcessor()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text and return hashes."""
+            return HashGeneratorProcessor.generate_all_hashes(
+                input_text,
+                settings.get("algorithms", ["md5", "sha256"]),
+                settings.get("uppercase", False)
+            )
+        
+        def create_ui(self,
+                      parent,
+                      settings: Dict[str, Any],
+                      on_setting_change_callback: Optional[Callable] = None,
+                      apply_tool_callback: Optional[Callable] = None):
+            """Create the Hash Generator UI using the existing widget."""
+            self._settings = settings.copy()
+            self._on_setting_change = on_setting_change_callback
+            self._apply_callback = apply_tool_callback
+            # Use existing widget implementation
+            return None  # Widget created separately
+        
+        @classmethod
+        def get_default_settings(cls) -> Dict[str, Any]:
+            """Return default settings for Hash Generator."""
+            return {
+                "algorithms": ["md5", "sha256"],
+                "uppercase": False
+            }
+
+except ImportError:
+    # BaseTool not available
+    pass

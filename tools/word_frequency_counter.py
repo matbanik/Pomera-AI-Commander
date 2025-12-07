@@ -109,3 +109,39 @@ def word_frequency(text):
 def process_word_frequency(input_text, settings=None):
     """Process word frequency analysis with the specified settings."""
     return WordFrequencyCounterProcessor.process_text(input_text, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class WordFrequencyCounterV2(BaseTool):
+        """
+        BaseTool-compatible version of WordFrequencyCounter.
+        """
+        
+        TOOL_NAME = "Word Frequency Counter"
+        TOOL_DESCRIPTION = "Count frequency of each word in text"
+        TOOL_VERSION = "2.0.0"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text and return word frequencies."""
+            return WordFrequencyCounterProcessor.word_frequency(input_text)
+        
+        def get_default_settings(self) -> Dict[str, Any]:
+            return {}
+        
+        def create_ui(self, parent: tk.Widget, settings: Dict[str, Any], 
+                     on_change=None, on_apply=None) -> tk.Widget:
+            """Create a simple UI for Word Frequency Counter."""
+            frame = ttk.Frame(parent)
+            ttk.Label(frame, text="Count word frequencies").pack(side=tk.LEFT, padx=5)
+            if on_apply:
+                ttk.Button(frame, text="Count", command=on_apply).pack(side=tk.LEFT, padx=5)
+            return frame
+
+except ImportError:
+    pass

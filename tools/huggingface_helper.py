@@ -16,7 +16,9 @@ def process_huggingface_request(api_key: str, prompt: str, settings: Dict[str, A
         logger: Logger instance for logging
     """
     try:
-        client = InferenceClient(token=api_key)
+        # Add timeout configuration for better reliability (default 60 seconds)
+        timeout = int(settings.get("timeout", 60))
+        client = InferenceClient(token=api_key, timeout=timeout)
         model_name = settings.get("MODEL", "")
         
         if not model_name:

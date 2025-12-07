@@ -332,3 +332,62 @@ class StringEscapeTool:
     def process_text(self, input_text, format_type, mode, settings=None):
         """Process text using the specified format and mode."""
         return StringEscapeProcessor.process_text(input_text, format_type, mode, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class StringEscapeToolV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of StringEscapeTool.
+        """
+        
+        TOOL_NAME = "String Escape Tool"
+        TOOL_DESCRIPTION = "Escape/unescape strings for JSON, HTML, URL, XML"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("JSON Escape", "json_escape"),
+            ("JSON Unescape", "json_unescape"),
+            ("HTML Escape", "html_escape"),
+            ("HTML Unescape", "html_unescape"),
+            ("URL Encode", "url_encode"),
+            ("URL Decode", "url_decode"),
+            ("XML Escape", "xml_escape"),
+            ("XML Unescape", "xml_unescape"),
+        ]
+        OPTIONS_LABEL = "Operation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "json_escape"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = StringEscapeProcessor()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process text using the specified escape operation."""
+            mode = settings.get("mode", "json_escape")
+            
+            if mode == "json_escape":
+                return StringEscapeProcessor.json_escape(input_text)
+            elif mode == "json_unescape":
+                return StringEscapeProcessor.json_unescape(input_text)
+            elif mode == "html_escape":
+                return StringEscapeProcessor.html_escape(input_text)
+            elif mode == "html_unescape":
+                return StringEscapeProcessor.html_unescape(input_text)
+            elif mode == "url_encode":
+                return StringEscapeProcessor.url_encode(input_text)
+            elif mode == "url_decode":
+                return StringEscapeProcessor.url_decode(input_text)
+            elif mode == "xml_escape":
+                return StringEscapeProcessor.xml_escape(input_text)
+            elif mode == "xml_unescape":
+                return StringEscapeProcessor.xml_unescape(input_text)
+            else:
+                return input_text
+
+except ImportError:
+    pass

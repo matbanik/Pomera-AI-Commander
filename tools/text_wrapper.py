@@ -386,3 +386,46 @@ class TextWrapper:
             "indent_char": "space",
             "quote_style": "double"
         }
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any, Optional, Callable
+    
+    class TextWrapperV2(BaseTool):
+        """
+        BaseTool-compatible version of TextWrapper.
+        """
+        
+        TOOL_NAME = "Text Wrapper"
+        TOOL_DESCRIPTION = "Wrap text to specified width"
+        TOOL_VERSION = "2.0.0"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = TextWrapperProcessor()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Wrap text to specified width."""
+            width = settings.get("width", 80)
+            return TextWrapperProcessor.word_wrap(input_text, width)
+        
+        def create_ui(self,
+                      parent,
+                      settings: Dict[str, Any],
+                      on_setting_change_callback: Optional[Callable] = None,
+                      apply_tool_callback: Optional[Callable] = None):
+            """Create minimal UI - full widget used separately."""
+            self._settings = settings.copy()
+            self._on_setting_change = on_setting_change_callback
+            self._apply_callback = apply_tool_callback
+            return None
+        
+        @classmethod
+        def get_default_settings(cls) -> Dict[str, Any]:
+            """Return default settings."""
+            return {"width": 80}
+
+except ImportError:
+    pass

@@ -254,3 +254,58 @@ class SlugGenerator:
             "max_length": 0,
             "remove_stopwords": False
         }
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any, Optional, Callable
+    
+    class SlugGeneratorV2(BaseTool):
+        """
+        BaseTool-compatible version of SlugGenerator.
+        """
+        
+        TOOL_NAME = "Slug Generator"
+        TOOL_DESCRIPTION = "Generate URL-friendly slugs from text"
+        TOOL_VERSION = "2.0.0"
+        
+        def __init__(self):
+            super().__init__()
+            self._processor = SlugGeneratorProcessor()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Generate slugs from input text."""
+            return SlugGeneratorProcessor.generate_batch(
+                input_text,
+                settings.get("separator", "-"),
+                settings.get("lowercase", True),
+                settings.get("transliterate", True),
+                settings.get("max_length", 0),
+                settings.get("remove_stopwords", False)
+            )
+        
+        def create_ui(self,
+                      parent,
+                      settings: Dict[str, Any],
+                      on_setting_change_callback: Optional[Callable] = None,
+                      apply_tool_callback: Optional[Callable] = None):
+            """Create minimal UI - full widget used separately."""
+            self._settings = settings.copy()
+            self._on_setting_change = on_setting_change_callback
+            self._apply_callback = apply_tool_callback
+            return None
+        
+        @classmethod
+        def get_default_settings(cls) -> Dict[str, Any]:
+            """Return default settings."""
+            return {
+                "separator": "-",
+                "lowercase": True,
+                "transliterate": True,
+                "max_length": 0,
+                "remove_stopwords": False
+            }
+
+except ImportError:
+    pass

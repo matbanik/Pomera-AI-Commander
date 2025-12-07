@@ -3,7 +3,9 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox, font
 import re
 import json
 import os
+import sys
 import logging
+from pathlib import Path
 
 import csv
 import io
@@ -303,6 +305,14 @@ except ImportError:
     ASCII_ART_GENERATOR_MODULE_AVAILABLE = False
     print("ASCII Art Generator module not available")
 
+# MCP Manager module import
+try:
+    from tools.mcp_widget import MCPManager
+    MCP_MANAGER_MODULE_AVAILABLE = True
+except ImportError:
+    MCP_MANAGER_MODULE_AVAILABLE = False
+    print("MCP Manager module not available")
+
 try:
     from huggingface_hub import InferenceClient
     from huggingface_hub.utils import HfHubHTTPError
@@ -416,6 +426,61 @@ try:
 except ImportError as e:
     SETTINGS_DEFAULTS_REGISTRY_AVAILABLE = False
     print(f"Settings Defaults Registry not available: {e}")
+
+# Error Service import
+try:
+    from core.error_service import (
+        ErrorService, ErrorContext, ErrorSeverity,
+        init_error_service, get_error_service, error_handler
+    )
+    ERROR_SERVICE_AVAILABLE = True
+except ImportError as e:
+    ERROR_SERVICE_AVAILABLE = False
+    print(f"Error Service not available: {e}")
+
+# App Context import
+try:
+    from core.app_context import (
+        AppContext, AppContextBuilder,
+        get_app_context, set_app_context, create_app_context
+    )
+    APP_CONTEXT_AVAILABLE = True
+except ImportError as e:
+    APP_CONTEXT_AVAILABLE = False
+    print(f"App Context not available: {e}")
+
+# Task Scheduler import
+try:
+    from core.task_scheduler import (
+        TaskScheduler, TaskPriority,
+        get_task_scheduler, init_task_scheduler, shutdown_task_scheduler
+    )
+    TASK_SCHEDULER_AVAILABLE = True
+except ImportError as e:
+    TASK_SCHEDULER_AVAILABLE = False
+    print(f"Task Scheduler not available: {e}")
+
+# Tool Loader import
+try:
+    from tools.tool_loader import (
+        ToolLoader, ToolSpec, ToolCategory,
+        get_tool_loader, init_tool_loader
+    )
+    TOOL_LOADER_AVAILABLE = True
+except ImportError as e:
+    TOOL_LOADER_AVAILABLE = False
+    print(f"Tool Loader not available: {e}")
+
+# Widget Cache import
+try:
+    from core.widget_cache import (
+        WidgetCache, CacheStrategy,
+        init_widget_cache, get_widget_cache, shutdown_widget_cache
+    )
+    WIDGET_CACHE_AVAILABLE = True
+except ImportError as e:
+    WIDGET_CACHE_AVAILABLE = False
+    print(f"Widget Cache not available: {e}")
 
 class AppConfig:
     """Configuration constants for the application."""
@@ -721,6 +786,7 @@ class PromeraAIApp(tk.Tk):
                 self.logger = logging.getLogger(__name__)
                 self.logger.info("Using database settings manager")
             except Exception as e:
+                # Log error (error_service not yet initialized at this point)
                 print(f"Failed to initialize database settings manager: {e}")
                 print("Falling back to JSON settings")
                 DATABASE_SETTINGS_AVAILABLE = False
@@ -742,6 +808,50 @@ class PromeraAIApp(tk.Tk):
         else:
             self.dialog_manager = None
             self.logger.warning("DialogManager not available, using direct messagebox calls")
+
+        # Initialize Error Service for centralized error handling
+        if ERROR_SERVICE_AVAILABLE:
+            self.error_service = init_error_service(self.logger, self.dialog_manager)
+            self.logger.info("Error Service initialized successfully")
+        else:
+            self.error_service = None
+            self.logger.warning("Error Service not available")
+
+        # Initialize App Context for dependency injection
+        if APP_CONTEXT_AVAILABLE:
+            self.app_context = (AppContextBuilder()
+                .with_logger(self.logger)
+                .with_settings_manager(getattr(self, 'db_settings_manager', None))
+                .with_dialog_manager(self.dialog_manager)
+                .with_error_service(self.error_service)
+                .with_root_window(self)
+                .build())
+            set_app_context(self.app_context)
+            self.logger.info("App Context initialized successfully")
+        else:
+            self.app_context = None
+            self.logger.warning("App Context not available")
+
+        # Initialize Task Scheduler for background operations
+        if TASK_SCHEDULER_AVAILABLE:
+            self.task_scheduler = init_task_scheduler(
+                max_workers=4, 
+                logger=self.logger,
+                auto_start=True
+            )
+            self.logger.info("Task Scheduler initialized successfully")
+        else:
+            self.task_scheduler = None
+            self.logger.warning("Task Scheduler not available")
+
+        # Initialize Tool Loader for lazy tool loading
+        if TOOL_LOADER_AVAILABLE:
+            self.tool_loader = init_tool_loader()
+            available_tools = self.tool_loader.get_available_tools()
+            self.logger.info(f"Tool Loader initialized with {len(available_tools)} available tools")
+        else:
+            self.tool_loader = None
+            self.logger.warning("Tool Loader not available")
 
         # Setup optimized components AFTER DialogManager is available
         self.setup_optimized_components()
@@ -791,6 +901,10 @@ class PromeraAIApp(tk.Tk):
         if NOTES_WIDGET_MODULE_AVAILABLE:
             self.bind_all("<Control-s>", lambda e: self.save_as_note())
         
+        # Set up MCP Manager keyboard shortcut (Ctrl+M)
+        if MCP_MANAGER_MODULE_AVAILABLE:
+            self.bind_all("<Control-m>", lambda e: self.open_mcp_manager())
+        
         # Set up window focus and minimize event handlers for visibility-aware updates
         if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
             self.bind("<FocusIn>", self._on_window_focus_in)
@@ -807,6 +921,118 @@ class PromeraAIApp(tk.Tk):
         final_non_empty_inputs = sum(1 for content in final_input_contents if content)
         final_non_empty_outputs = sum(1 for content in final_output_contents if content)
         self.logger.info(f"Initialization complete - {final_non_empty_inputs} non-empty input tabs, {final_non_empty_outputs} non-empty output tabs remain")
+        
+        # Schedule background maintenance tasks
+        self._schedule_maintenance_tasks()
+
+    def _schedule_maintenance_tasks(self):
+        """Schedule periodic background maintenance tasks using Task Scheduler."""
+        if not TASK_SCHEDULER_AVAILABLE or not self.task_scheduler:
+            return
+        
+        # Schedule periodic auto-save (every 5 minutes)
+        self.task_scheduler.schedule_recurring(
+            task_id="auto_save_settings",
+            func=self._auto_save_settings,
+            interval_seconds=300,  # 5 minutes
+            priority=TaskPriority.LOW,
+            initial_delay=300  # Start after 5 minutes
+        )
+        
+        # Schedule cache cleanup (every 10 minutes)
+        self.task_scheduler.schedule_recurring(
+            task_id="cache_cleanup",
+            func=self._cleanup_caches,
+            interval_seconds=600,  # 10 minutes
+            priority=TaskPriority.LOW,
+            initial_delay=600  # Start after 10 minutes
+        )
+        
+        # Schedule memory usage check (every 15 minutes)
+        self.task_scheduler.schedule_recurring(
+            task_id="memory_check",
+            func=self._check_memory_usage,
+            interval_seconds=900,  # 15 minutes
+            priority=TaskPriority.LOW,
+            initial_delay=900  # Start after 15 minutes
+        )
+        
+        # Schedule automatic backup (every 30 minutes)
+        self.task_scheduler.schedule_recurring(
+            task_id="auto_backup",
+            func=self._auto_backup_settings,
+            interval_seconds=1800,  # 30 minutes
+            priority=TaskPriority.LOW,
+            initial_delay=1800  # Start after 30 minutes
+        )
+        
+        self.logger.info("Background maintenance tasks scheduled (including auto-backup)")
+    
+    def _auto_save_settings(self):
+        """Auto-save settings periodically (called by Task Scheduler)."""
+        try:
+            # Only save if not currently initializing
+            if not self._initializing:
+                self.save_settings()
+                self.logger.debug("Auto-saved settings")
+        except Exception as e:
+            self.logger.debug(f"Auto-save skipped: {e}")
+    
+    def _auto_backup_settings(self):
+        """Create automatic backup periodically (called by Task Scheduler)."""
+        try:
+            if not self._initializing and hasattr(self, 'db_settings_manager') and self.db_settings_manager:
+                # Check if auto-backup is enabled in backup settings
+                if hasattr(self.db_settings_manager, 'backup_recovery_manager'):
+                    brm = self.db_settings_manager.backup_recovery_manager
+                    if brm and getattr(brm, 'auto_backup_enabled', True):
+                        success = self.db_settings_manager.create_backup("auto", "Scheduled automatic backup")
+                        if success:
+                            self.logger.debug("Scheduled auto-backup created")
+                        else:
+                            self.logger.debug("Scheduled auto-backup skipped (backup manager returned false)")
+        except Exception as e:
+            self.logger.debug(f"Auto-backup skipped: {e}")
+    
+    def _cleanup_caches(self):
+        """Periodic cache cleanup (called by Task Scheduler)."""
+        try:
+            # Clear regex cache if it's getting large
+            if hasattr(self, '_regex_cache') and len(self._regex_cache) > 100:
+                self._regex_cache.clear()
+                self.logger.debug("Cleared regex cache")
+            
+            # Clear smart stats calculator cache if available
+            if INTELLIGENT_CACHING_AVAILABLE and hasattr(self, 'smart_stats_calculator') and self.smart_stats_calculator:
+                cache_stats = self.smart_stats_calculator.get_cache_stats()
+                if cache_stats.get('cache_size', 0) > 500:
+                    self.smart_stats_calculator.clear_cache()
+                    self.logger.debug("Cleared smart stats cache")
+            
+            # Trigger garbage collection for large memory cleanup
+            import gc
+            gc.collect()
+            self.logger.debug("Cache cleanup completed")
+        except Exception as e:
+            self.logger.debug(f"Cache cleanup error: {e}")
+    
+    def _check_memory_usage(self):
+        """Check memory usage and log warnings if high (called by Task Scheduler)."""
+        try:
+            import psutil
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / (1024 * 1024)
+            
+            if memory_mb > 500:  # Warning threshold: 500MB
+                self.logger.warning(f"High memory usage: {memory_mb:.1f} MB")
+                # Trigger aggressive cleanup
+                self._cleanup_caches()
+            else:
+                self.logger.debug(f"Memory usage: {memory_mb:.1f} MB")
+        except ImportError:
+            pass  # psutil not available
+        except Exception as e:
+            self.logger.debug(f"Memory check error: {e}")
 
     def _register_tool_dialog_categories(self):
         """Register tool-specific dialog categories with DialogManager."""
@@ -843,6 +1069,183 @@ class PromeraAIApp(tk.Tk):
         )
         
         self.logger.info("Tool-specific dialog categories registered")
+
+    def _handle_error(self, 
+                      error: Exception, 
+                      operation: str, 
+                      component: str = "",
+                      user_message: str = "",
+                      show_dialog: bool = True,
+                      severity: str = "error") -> None:
+        """
+        Centralized error handling using the Error Service.
+        
+        Falls back to direct logging if Error Service is not available.
+        
+        Args:
+            error: The exception that occurred
+            operation: Description of what operation was being performed
+            component: Component/module where error occurred
+            user_message: User-friendly message (uses str(error) if empty)
+            show_dialog: Whether to show error dialog to user
+            severity: Error severity ('debug', 'info', 'warning', 'error', 'critical')
+        """
+        if self.error_service and ERROR_SERVICE_AVAILABLE:
+            # Map severity string to enum
+            severity_map = {
+                'debug': ErrorSeverity.DEBUG,
+                'info': ErrorSeverity.INFO,
+                'warning': ErrorSeverity.WARNING,
+                'error': ErrorSeverity.ERROR,
+                'critical': ErrorSeverity.CRITICAL
+            }
+            sev = severity_map.get(severity, ErrorSeverity.ERROR)
+            
+            context = ErrorContext(
+                operation=operation,
+                component=component,
+                user_message=user_message or str(error)
+            )
+            self.error_service.handle(error, context, sev, show_dialog=show_dialog)
+        else:
+            # Fallback to direct logging
+            log_method = getattr(self.logger, severity, self.logger.error)
+            msg = f"[{component}] {operation}: {error}" if component else f"{operation}: {error}"
+            log_method(msg)
+            
+            # Show dialog if requested and dialog_manager available
+            if show_dialog and self.dialog_manager:
+                self.dialog_manager.show_error(operation, user_message or str(error))
+            elif show_dialog:
+                messagebox.showerror(operation, user_message or str(error))
+
+    def _handle_warning(self, 
+                        message: str, 
+                        operation: str, 
+                        component: str = "",
+                        show_dialog: bool = False) -> None:
+        """
+        Centralized warning handling.
+        
+        Args:
+            message: Warning message
+            operation: What operation triggered the warning
+            component: Component/module name
+            show_dialog: Whether to show warning dialog
+        """
+        if self.error_service and ERROR_SERVICE_AVAILABLE:
+            context = ErrorContext(operation=operation, component=component)
+            self.error_service.log_warning(message, context, show_dialog=show_dialog)
+        else:
+            msg = f"[{component}] {operation}: {message}" if component else f"{operation}: {message}"
+            self.logger.warning(msg)
+            if show_dialog and self.dialog_manager:
+                self.dialog_manager.show_warning(operation, message)
+
+    def _init_tool_with_loader(self, tool_name: str, attr_name: str, *args, **kwargs):
+        """
+        Initialize a tool using the Tool Loader.
+        
+        Uses lazy loading via Tool Loader when available, falls back to direct
+        instantiation using the legacy availability flags.
+        
+        Args:
+            tool_name: Name of the tool in Tool Loader registry
+            attr_name: Attribute name to set on self (e.g., 'case_tool')
+            *args, **kwargs: Arguments to pass to tool constructor
+            
+        Returns:
+            The tool instance or None if not available
+        """
+        if TOOL_LOADER_AVAILABLE and self.tool_loader:
+            if self.tool_loader.is_available(tool_name):
+                instance = self.tool_loader.create_instance(tool_name, *args, **kwargs)
+                if instance:
+                    setattr(self, attr_name, instance)
+                    self.logger.info(f"{tool_name} initialized via Tool Loader")
+                    return instance
+                else:
+                    self.logger.warning(f"Failed to create {tool_name} instance")
+            else:
+                error = self.tool_loader.get_load_error(tool_name)
+                self.logger.debug(f"{tool_name} not available: {error}")
+        
+        setattr(self, attr_name, None)
+        return None
+
+    def _is_tool_available(self, tool_name: str, legacy_flag: bool = None) -> bool:
+        """
+        Check if a tool is available using Tool Loader or legacy flag.
+        
+        Prefers Tool Loader when available for more accurate checking.
+        
+        Args:
+            tool_name: Name of the tool in Tool Loader registry
+            legacy_flag: Legacy availability flag (e.g., CASE_TOOL_MODULE_AVAILABLE)
+            
+        Returns:
+            True if tool is available
+        """
+        if TOOL_LOADER_AVAILABLE and self.tool_loader:
+            return self.tool_loader.is_available(tool_name)
+        return legacy_flag if legacy_flag is not None else False
+
+    def _init_tools_batch(self):
+        """
+        Initialize multiple tools using the Tool Loader.
+        
+        This method replaces repetitive if/else blocks for tool initialization
+        with a data-driven approach using the Tool Loader.
+        """
+        # Define tools to initialize: (tool_name, attr_name, legacy_flag, args)
+        tools_to_init = [
+            ("Case Tool", "case_tool", CASE_TOOL_MODULE_AVAILABLE, ()),
+            ("Email Extraction", "email_extraction_tool", EMAIL_EXTRACTION_MODULE_AVAILABLE, ()),
+            ("Email Header Analyzer", "email_header_analyzer", EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE, ()),
+            ("URL Link Extractor", "url_link_extractor", URL_LINK_EXTRACTOR_MODULE_AVAILABLE, ()),
+            ("Regex Extractor", "regex_extractor", REGEX_EXTRACTOR_MODULE_AVAILABLE, ()),
+            ("URL Parser", "url_parser", URL_PARSER_MODULE_AVAILABLE, ()),
+            ("Word Frequency Counter", "word_frequency_counter", WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE, ()),
+            ("Sorter Tools", "sorter_tools", SORTER_TOOLS_MODULE_AVAILABLE, ()),
+            ("Translator Tools", "translator_tools", TRANSLATOR_TOOLS_MODULE_AVAILABLE, ()),
+            ("Generator Tools", "generator_tools", GENERATOR_TOOLS_MODULE_AVAILABLE, ()),
+            ("Extraction Tools", "extraction_tools", EXTRACTION_TOOLS_MODULE_AVAILABLE, ()),
+            ("Base64 Tools", "base64_tools", BASE64_TOOLS_MODULE_AVAILABLE, ()),
+            ("Line Tools", "line_tools", LINE_TOOLS_MODULE_AVAILABLE, ()),
+            ("Whitespace Tools", "whitespace_tools", WHITESPACE_TOOLS_MODULE_AVAILABLE, ()),
+            ("Text Statistics", "text_statistics", TEXT_STATISTICS_MODULE_AVAILABLE, ()),
+            ("Hash Generator", "hash_generator", HASH_GENERATOR_MODULE_AVAILABLE, ()),
+            ("Markdown Tools", "markdown_tools", MARKDOWN_TOOLS_MODULE_AVAILABLE, ()),
+            ("String Escape Tool", "string_escape_tool", STRING_ESCAPE_TOOL_MODULE_AVAILABLE, ()),
+            ("Number Base Converter", "number_base_converter", NUMBER_BASE_CONVERTER_MODULE_AVAILABLE, ()),
+            ("Text Wrapper", "text_wrapper", TEXT_WRAPPER_MODULE_AVAILABLE, ()),
+            ("Slug Generator", "slug_generator", SLUG_GENERATOR_MODULE_AVAILABLE, ()),
+            ("Column Tools", "column_tools", COLUMN_TOOLS_MODULE_AVAILABLE, ()),
+            ("Timestamp Converter", "timestamp_converter", TIMESTAMP_CONVERTER_MODULE_AVAILABLE, ()),
+            ("ASCII Art Generator", "ascii_art_generator", ASCII_ART_GENERATOR_MODULE_AVAILABLE, ()),
+        ]
+        
+        initialized_count = 0
+        failed_count = 0
+        
+        for tool_name, attr_name, legacy_flag, args in tools_to_init:
+            if TOOL_LOADER_AVAILABLE and self.tool_loader:
+                # Use Tool Loader
+                instance = self._init_tool_with_loader(tool_name, attr_name, *args)
+                if instance:
+                    initialized_count += 1
+                else:
+                    failed_count += 1
+            elif legacy_flag:
+                # Fallback to legacy initialization (already imported at top)
+                # The tool classes are already available from imports
+                setattr(self, attr_name, None)  # Will be initialized by legacy code
+                self.logger.debug(f"{tool_name} will use legacy initialization")
+            else:
+                setattr(self, attr_name, None)
+                failed_count += 1
+        
+        self.logger.info(f"Tool batch initialization: {initialized_count} loaded, {failed_count} unavailable")
 
     def global_undo(self, event=None):
         """Global undo handler that works on the currently focused text widget."""
@@ -973,19 +1376,20 @@ class PromeraAIApp(tk.Tk):
     def _get_default_settings(self):
         """Returns default settings when none exist or are invalid.
         
-        Uses the centralized Settings Defaults Registry for consistent defaults
-        across the application. Falls back to hardcoded defaults if registry
-        is not available.
+        Uses the centralized Settings Defaults Registry as the single source of truth.
+        Only falls back to minimal emergency defaults if registry is unavailable.
         """
-        # Use the centralized Settings Defaults Registry if available
+        # Use the centralized Settings Defaults Registry (single source of truth)
         if SETTINGS_DEFAULTS_REGISTRY_AVAILABLE:
             try:
                 registry = get_registry()
                 return registry.get_all_defaults(tab_count=AppConfig.TAB_COUNT)
             except Exception as e:
-                self.logger.warning(f"Failed to get defaults from registry: {e}, using fallback")
+                if hasattr(self, 'logger') and self.logger:
+                    self.logger.warning(f"Failed to get defaults from registry: {e}")
         
-        # Fallback to hardcoded defaults if registry is not available
+        # Minimal emergency fallback - registry should always be available
+        # This is only used if core/settings_defaults_registry.py fails to load
         default_path = os.path.join(os.path.expanduser('~'), 'Downloads')
         return {
             "export_path": default_path,
@@ -995,139 +1399,10 @@ class PromeraAIApp(tk.Tk):
             "output_tabs": [""] * AppConfig.TAB_COUNT,
             "active_input_tab": 0,
             "active_output_tab": 0,
-            "tool_settings": {
-                "Case Tool": {"mode": "Sentence", "exclusions": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"},
-                "Base64 Encoder/Decoder": {"mode": "encode"},
-                "JSON/XML Tool": {"operation": "json_to_xml", "json_indent": 2, "xml_indent": 2, "preserve_attributes": True, "sort_keys": False, "array_wrapper": "item", "root_element": "root", "jsonpath_query": "$", "xpath_query": "//*"},
-                "Cron Tool": {"action": "parse_explain", "preset_category": "Daily Schedules", "preset_pattern": "Daily at midnight", "compare_expressions": "", "next_runs_count": 10},
-                "Find & Replace Text": {"find": "", "replace": "", "mode": "Text", "option": "ignore_case", "find_history": [], "replace_history": []},
-                "Generator Tools": {"Strong Password Generator": {"length": 20, "numbers": "", "symbols": ""}, "Repeating Text Generator": {"times": 5, "separator": "+"}},
-                "Sorter Tools": {"Number Sorter": {"order": "ascending"}, "Alphabetical Sorter": {"order": "ascending", "unique_only": False, "trim": False}},
-                "URL and Link Extractor": {"extract_href": False, "extract_https": False, "extract_any_protocol": False, "extract_markdown": False, "filter_text": ""},
-                "Email Extraction Tool": {"omit_duplicates": False, "hide_counts": True, "sort_emails": False, "only_domain": False},
-                "Regex Extractor": {"pattern": "", "match_mode": "all_per_line", "omit_duplicates": False, "hide_counts": True, "sort_results": False, "case_sensitive": False},
-                "Email Header Analyzer": {"show_timestamps": True, "show_delays": True, "show_authentication": True, "show_spam_score": True},
-                "Folder File Reporter": {
-                    "last_input_folder": "", "last_output_folder": "",
-                    "field_selections": {"path": True, "name": True, "size": True, "date_modified": True},
-                    "separator": " | ", "folders_only": False, "recursion_mode": "full", "recursion_depth": 2,
-                    "size_format": "human", "date_format": "%Y-%m-%d %H:%M:%S"
-                },
-                "URL Parser": {"ascii_decode": True},
-                "Word Frequency Counter": {},
-                "Google AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "gemini-2.5-pro", "MODELS_LIST": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-pro-latest"],
-                    "system_prompt": "You are a helpful assistant.",
-                    "temperature": 0.7, "topK": 40, "topP": 0.95, "candidateCount": 1, "maxOutputTokens": 8192, "stopSequences": ""
-                },
-                "Azure AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "gpt-4.1", "MODELS_LIST": ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini"],
-                    "ENDPOINT": "", "API_VERSION": "2024-10-21",
-                    "system_prompt": "You are a helpful assistant.",
-                    "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "frequency_penalty": 0.0,
-                    "presence_penalty": 0.0, "seed": "", "stop": ""
-                },
-                "Anthropic AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "claude-sonnet-4-5-20250929", "MODELS_LIST": ["claude-sonnet-4-5-20250929", "claude-opus-4-5-20251124", "claude-sonnet-4-20250522", "claude-3-5-sonnet-20241022"],
-                    "system": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.9, "top_k": 40, "stop_sequences": ""
-                },
-                "OpenAI": {
-                    "API_KEY": "putinyourkey", "MODEL": "gpt-4.1", "MODELS_LIST": ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini", "o1-preview"],
-                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "frequency_penalty": 0.0,
-                    "presence_penalty": 0.0, "seed": "", "response_format": "text", "stop": ""
-                },
-                "Cohere AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "command-a-03-2025", "MODELS_LIST": ["command-a-03-2025", "command-r-plus-08-2024", "command-r-08-2024", "command-r-plus"],
-                    "preamble": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4000, "k": 50, "p": 0.75, "frequency_penalty": 0.0,
-                    "presence_penalty": 0.0, "stop_sequences": "", "citation_quality": "accurate"
-                },
-                "HuggingFace AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "meta-llama/Llama-3.3-70B-Instruct", "MODELS_LIST": ["meta-llama/Llama-3.3-70B-Instruct", "meta-llama/Meta-Llama-3.1-70B-Instruct", "mistralai/Mistral-Small-3-Instruct"],
-                    "system_prompt": "You are a helpful assistant.", "max_tokens": 4096, "temperature": 0.7, "top_p": 0.95, "stop_sequences": "", "seed": ""
-                },
-                "Groq AI": {
-                    "API_KEY": "putinyourkey", "MODEL": "llama-3.3-70b-versatile", "MODELS_LIST": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
-                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 8192, "top_p": 1.0, "frequency_penalty": 0.0,
-                    "presence_penalty": 0.0, "stop": "", "seed": "", "response_format": "text"
-                },
-                "OpenRouterAI": {
-                    "API_KEY": "putinyourkey", "MODEL": "anthropic/claude-sonnet-4.5", "MODELS_LIST": ["anthropic/claude-sonnet-4.5", "anthropic/claude-opus-4.5", "openai/gpt-4.1", "google/gemini-2.5-pro", "deepseek/deepseek-chat"],
-                    "system_prompt": "You are a helpful assistant.", "temperature": 0.7, "max_tokens": 4096, "top_p": 1.0, "top_k": 0, "frequency_penalty": 0.0,
-                    "presence_penalty": 0.0, "repetition_penalty": 1.0, "seed": "", "stop": ""
-                },
-                "AI Tools": {},
-                "Diff Viewer": {"option": "ignore_case"}
-            },
-            "performance_settings": {
-                "mode": "automatic",
-                "async_processing": {
-                    "enabled": True,
-                    "threshold_kb": 10,
-                    "max_workers": 2,
-                    "chunk_size_kb": 50
-                },
-                "caching": {
-                    "enabled": True,
-                    "stats_cache_size": 1000,
-                    "regex_cache_size": 100,
-                    "content_cache_size_mb": 50,
-                    "processing_cache_size": 500
-                },
-                "memory_management": {
-                    "enabled": True,
-                    "gc_optimization": True,
-                    "memory_pool": True,
-                    "leak_detection": True,
-                    "memory_threshold_mb": 500
-                },
-                "ui_optimizations": {
-                    "enabled": True,
-                    "efficient_line_numbers": True,
-                    "progressive_search": True,
-                    "debounce_delay_ms": 300,
-                    "lazy_updates": True
-                }
-            },
-            "font_settings": {
-                "text_font": {
-                    "family": "Source Code Pro",
-                    "size": 11,
-                    "fallback_family": "Consolas",
-                    "fallback_family_mac": "Monaco",
-                    "fallback_family_linux": "DejaVu Sans Mono"
-                },
-                "interface_font": {
-                    "family": "Segoe UI",
-                    "size": 9,
-                    "fallback_family": "Arial",
-                    "fallback_family_mac": "Helvetica",
-                    "fallback_family_linux": "Ubuntu"
-                }
-            },
-            "dialog_settings": {
-                "success": {
-                    "enabled": True,
-                    "description": "Success notifications for completed operations",
-                    "examples": ["File saved successfully", "Settings applied", "Export complete"]
-                },
-                "confirmation": {
-                    "enabled": True,
-                    "description": "Confirmation dialogs for destructive actions",
-                    "examples": ["Clear all tabs?", "Delete entry?", "Reset settings?"],
-                    "default_action": "yes"
-                },
-                "warning": {
-                    "enabled": True,
-                    "description": "Warning messages for potential issues",
-                    "examples": ["No data specified", "Invalid input detected", "Feature unavailable"]
-                },
-                "error": {
-                    "enabled": True,
-                    "locked": True,
-                    "description": "Error messages for critical issues (cannot be disabled)",
-                    "examples": ["File not found", "Network error", "Invalid configuration"]
-                }
-            }
+            "tool_settings": {},
+            "performance_settings": {"mode": "automatic"},
+            "font_settings": {"text_font": {"family": "Consolas", "size": 11}},
+            "dialog_settings": {"error": {"enabled": True, "locked": True}}
         }
         
     def save_settings(self):
@@ -1158,7 +1433,9 @@ class PromeraAIApp(tk.Tk):
                 self.db_settings_manager.connection_manager.backup_to_disk()
                 self.logger.info("Settings saved to database")
             except Exception as e:
-                self.logger.error(f"Failed to save to database: {e}, falling back to JSON")
+                self._handle_error(e, "Saving to database", "Settings", 
+                                   user_message="Failed to save settings to database, trying JSON fallback",
+                                   show_dialog=False)
                 # Fall through to JSON saving - get proper dictionary from database manager
                 try:
                     settings_dict = self.db_settings_manager.load_settings()
@@ -1325,212 +1602,47 @@ class PromeraAIApp(tk.Tk):
             self.find_replace_widget = None
             self.logger.warning("Find & Replace module not available")
             
-        # Initialize Case Tool
-        if CASE_TOOL_MODULE_AVAILABLE:
-            self.case_tool = CaseTool()
-            self.logger.info("Case Tool module initialized")
-        else:
-            self.case_tool = None
-            self.logger.warning("Case Tool module not available")
-            
-        # Initialize Email Extraction Tool
-        if EMAIL_EXTRACTION_MODULE_AVAILABLE:
-            self.email_extraction_tool = EmailExtractionTool()
-            self.logger.info("Email Extraction Tool module initialized")
-        else:
-            self.email_extraction_tool = None
-            self.logger.warning("Email Extraction Tool module not available")
-            
-        # Initialize Email Header Analyzer
-        if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE:
-            self.email_header_analyzer = EmailHeaderAnalyzer()
-            self.logger.info("Email Header Analyzer module initialized")
-        else:
-            self.email_header_analyzer = None
-            self.logger.warning("Email Header Analyzer module not available")
+        # ============================================================
+        # BATCH TOOL INITIALIZATION
+        # Uses Tool Loader when available for lazy loading and
+        # centralized error tracking. Falls back to legacy imports.
+        # ============================================================
+        self._init_tools_batch()
         
-        # Initialize Folder File Reporter
+        # Special case tools that require constructor arguments
+        # Folder File Reporter needs 'self' reference
         if FOLDER_FILE_REPORTER_MODULE_AVAILABLE:
             self.folder_file_reporter = FolderFileReporterAdapter(self)
             self.logger.info("Folder File Reporter module initialized")
         else:
             self.folder_file_reporter = None
             self.logger.warning("Folder File Reporter module not available")
-            
-        # Initialize URL and Link Extractor
-        if URL_LINK_EXTRACTOR_MODULE_AVAILABLE:
-            self.url_link_extractor = URLLinkExtractor()
-            self.logger.info("URL and Link Extractor module initialized")
-        else:
-            self.url_link_extractor = None
-            self.logger.warning("URL and Link Extractor module not available")
         
-        # Initialize Regex Extractor
-        if REGEX_EXTRACTOR_MODULE_AVAILABLE:
-            self.regex_extractor = RegexExtractor()
-            self.logger.info("Regex Extractor module initialized")
-        else:
-            self.regex_extractor = None
-            self.logger.warning("Regex Extractor module not available")
-            self.url_link_extractor = None
-            self.logger.warning("URL and Link Extractor module not available")
-            
-        # Initialize URL Parser
-        if URL_PARSER_MODULE_AVAILABLE:
-            self.url_parser = URLParser()
-            self.logger.info("URL Parser module initialized")
-        else:
-            self.url_parser = None
-            self.logger.warning("URL Parser module not available")
-            
-        # Initialize Word Frequency Counter
-        if WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE:
-            self.word_frequency_counter = WordFrequencyCounter()
-            self.logger.info("Word Frequency Counter module initialized")
-        else:
-            self.word_frequency_counter = None
-            self.logger.warning("Word Frequency Counter module not available")
-            
-        # Initialize Sorter Tools
-        if SORTER_TOOLS_MODULE_AVAILABLE:
-            self.sorter_tools = SorterTools()
-            self.logger.info("Sorter Tools module initialized")
-        else:
-            self.sorter_tools = None
-            self.logger.warning("Sorter Tools module not available")
-            
-        # Initialize Translator Tools
-        if TRANSLATOR_TOOLS_MODULE_AVAILABLE:
-            self.translator_tools = TranslatorTools()
-            self.logger.info("Translator Tools module initialized")
-        else:
-            self.translator_tools = None
-        
-        # Initialize Generator Tools
-        if GENERATOR_TOOLS_MODULE_AVAILABLE:
-            self.generator_tools = GeneratorTools()
-            self.logger.info("Generator Tools module initialized")
-        else:
-            self.generator_tools = None
-
-        # Initialize Extraction Tools
-        if EXTRACTION_TOOLS_MODULE_AVAILABLE:
-            self.extraction_tools = ExtractionTools()
-            self.logger.info("Extraction Tools module initialized")
-        else:
-            self.extraction_tools = None
-        
-        # Initialize Base64 Tools
-        if BASE64_TOOLS_MODULE_AVAILABLE:
-            self.base64_tools = Base64Tools()
-            self.logger.info("Base64 Tools module initialized")
-        else:
-            self.base64_tools = None
-            self.logger.warning("Base64 Tools module not available")
-        
-        # Initialize JSON/XML Tool
-        if JSONXML_TOOL_MODULE_AVAILABLE:
-            self.logger.info("JSON/XML Tool module initialized")
-        else:
-            self.logger.warning("JSON/XML Tool module not available")
-        
-        # Initialize Cron Tool
-        if CRON_TOOL_MODULE_AVAILABLE:
-            self.logger.info("Cron Tool module initialized")
-        else:
-            self.logger.warning("Cron Tool module not available")
-        
-        # Initialize HTML Extraction Tool
+        # HTML Extraction Tool needs logger reference
         if HTML_EXTRACTION_TOOL_MODULE_AVAILABLE:
             self.html_extraction_tool = HTMLExtractionTool(self.logger)
             self.logger.info("HTML Extraction Tool module initialized")
         else:
             self.html_extraction_tool = None
             self.logger.warning("HTML Extraction Tool module not available")
-
-        # Initialize Line Tools
-        if LINE_TOOLS_MODULE_AVAILABLE:
-            self.line_tools = LineTools()
-            self.logger.info("Line Tools module initialized")
+        
+        # JSON/XML Tool and Cron Tool - just log availability (used on-demand)
+        if JSONXML_TOOL_MODULE_AVAILABLE:
+            self.logger.info("JSON/XML Tool module available")
         else:
-            self.line_tools = None
-
-        # Initialize Whitespace Tools
-        if WHITESPACE_TOOLS_MODULE_AVAILABLE:
-            self.whitespace_tools = WhitespaceTools()
-            self.logger.info("Whitespace Tools module initialized")
+            self.logger.warning("JSON/XML Tool module not available")
+        
+        if CRON_TOOL_MODULE_AVAILABLE:
+            self.logger.info("Cron Tool module available")
         else:
-            self.whitespace_tools = None
+            self.logger.warning("Cron Tool module not available")
 
-        # Initialize Text Statistics
-        if TEXT_STATISTICS_MODULE_AVAILABLE:
-            self.text_statistics = TextStatistics()
-            self.logger.info("Text Statistics module initialized")
+        # Initialize MCP Manager
+        if MCP_MANAGER_MODULE_AVAILABLE:
+            self.mcp_manager = MCPManager()
+            self.logger.info("MCP Manager module initialized")
         else:
-            self.text_statistics = None
-
-        # Initialize Hash Generator
-        if HASH_GENERATOR_MODULE_AVAILABLE:
-            self.hash_generator = HashGenerator()
-            self.logger.info("Hash Generator module initialized")
-        else:
-            self.hash_generator = None
-
-        # Initialize Markdown Tools
-        if MARKDOWN_TOOLS_MODULE_AVAILABLE:
-            self.markdown_tools = MarkdownTools()
-            self.logger.info("Markdown Tools module initialized")
-        else:
-            self.markdown_tools = None
-
-        # Initialize String Escape Tool
-        if STRING_ESCAPE_TOOL_MODULE_AVAILABLE:
-            self.string_escape_tool = StringEscapeTool()
-            self.logger.info("String Escape Tool module initialized")
-        else:
-            self.string_escape_tool = None
-
-        # Initialize Number Base Converter
-        if NUMBER_BASE_CONVERTER_MODULE_AVAILABLE:
-            self.number_base_converter = NumberBaseConverter()
-            self.logger.info("Number Base Converter module initialized")
-        else:
-            self.number_base_converter = None
-
-        # Initialize Text Wrapper
-        if TEXT_WRAPPER_MODULE_AVAILABLE:
-            self.text_wrapper = TextWrapper()
-            self.logger.info("Text Wrapper module initialized")
-        else:
-            self.text_wrapper = None
-
-        # Initialize Slug Generator
-        if SLUG_GENERATOR_MODULE_AVAILABLE:
-            self.slug_generator = SlugGenerator()
-            self.logger.info("Slug Generator module initialized")
-        else:
-            self.slug_generator = None
-
-        # Initialize Column Tools
-        if COLUMN_TOOLS_MODULE_AVAILABLE:
-            self.column_tools = ColumnTools()
-            self.logger.info("Column Tools module initialized")
-        else:
-            self.column_tools = None
-
-        # Initialize Timestamp Converter
-        if TIMESTAMP_CONVERTER_MODULE_AVAILABLE:
-            self.timestamp_converter = TimestampConverter()
-            self.logger.info("Timestamp Converter module initialized")
-        else:
-            self.timestamp_converter = None
-
-        # Initialize ASCII Art Generator
-        if ASCII_ART_GENERATOR_MODULE_AVAILABLE:
-            self.ascii_art_generator = ASCIIArtGenerator()
-            self.logger.info("ASCII Art Generator module initialized")
-        else:
-            self.ascii_art_generator = None
+            self.mcp_manager = None
 
         # Initialize Event Consolidator
         if EVENT_CONSOLIDATOR_AVAILABLE:
@@ -1873,7 +1985,7 @@ class PromeraAIApp(tk.Tk):
             self.logger.info(f"Applied text font: {text_font_family} {text_font_size}pt to all text widgets")
             
         except Exception as e:
-            self.logger.error(f"Error applying font settings: {e}")
+            self._handle_error(e, "Applying font settings", "UI", show_dialog=False)
     
     def apply_font_to_ai_tools(self, font_tuple):
         """Apply font to AI Tools text areas."""
@@ -1894,7 +2006,7 @@ class PromeraAIApp(tk.Tk):
                 
                 self.logger.debug("Applied font to AI Tools text areas")
         except Exception as e:
-            self.logger.debug(f"Could not apply font to AI Tools: {e}")
+            self._handle_error(e, "Applying font to AI Tools", "AI Tools", show_dialog=False, severity="debug")
     
     def apply_font_to_tool_widgets(self, font_tuple):
         """Apply font to other tool text widgets."""
@@ -1919,7 +2031,7 @@ class PromeraAIApp(tk.Tk):
             self.apply_font_to_child_widgets(self, font_tuple)
             
         except Exception as e:
-            self.logger.debug(f"Could not apply font to some tool widgets: {e}")
+            self._handle_error(e, "Applying font to tool widgets", "Tools", show_dialog=False, severity="debug")
     
     def apply_font_to_child_widgets(self, parent, font_tuple):
         """Recursively apply font to child text widgets."""
@@ -1999,7 +2111,7 @@ class PromeraAIApp(tk.Tk):
             self.logger.info("Context menus setup complete")
             
         except Exception as e:
-            self.logger.error(f"Error setting up context menus: {e}")
+            self._handle_error(e, "Setting up context menus", "UI", show_dialog=False)
 
     def open_font_settings(self):
         """Open font settings dialog."""
@@ -2186,10 +2298,7 @@ class PromeraAIApp(tk.Tk):
                         f"Font applied:\n• Text: {text_family} {text_size}pt")
                 
             except Exception as e:
-                if self.dialog_manager:
-                    self.dialog_manager.show_error("Error", f"Error applying font settings: {e}")
-                else:
-                    messagebox.showerror("Error", f"Error applying font settings: {e}")
+                self._handle_error(e, "Font Settings", "Error applying font settings")
         
         def reset_font_settings():
             if self.dialog_manager and self.dialog_manager.ask_yes_no("Reset Fonts", "Reset font settings to defaults?", "confirmation") or \
@@ -2414,12 +2523,7 @@ class PromeraAIApp(tk.Tk):
                     messagebox.showinfo("Dialog Settings", message)
                 
             except Exception as e:
-                error_msg = f"Error applying dialog settings: {e}"
-                self.logger.error(error_msg)
-                if self.dialog_manager:
-                    self.dialog_manager.show_error("Error", error_msg)
-                else:
-                    messagebox.showerror("Error", error_msg)
+                self._handle_error(e, "Dialog Settings", "Error applying dialog settings")
         
         def reset_dialog_settings():
             if self.dialog_manager and self.dialog_manager.ask_yes_no("Reset Dialog Settings", 
@@ -2487,7 +2591,7 @@ class PromeraAIApp(tk.Tk):
                 self.settings["dialog_settings"][category]["enabled"] = enabled
                 
         except Exception as e:
-            self.logger.error(f"Error handling real-time dialog setting change for {category}: {e}")
+            self._handle_error(e, f"Dialog setting change for {category}", "Settings", show_dialog=False)
 
     def create_menu_bar(self):
         """Creates the menu bar with File, Settings, and Help menus."""
@@ -2593,6 +2697,14 @@ class PromeraAIApp(tk.Tk):
                 command=self.open_notes_widget
             )
         
+        # Add MCP Manager if available
+        if MCP_MANAGER_MODULE_AVAILABLE:
+            widgets_menu.add_command(
+                label="MCP Manager",
+                command=self.open_mcp_manager,
+                accelerator="Ctrl+M"
+            )
+        
         # Help Menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
@@ -2606,15 +2718,7 @@ class PromeraAIApp(tk.Tk):
             webbrowser.open_new("https://github.com/matbanik/Pomera-AI-Commander/issues/new")
             self.logger.info("Opened GitHub issues page")
         except Exception as e:
-            self.logger.error(f"Failed to open GitHub issues page: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error(
-                    "Browser Error",
-                    f"Failed to open GitHub issues page: {e}",
-                    "tool_operation"
-                )
-            else:
-                messagebox.showerror("Browser Error", f"Failed to open GitHub issues page: {e}")
+            self._handle_error(e, "Opening GitHub issues page", "Browser")
 
     def open_ai_tools(self):
         """Opens the AI Tools from the Help menu."""
@@ -2633,15 +2737,7 @@ class PromeraAIApp(tk.Tk):
                 else:
                     messagebox.showwarning("AI Tools Unavailable", "AI Tools functionality is not available. Please ensure the ai_tools.py module is installed.")
         except Exception as e:
-            self.logger.error(f"Failed to open AI Tools: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error(
-                    "AI Tools Error",
-                    f"Failed to open AI Tools: {e}",
-                    "tool_operation"
-                )
-            else:
-                messagebox.showerror("AI Tools Error", f"Failed to open AI Tools: {e}")
+            self._handle_error(e, "Opening AI Tools", "Tool Operations")
 
     def create_input_widgets(self, parent):
         """Creates widgets for the input text section."""
@@ -2978,11 +3074,8 @@ class PromeraAIApp(tk.Tk):
                         self.apply_tool()
         
         except Exception as e:
-            self.logger.error(f"Failed to load file: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", f"Failed to load file:\n\n{str(e)}")
-            else:
-                messagebox.showerror("Error", f"Failed to load file:\n\n{str(e)}")
+            self._handle_error(e, "Loading file", "File Operations", 
+                               user_message=f"Failed to load file:\n\n{str(e)}")
             
             # Clear any active filter
             if hasattr(self, 'input_filter_var'):
@@ -3054,7 +3147,7 @@ class PromeraAIApp(tk.Tk):
             
             self.after(10, self.update_all_stats)
         except Exception as e:
-            self.logger.error(f"Error applying input filter: {e}")
+            self._handle_error(e, "Applying input filter", "UI", show_dialog=False)
     
     def apply_output_filter(self):
         """Apply line filter to the current output tab."""
@@ -3104,7 +3197,7 @@ class PromeraAIApp(tk.Tk):
             self.after(10, self.update_all_stats)
             
         except Exception as e:
-            self.logger.error(f"Error applying output filter: {e}")
+            self._handle_error(e, "Applying output filter", "UI", show_dialog=False)
     
     def clear_input_filter(self):
         """Clear the input line filter."""
@@ -3150,7 +3243,7 @@ class PromeraAIApp(tk.Tk):
             current_tab.text.config(state="disabled")
             self.output_original_content[current_tab_index] = current_content
         except Exception as e:
-            self.logger.error(f"Error updating original output content: {e}")
+            self._handle_error(e, "Updating output content", "UI", show_dialog=False)
     
     def debug_output_content(self):
         """Debug method to check what content is stored."""
@@ -3197,6 +3290,19 @@ class PromeraAIApp(tk.Tk):
 
         self.tool_settings_frame = ttk.Frame(parent)
         self.tool_settings_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        
+        # Initialize Widget Cache for tool settings UI
+        if WIDGET_CACHE_AVAILABLE:
+            self.widget_cache = init_widget_cache(
+                self.tool_settings_frame,
+                strategy=CacheStrategy.ALWAYS,
+                max_cached=20
+            )
+            self._register_widget_factories()
+            self.logger.info("Widget Cache initialized for tool settings")
+        else:
+            self.widget_cache = None
+        
         self.update_tool_settings_ui()
 
     def update_tool_dropdown_menu(self):
@@ -3273,10 +3379,7 @@ class PromeraAIApp(tk.Tk):
     def open_curl_tool_window(self):
         """Opens the cURL Tool in a separate window."""
         if not CURL_TOOL_MODULE_AVAILABLE:
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", "cURL Tool module is not available.")
-            else:
-                messagebox.showerror("Error", "cURL Tool module is not available.")
+            self._handle_warning("cURL Tool module is not available", "Opening cURL Tool", "Module", show_dialog=True)
             return
             
         if self.curl_tool_window is not None and self.curl_tool_window.winfo_exists():
@@ -3313,21 +3416,56 @@ class PromeraAIApp(tk.Tk):
             self.curl_tool_window.protocol("WM_DELETE_WINDOW", on_curl_window_close)
             
         except Exception as e:
-            self.logger.error(f"Failed to create cURL Tool: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", f"Failed to open cURL Tool: {str(e)}")
-            else:
-                messagebox.showerror("Error", f"Failed to open cURL Tool: {str(e)}")
-            self.curl_tool_window.destroy()
-            self.curl_tool_window = None
+            self._handle_error(e, "Opening cURL Tool", "Tool Operations")
+            if self.curl_tool_window:
+                self.curl_tool_window.destroy()
+                self.curl_tool_window = None
+
+    def open_mcp_manager(self):
+        """Opens the MCP Manager in a separate window."""
+        if not MCP_MANAGER_MODULE_AVAILABLE:
+            self._handle_warning("MCP Manager module is not available", "Opening MCP Manager", "Module", show_dialog=True)
+            return
+        
+        # Check if window already exists and bring it to front
+        if hasattr(self, 'mcp_manager_window') and self.mcp_manager_window is not None and self.mcp_manager_window.winfo_exists():
+            self.mcp_manager_window.lift()
+            return
+        
+        try:
+            # Create a new window for the MCP Manager
+            self.mcp_manager_window = tk.Toplevel(self)
+            self.mcp_manager_window.title("MCP Manager - Pomera Text Tools Server")
+            self.mcp_manager_window.geometry("800x600")
+            
+            # Configure window grid
+            self.mcp_manager_window.grid_columnconfigure(0, weight=1)
+            self.mcp_manager_window.grid_rowconfigure(0, weight=1)
+            
+            # Create the MCP Manager widget
+            from tools.mcp_widget import MCPManagerWidget
+            self.mcp_manager_widget_window = MCPManagerWidget(self.mcp_manager_window, self)
+            self.mcp_manager_widget_window.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            # Handle window closing
+            def on_mcp_window_close():
+                self.mcp_manager_window.destroy()
+                self.mcp_manager_window = None
+                
+            self.mcp_manager_window.protocol("WM_DELETE_WINDOW", on_mcp_window_close)
+            
+            self.logger.info("Opened MCP Manager window")
+            
+        except Exception as e:
+            self._handle_error(e, "Opening MCP Manager", "Tool Operations")
+            if hasattr(self, 'mcp_manager_window') and self.mcp_manager_window:
+                self.mcp_manager_window.destroy()
+                self.mcp_manager_window = None
 
     def open_list_comparator_window(self):
         """Opens the List Comparator in a separate window."""
         if not LIST_COMPARATOR_MODULE_AVAILABLE:
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", "List Comparator module is not available.")
-            else:
-                messagebox.showerror("Error", "List Comparator module is not available.")
+            self._handle_warning("List Comparator module is not available", "Opening List Comparator", "Module", show_dialog=True)
             return
         
         # Check if window already exists and bring it to front
@@ -3357,11 +3495,7 @@ class PromeraAIApp(tk.Tk):
             self.logger.info("List Comparator opened successfully")
             
         except Exception as e:
-            self.logger.error(f"Failed to create List Comparator: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", f"Failed to open List Comparator: {str(e)}")
-            else:
-                messagebox.showerror("Error", f"Failed to open List Comparator: {str(e)}")
+            self._handle_error(e, "Opening List Comparator", "Tool Operations")
             if self.list_comparator_window:
                 self.list_comparator_window.destroy()
             self.list_comparator_window = None
@@ -3369,10 +3503,7 @@ class PromeraAIApp(tk.Tk):
     def open_notes_widget(self):
         """Opens the Notes widget in a separate window."""
         if not NOTES_WIDGET_MODULE_AVAILABLE:
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", "Notes Widget module is not available.")
-            else:
-                messagebox.showerror("Error", "Notes Widget module is not available.")
+            self._handle_warning("Notes Widget module is not available", "Opening Notes Widget", "Module", show_dialog=True)
             return
         
         if self.notes_window is not None and self.notes_window.winfo_exists():
@@ -3411,11 +3542,7 @@ class PromeraAIApp(tk.Tk):
             self.notes_window.protocol("WM_DELETE_WINDOW", on_notes_window_close)
             
         except Exception as e:
-            self.logger.error(f"Failed to create Notes Widget: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", f"Failed to open Notes Widget: {str(e)}")
-            else:
-                messagebox.showerror("Error", f"Failed to open Notes Widget: {str(e)}")
+            self._handle_error(e, "Opening Notes Widget", "Tool Operations")
             if self.notes_window:
                 self.notes_window.destroy()
             self.notes_window = None
@@ -3423,10 +3550,7 @@ class PromeraAIApp(tk.Tk):
     def save_as_note(self, event=None):
         """Save active INPUT and OUTPUT tabs as a note."""
         if not NOTES_WIDGET_MODULE_AVAILABLE:
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", "Notes Widget module is not available.")
-            else:
-                messagebox.showerror("Error", "Notes Widget module is not available.")
+            self._handle_warning("Notes Widget module is not available", "Saving as note", "Module", show_dialog=True)
             return
         
         try:
@@ -3470,24 +3594,10 @@ class PromeraAIApp(tk.Tk):
                     messagebox.showinfo("Success", f"Note saved successfully (ID: {note_id})")
                 self.logger.info(f"Saved note with ID {note_id} from tabs {input_index+1} and {output_index+1}")
             else:
-                if self.dialog_manager:
-                    self.dialog_manager.show_error("Error", "Failed to save note.")
-                else:
-                    messagebox.showerror("Error", "Failed to save note.")
+                self._handle_warning("Failed to save note", "Saving note", "Notes", show_dialog=True)
                     
         except Exception as e:
-            self.logger.error(f"Error saving as note: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", f"Failed to save note: {str(e)}")
-            else:
-                messagebox.showerror("Error", f"Failed to save note: {str(e)}")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to open List Comparator: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", f"Failed to open List Comparator: {str(e)}")
-            else:
-                messagebox.showerror("Error", f"Failed to open List Comparator: {str(e)}")
+            self._handle_error(e, "Saving as note", "Notes")
 
 
     
@@ -3763,16 +3873,9 @@ class PromeraAIApp(tk.Tk):
             self.logger.info("Performance settings updated and applied")
             
         except ValueError as e:
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Invalid Input", f"Please enter valid numeric values: {e}")
-            else:
-                messagebox.showerror("Invalid Input", f"Please enter valid numeric values: {e}")
+            self._handle_warning(f"Please enter valid numeric values: {e}", "Performance settings", "Settings", show_dialog=True)
         except Exception as e:
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", f"Failed to apply performance settings: {e}")
-            else:
-                messagebox.showerror("Error", f"Failed to apply performance settings: {e}")
-            self.logger.error(f"Error applying performance settings: {e}")
+            self._handle_error(e, "Applying performance settings", "Settings")
     
     def reset_performance_settings(self):
         """Reset performance settings to defaults."""
@@ -3954,12 +4057,253 @@ class PromeraAIApp(tk.Tk):
         if not was_diff_viewer:
             self.save_settings()
 
+    def _register_widget_factories(self):
+        """
+        Register widget factories for tools that have BaseTool V2 implementations.
+        
+        This enables the Widget Cache to create and cache tool widgets efficiently.
+        """
+        if not WIDGET_CACHE_AVAILABLE or not self.widget_cache:
+            return
+        
+        # Import V2 tool classes
+        try:
+            from tools.case_tool import CaseToolV2
+            self.widget_cache.register_factory(
+                "Case Tool",
+                lambda: self._create_basetool_widget(CaseToolV2, "Case Tool")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.base64_tools import Base64ToolsV2
+            self.widget_cache.register_factory(
+                "Base64 Encoder/Decoder",
+                lambda: self._create_basetool_widget(Base64ToolsV2, "Base64 Encoder/Decoder")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.sorter_tools import SorterToolsV2
+            self.widget_cache.register_factory(
+                "Sorter Tools",
+                lambda: self._create_basetool_widget(SorterToolsV2, "Sorter Tools")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.line_tools import LineToolsV2
+            self.widget_cache.register_factory(
+                "Line Tools",
+                lambda: self._create_basetool_widget(LineToolsV2, "Line Tools")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.whitespace_tools import WhitespaceToolsV2
+            self.widget_cache.register_factory(
+                "Whitespace Tools",
+                lambda: self._create_basetool_widget(WhitespaceToolsV2, "Whitespace Tools")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.translator_tools import TranslatorToolsV2
+            self.widget_cache.register_factory(
+                "Translator Tools",
+                lambda: self._create_basetool_widget(TranslatorToolsV2, "Translator Tools")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.jsonxml_tool import JSONXMLToolV2
+            self.widget_cache.register_factory(
+                "JSON/XML Tool",
+                lambda: self._create_basetool_widget(JSONXMLToolV2, "JSON/XML Tool")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.string_escape_tool import StringEscapeToolV2
+            self.widget_cache.register_factory(
+                "String Escape Tool",
+                lambda: self._create_basetool_widget(StringEscapeToolV2, "String Escape Tool")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.cron_tool import CronToolV2
+            self.widget_cache.register_factory(
+                "Cron Tool",
+                lambda: self._create_basetool_widget(CronToolV2, "Cron Tool")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.number_base_converter import NumberBaseConverterV2
+            self.widget_cache.register_factory(
+                "Number Base Converter",
+                lambda: self._create_basetool_widget(NumberBaseConverterV2, "Number Base Converter")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.timestamp_converter import TimestampConverterV2
+            self.widget_cache.register_factory(
+                "Timestamp Converter",
+                lambda: self._create_basetool_widget(TimestampConverterV2, "Timestamp Converter")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.text_statistics_tool import TextStatisticsV2
+            self.widget_cache.register_factory(
+                "Text Statistics",
+                lambda: self._create_basetool_widget(TextStatisticsV2, "Text Statistics")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.word_frequency_counter import WordFrequencyCounterV2
+            self.widget_cache.register_factory(
+                "Word Frequency Counter",
+                lambda: self._create_basetool_widget(WordFrequencyCounterV2, "Word Frequency Counter")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.url_parser import URLParserV2
+            self.widget_cache.register_factory(
+                "URL Parser",
+                lambda: self._create_basetool_widget(URLParserV2, "URL Parser")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.regex_extractor import RegexExtractorV2
+            self.widget_cache.register_factory(
+                "Regex Extractor",
+                lambda: self._create_basetool_widget(RegexExtractorV2, "Regex Extractor")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.email_extraction_tool import EmailExtractionToolV2
+            self.widget_cache.register_factory(
+                "Email Extraction Tool",
+                lambda: self._create_basetool_widget(EmailExtractionToolV2, "Email Extraction Tool")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.url_link_extractor import URLLinkExtractorV2
+            self.widget_cache.register_factory(
+                "URL and Link Extractor",
+                lambda: self._create_basetool_widget(URLLinkExtractorV2, "URL and Link Extractor")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.column_tools import ColumnToolsV2
+            self.widget_cache.register_factory(
+                "Column Tools",
+                lambda: self._create_basetool_widget(ColumnToolsV2, "Column Tools")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.markdown_tools import MarkdownToolsV2
+            self.widget_cache.register_factory(
+                "Markdown Tools",
+                lambda: self._create_basetool_widget(MarkdownToolsV2, "Markdown Tools")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.html_tool import HTMLToolV2
+            self.widget_cache.register_factory(
+                "HTML Tool",
+                lambda: self._create_basetool_widget(HTMLToolV2, "HTML Tool")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.email_header_analyzer import EmailHeaderAnalyzerV2
+            self.widget_cache.register_factory(
+                "Email Header Analyzer",
+                lambda: self._create_basetool_widget(EmailHeaderAnalyzerV2, "Email Header Analyzer")
+            )
+        except ImportError:
+            pass
+        
+        try:
+            from tools.ascii_art_generator import ASCIIArtGeneratorV2
+            self.widget_cache.register_factory(
+                "ASCII Art Generator",
+                lambda: self._create_basetool_widget(ASCIIArtGeneratorV2, "ASCII Art Generator")
+            )
+        except ImportError:
+            pass
+        
+        self.logger.debug(f"Registered {self.widget_cache.factory_count} widget factories")
+    
+    def _create_basetool_widget(self, tool_class, tool_name):
+        """
+        Create a widget for a BaseTool V2 class.
+        
+        Args:
+            tool_class: The V2 tool class
+            tool_name: Name of the tool for settings lookup
+            
+        Returns:
+            The created widget frame
+        """
+        tool = tool_class()
+        settings = self.settings["tool_settings"].get(tool_name, tool.get_default_settings())
+        return tool.create_ui(
+            self.tool_settings_frame,
+            settings,
+            on_setting_change_callback=self.on_tool_setting_change,
+            apply_tool_callback=self.apply_tool
+        )
+
     def update_tool_settings_ui(self):
-        """Updates the UI to show settings for the currently selected tool."""
+        """Updates the UI to show settings for the currently selected tool.
+        
+        Uses Widget Cache when available to avoid recreating widgets unnecessarily.
+        """
+        tool_name = self.tool_var.get()
+        
+        # Skip if same tool is already displayed (optimization)
+        if hasattr(self, '_current_tool_ui') and self._current_tool_ui == tool_name:
+            self.logger.debug(f"Tool UI already showing {tool_name}, skipping recreation")
+            return
+        
+        # Destroy existing widgets
         for widget in self.tool_settings_frame.winfo_children():
             widget.destroy()
-
-        tool_name = self.tool_var.get()
+        
+        self._current_tool_ui = tool_name
         tool_settings = self.settings["tool_settings"].get(tool_name, {})
 
         if tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI"]:
@@ -4403,19 +4747,11 @@ class PromeraAIApp(tk.Tk):
             else:
                 error_msg = "HTML Extraction Tool is not available."
                 self.update_output_text(error_msg)
-                if self.dialog_manager:
-                    self.dialog_manager.show_error("Error", error_msg)
-                else:
-                    messagebox.showerror("Error", error_msg)
+                self._handle_warning(error_msg, "HTML Extraction", "Module", show_dialog=True)
                 
         except Exception as e:
-            error_msg = f"Error extracting HTML content: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            self.update_output_text(error_msg)
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Error", error_msg)
-            else:
-                messagebox.showerror("Error", error_msg)
+            self._handle_error(e, "Extracting HTML content", "HTML Tool")
+            self.update_output_text(f"Error extracting HTML content: {str(e)}")
 
     def create_line_tools_widget(self, parent):
         """Creates the Line Tools widget."""
@@ -5077,10 +5413,7 @@ class PromeraAIApp(tk.Tk):
         input_text = active_input_tab.text.get("1.0", tk.END)
         export_path = self.export_path_var.get()
         if not os.path.isdir(export_path):
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Export Error", "Invalid export path specified in settings.")
-            else:
-                messagebox.showerror("Export Error", "Invalid export path specified in settings.")
+            self._handle_warning("Invalid export path specified in settings", "Export Input", "File", show_dialog=True)
             return
 
         filename = filedialog.asksaveasfilename(
@@ -5117,11 +5450,8 @@ class PromeraAIApp(tk.Tk):
                 import subprocess
                 subprocess.Popen(["xdg-open", filename])
         except Exception as e:
-            self.logger.error(f"Failed to export input to {filename}: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Export Error", f"An error occurred while exporting:\n{e}")
-            else:
-                messagebox.showerror("Export Error", f"An error occurred while exporting:\n{e}")
+            self._handle_error(e, "Exporting input", "Export", 
+                               user_message=f"An error occurred while exporting:\n{e}")
 
     def copy_to_specific_input_tab(self, target_tab_index, dialog):
         """Copies output to a specific input tab and closes the dialog."""
@@ -5166,7 +5496,7 @@ class PromeraAIApp(tk.Tk):
             self.save_settings()
                 
         except Exception as e:
-            self.logger.error(f"Failed to send content to input tab: {e}")
+            self._handle_error(e, "Sending content to input tab", "UI", show_dialog=False)
             raise
         
         self.after(10, self.update_all_stats)
@@ -5179,8 +5509,8 @@ class PromeraAIApp(tk.Tk):
                 self.run_diff_viewer()
         else:
             self.input_notebook.select(target_tab_index)
-            if self.input_notebook.index("current") == target_tab_index:
-                self.apply_tool()
+            # Don't auto-apply for manual processing tools
+            # (first apply_tool call above handles non-manual tools)
 
     def copy_to_clipboard(self):
         """Copies the content of the output text area to the system clipboard."""
@@ -5364,9 +5694,12 @@ class PromeraAIApp(tk.Tk):
                 self.update_output_text(output_text)
             
         except Exception as e:
-            error_msg = f"Error processing text with {tool_name}: {e}"
-            self.logger.error(error_msg, exc_info=True)
-            self.update_output_text(f"Error: {error_msg}")
+            self._handle_error(
+                e, 
+                f"Processing text with {tool_name}",
+                show_dialog=False  # Show in output instead
+            )
+            self.update_output_text(f"Error processing text: {e}")
     
     def _process_text_async(self, tool_name: str, input_text: str):
         """Process text asynchronously for large content."""
@@ -5417,9 +5750,8 @@ class PromeraAIApp(tk.Tk):
                            f"({context.size_bytes} bytes, {context.processing_mode.value} mode)")
             
         except Exception as e:
-            error_msg = f"Error starting async processing: {e}"
-            self.logger.error(error_msg, exc_info=True)
-            self.update_output_text(f"Error: {error_msg}")
+            self._handle_error(e, "Starting async processing", show_dialog=False)
+            self.update_output_text(f"Error starting async processing: {e}")
     
     def _on_async_processing_complete(self, result: ProcessingResult, tab_index: int):
         """Handle completion of async text processing."""
@@ -5446,9 +5778,8 @@ class PromeraAIApp(tk.Tk):
                 self.update_output_text(f"Error: {error_msg}")
                 
         except Exception as e:
-            error_msg = f"Error handling async completion: {e}"
-            self.logger.error(error_msg, exc_info=True)
-            self.update_output_text(f"Error: {error_msg}")
+            self._handle_error(e, "Handling async completion", show_dialog=False)
+            self.update_output_text(f"Error handling async completion: {e}")
     
     def cancel_async_processing(self, tab_index: Optional[int] = None):
         """Cancel async processing for a specific tab or all tabs."""
@@ -5501,7 +5832,7 @@ class PromeraAIApp(tk.Tk):
                 return self._process_text_basic(tool_name, input_text)
                 
         except Exception as e:
-            self.logger.error(f"Error in _process_text_with_tool for {tool_name}: {e}")
+            self._handle_error(e, f"Processing text with {tool_name}", "Tool", show_dialog=False)
             raise
 
     
@@ -5566,6 +5897,35 @@ class PromeraAIApp(tk.Tk):
                 return "Cron Tool processing handled by widget interface"
             else:
                 return "Cron Tool module not available"
+        elif tool_name == "Generator Tools":
+            if GENERATOR_TOOLS_MODULE_AVAILABLE:
+                # Generator Tools uses its own widget interface for processing
+                return "Generator Tools processing handled by widget interface"
+            else:
+                return "Generator Tools module not available"
+        elif tool_name == "Sorter Tools":
+            if SORTER_TOOLS_MODULE_AVAILABLE and self.sorter_tools:
+                settings = self.settings["tool_settings"].get("Sorter Tools", {})
+                return self.sorter_tools.process_text(input_text, settings)
+            else:
+                return "Sorter Tools module not available"
+        elif tool_name == "Folder File Reporter":
+            # Folder File Reporter uses its own widget interface
+            return "Folder File Reporter processing handled by widget interface"
+        elif tool_name == "Translator Tools":
+            if TRANSLATOR_TOOLS_MODULE_AVAILABLE and self.translator_tools:
+                # Get the active tool type from settings
+                tool_type = self.settings["tool_settings"].get("Translator Tools", {}).get("active_tool", "Morse Code Translator")
+                settings = self.settings["tool_settings"].get("Translator Tools", {}).get(tool_type, {})
+                return self.translator_tools.process_text(input_text, tool_type, settings)
+            else:
+                return "Translator Tools module not available"
+        elif tool_name == "Base64 Encoder/Decoder":
+            if BASE64_TOOLS_MODULE_AVAILABLE and self.base64_tools:
+                settings = self.settings["tool_settings"].get("Base64 Tools", {})
+                return self.base64_tools.process_text(input_text, settings)
+            else:
+                return "Base64 Tools module not available"
         else: 
             return f"Unknown tool: {tool_name}"
 
@@ -5933,10 +6293,7 @@ class PromeraAIApp(tk.Tk):
         output_text = active_output_tab.text.get("1.0", tk.END)
         export_path = self.export_path_var.get()
         if not os.path.isdir(export_path):
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Export Error", "Invalid export path specified in settings.")
-            else:
-                messagebox.showerror("Export Error", "Invalid export path specified in settings.")
+            self._handle_warning("Invalid export path specified in settings", "Export Output", "File", show_dialog=True)
             return
 
         filename = filedialog.asksaveasfilename(
@@ -5973,11 +6330,7 @@ class PromeraAIApp(tk.Tk):
                 import subprocess
                 subprocess.Popen(["xdg-open", filename])
         except Exception as e:
-            self.logger.error(f"Failed to export to {filename}: {e}")
-            if self.dialog_manager:
-                self.dialog_manager.show_error("Export Error", f"An error occurred while exporting:\n{e}")
-            else:
-                messagebox.showerror("Export Error", f"An error occurred while exporting:\n{e}")
+            self._handle_error(e, f"Exporting to {filename}", "File Operations")
 
     def export_to_pdf(self, filename, text):
         """Helper function to create a PDF file."""
@@ -6006,9 +6359,7 @@ class PromeraAIApp(tk.Tk):
         """Create a manual backup of current settings."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                error_msg = "Database settings manager not available"
-                self.logger.error(error_msg)
-                self.show_error(error_msg)
+                self._handle_warning("Database settings manager not available", "Creating backup", "Database", show_dialog=True)
                 return
             
             self.logger.info("Creating manual backup from File menu...")
@@ -6040,18 +6391,16 @@ class PromeraAIApp(tk.Tk):
                 if not hasattr(self.db_settings_manager, 'backup_recovery_manager') or not self.db_settings_manager.backup_recovery_manager:
                     error_msg += "\n\nBackup recovery manager is not available."
                 
-                self.show_error(f"Failed to create manual backup:\n{error_msg}")
+                self._handle_warning(f"Failed to create manual backup:\n{error_msg}", "Creating backup", "Database", show_dialog=True)
                 
         except Exception as e:
-            error_msg = f"Backup failed with exception: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            self.show_error(f"Error creating manual backup:\n{error_msg}")
+            self._handle_error(e, "Creating manual backup")
     
     def show_backup_history(self):
         """Show backup history in a dialog window."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                self.show_error("Database settings manager not available")
+                self._handle_warning("Database settings manager not available", "Showing backup history", "Database", show_dialog=True)
                 return
             
             # Create backup history window
@@ -6153,7 +6502,7 @@ class PromeraAIApp(tk.Tk):
                     history_window.destroy()
                     self.restore_from_backup_file(selected_backup.filepath)
                 else:
-                    self.show_error("Could not find selected backup")
+                    self._handle_warning("Could not find selected backup", "Restore backup", "Database", show_dialog=True)
             
             # Add buttons to the button frame (now above table)
             ttk.Button(button_frame, text="Restore Selected", command=restore_selected).pack(side=tk.LEFT, padx=(0, 5))
@@ -6161,16 +6510,13 @@ class PromeraAIApp(tk.Tk):
             ttk.Button(button_frame, text="Close", command=history_window.destroy).pack(side=tk.RIGHT)
             
         except Exception as e:
-            self.logger.error(f"Error showing backup history: {e}")
-            self.show_error(f"Error showing backup history: {e}")
+            self._handle_error(e, "Backup History", "Settings")
     
     def export_settings_to_json(self):
         """Export current settings to a JSON file."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                error_msg = "Database settings manager not available"
-                self.logger.error(error_msg)
-                self.show_error(error_msg)
+                self._handle_warning("Database settings manager not available", "Export settings", "Database", show_dialog=True)
                 return
             
             # Ask user for file location
@@ -6210,31 +6556,21 @@ class PromeraAIApp(tk.Tk):
                             self.logger.warning(f"Export file validation failed: {validation_error}")
                             self.show_success(f"Settings exported to:\n{filename}\n\nNote: File validation failed, but export completed.")
                     else:
-                        error_msg = f"Export reported success but file not found: {filename}"
-                        self.logger.error(error_msg)
-                        self.show_error(error_msg)
+                        self._handle_warning(f"Export reported success but file not found: {filename}", "Export settings", "File", show_dialog=True)
                 else:
                     error_msg = "Export operation returned failure status"
-                    self.logger.error(error_msg)
-                    
-                    # Try to get more specific error information
                     if hasattr(self.db_settings_manager, 'backup_recovery_manager'):
                         error_msg += "\n\nCheck that the backup recovery manager is properly initialized."
-                    
-                    self.show_error(error_msg)
+                    self._handle_warning(error_msg, "Export settings", "Database", show_dialog=True)
                     
         except Exception as e:
-            error_msg = f"Export failed with exception: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            self.show_error(f"Error exporting settings:\n{error_msg}")
+            self._handle_error(e, "Exporting settings")
     
     def import_settings_from_json(self):
         """Import settings from a JSON file."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                error_msg = "Database settings manager not available"
-                self.logger.error(error_msg)
-                self.show_error(error_msg)
+                self._handle_warning("Database settings manager not available", "Import settings", "Database", show_dialog=True)
                 return
             
             # Ask user for file location
@@ -6248,9 +6584,7 @@ class PromeraAIApp(tk.Tk):
                 
                 # Validate import file first
                 if not os.path.exists(filename):
-                    error_msg = f"Import file not found: {filename}"
-                    self.logger.error(error_msg)
-                    self.show_error(error_msg)
+                    self._handle_warning(f"Import file not found: {filename}", "Import settings", "File", show_dialog=True)
                     return
                 
                 try:
@@ -6262,9 +6596,7 @@ class PromeraAIApp(tk.Tk):
                     self.logger.info(f"Import file validation passed - {file_size} bytes, {import_tools} tools")
                     
                 except Exception as validation_error:
-                    error_msg = f"Import file is not valid JSON: {validation_error}"
-                    self.logger.error(error_msg)
-                    self.show_error(error_msg)
+                    self._handle_warning(f"Import file is not valid JSON: {validation_error}", "Import settings", "File", show_dialog=True)
                     return
                 
                 # Confirm import with details
@@ -6324,18 +6656,16 @@ class PromeraAIApp(tk.Tk):
                         if hasattr(self.db_settings_manager, 'backup_recovery_manager'):
                             error_msg += "\n\nPossible causes:\n- File format is incompatible\n- Settings validation failed\n- Database write error"
                         
-                        self.show_error(f"Failed to import settings:\n{error_msg}")
+                        self._handle_warning(f"Failed to import settings:\n{error_msg}", "Import settings", "Database", show_dialog=True)
                         
         except Exception as e:
-            error_msg = f"Import failed with exception: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            self.show_error(f"Error importing settings:\n{error_msg}")
+            self._handle_error(e, "Importing settings")
     
     def restore_from_backup_dialog(self):
         """Show dialog to select and restore from a backup file."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                self.show_error("Database settings manager not available")
+                self._handle_warning("Database settings manager not available", "Restore from backup", "Database", show_dialog=True)
                 return
             
             # Ask user for backup file
@@ -6352,8 +6682,7 @@ class PromeraAIApp(tk.Tk):
                 self.restore_from_backup_file(filename)
                 
         except Exception as e:
-            self.logger.error(f"Error in restore dialog: {e}")
-            self.show_error(f"Error in restore dialog: {e}")
+            self._handle_error(e, "Restore dialog", "Settings")
     
     def restore_from_backup_file(self, filename):
         """Restore settings from a specific backup file."""
@@ -6381,17 +6710,16 @@ class PromeraAIApp(tk.Tk):
                     self.show_success(f"Settings restored successfully from backup.\n\nPlease restart the application for all changes to take effect.")
                     self.logger.info(f"Settings restored from backup: {filename}")
                 else:
-                    self.show_error("Failed to restore from backup")
+                    self._handle_warning("Failed to restore from backup", "Restore from backup", "Database", show_dialog=True)
                     
         except Exception as e:
-            self.logger.error(f"Error restoring from backup: {e}")
-            self.show_error(f"Error restoring from backup: {e}")
+            self._handle_error(e, "Restoring from backup", "Settings")
     
     def repair_database_dialog(self):
         """Show dialog to repair database corruption."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                self.show_error("Database settings manager not available")
+                self._handle_warning("Database settings manager not available", "Repair database", "Database", show_dialog=True)
                 return
             
             # Confirm repair
@@ -6449,14 +6777,13 @@ class PromeraAIApp(tk.Tk):
                 threading.Thread(target=repair_worker, daemon=True).start()
                 
         except Exception as e:
-            self.logger.error(f"Error in repair dialog: {e}")
-            self.show_error(f"Error in repair dialog: {e}")
+            self._handle_error(e, "Database repair dialog", "Database")
     
     def validate_settings_integrity_dialog(self):
         """Show dialog to validate settings integrity."""
         try:
             if not hasattr(self, 'db_settings_manager') or not self.db_settings_manager:
-                self.show_error("Database settings manager not available")
+                self._handle_warning("Database settings manager not available", "Validate settings", "Database", show_dialog=True)
                 return
             
             # Ask if user wants to apply automatic fixes
@@ -6505,8 +6832,7 @@ class PromeraAIApp(tk.Tk):
             threading.Thread(target=validation_worker, daemon=True).start()
             
         except Exception as e:
-            self.logger.error(f"Error in validation dialog: {e}")
-            self.show_error(f"Error in validation dialog: {e}")
+            self._handle_error(e, "Settings validation dialog", "Database")
     
     def show_validation_results(self, report, fixes_applied):
         """Show validation results in a dialog."""
@@ -6990,6 +7316,16 @@ class PromeraAIApp(tk.Tk):
             self.async_processor.shutdown(wait=False, timeout=2.0)
             self.logger.info("Async processor shut down")
         
+        # Shutdown Task Scheduler
+        if TASK_SCHEDULER_AVAILABLE and self.task_scheduler:
+            shutdown_task_scheduler(wait=False)
+            self.logger.info("Task Scheduler shut down")
+        
+        # Shutdown Widget Cache
+        if WIDGET_CACHE_AVAILABLE and hasattr(self, 'widget_cache') and self.widget_cache:
+            shutdown_widget_cache()
+            self.logger.info("Widget Cache shut down")
+        
         # Advanced memory management cleanup not needed (modules not available)
         
         # Cleanup intelligent caching
@@ -7054,9 +7390,94 @@ class PromeraAIApp(tk.Tk):
                     return
         except Exception: pass
 
+def run_mcp_server():
+    """Run the MCP server (called when --mcp-server flag is passed)."""
+    import argparse
+    import logging
+    
+    # Configure logging to stderr (stdout is used for MCP communication)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        stream=sys.stderr
+    )
+    logger = logging.getLogger(__name__)
+    
+    parser = argparse.ArgumentParser(
+        description="Pomera MCP Server - Expose text tools via Model Context Protocol"
+    )
+    parser.add_argument("--mcp-server", action="store_true", help="Run as MCP server")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--list-tools", action="store_true", help="List available tools and exit")
+    
+    args, _ = parser.parse_known_args()
+    
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Debug logging enabled")
+    
+    # Import MCP modules
+    try:
+        from core.mcp.tool_registry import ToolRegistry
+        from core.mcp.server_stdio import StdioMCPServer
+    except ImportError as e:
+        logger.error(f"Failed to import MCP modules: {e}")
+        sys.exit(1)
+    
+    # Create tool registry
+    try:
+        registry = ToolRegistry()
+        logger.info(f"Loaded {len(registry)} tools")
+    except Exception as e:
+        logger.error(f"Failed to create tool registry: {e}")
+        sys.exit(1)
+    
+    # List tools mode
+    if args.list_tools:
+        print("Available Pomera MCP Tools:")
+        print("-" * 60)
+        for tool in registry.list_tools():
+            print(f"\n{tool.name}")
+            print(f"  {tool.description}")
+            if "properties" in tool.inputSchema:
+                print("  Parameters:")
+                for prop_name, prop_def in tool.inputSchema["properties"].items():
+                    prop_type = prop_def.get("type", "any")
+                    prop_desc = prop_def.get("description", "")
+                    required = prop_name in tool.inputSchema.get("required", [])
+                    req_marker = "*" if required else ""
+                    print(f"    - {prop_name}{req_marker} ({prop_type}): {prop_desc}")
+        return
+    
+    # Create and run server
+    server = StdioMCPServer(
+        tool_registry=registry,
+        server_name="pomera-mcp-server",
+        server_version="0.1.0"
+    )
+    
+    logger.info("Starting Pomera MCP Server...")
+    logger.info(f"Available tools: {', '.join(registry.get_tool_names())}")
+    
+    try:
+        server.run_sync()
+    except KeyboardInterrupt:
+        logger.info("Server interrupted by user")
+    except Exception as e:
+        logger.exception(f"Server error: {e}")
+        sys.exit(1)
+    
+    logger.info("Server shutdown complete")
+
+
 if __name__ == "__main__":
-    if not PYAUDIO_AVAILABLE:
-        print("Warning: 'PyAudio' or 'numpy' not found. Morse audio playback will be disabled.")
-        print("Please install them using: pip install pyaudio numpy")
-    app = PromeraAIApp()
-    app.mainloop()
+    # Check for --mcp-server flag first
+    if "--mcp-server" in sys.argv:
+        run_mcp_server()
+    else:
+        # Normal GUI mode
+        if not PYAUDIO_AVAILABLE:
+            print("Warning: 'PyAudio' or 'numpy' not found. Morse audio playback will be disabled.")
+            print("Please install them using: pip install pyaudio numpy")
+        app = PromeraAIApp()
+        app.mainloop()

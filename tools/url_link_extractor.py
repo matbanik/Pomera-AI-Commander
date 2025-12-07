@@ -211,3 +211,52 @@ def extract_urls(text, extract_href=False, extract_https=False, extract_any_prot
 def process_url_extraction(input_text, settings):
     """Process URL extraction with the specified settings."""
     return URLLinkExtractorProcessor.process_text(input_text, settings)
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class URLLinkExtractorV2(BaseTool):
+        """
+        BaseTool-compatible version of URLLinkExtractor.
+        """
+        
+        TOOL_NAME = "URL and Link Extractor"
+        TOOL_DESCRIPTION = "Extract URLs and links from text"
+        TOOL_VERSION = "2.0.0"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Extract URLs from text."""
+            return URLLinkExtractorProcessor.extract_urls(
+                input_text,
+                settings.get("extract_href", False),
+                settings.get("extract_https", True),
+                settings.get("extract_any_protocol", False),
+                settings.get("extract_markdown", False),
+                settings.get("filter_text", "")
+            )
+        
+        def get_default_settings(self) -> Dict[str, Any]:
+            return {
+                "extract_href": False,
+                "extract_https": True,
+                "extract_any_protocol": False,
+                "extract_markdown": False,
+                "filter_text": ""
+            }
+        
+        def create_ui(self, parent: tk.Widget, settings: Dict[str, Any], 
+                     on_change=None, on_apply=None) -> tk.Widget:
+            """Create UI for URL Link Extractor."""
+            frame = ttk.Frame(parent)
+            ttk.Label(frame, text="Extract URLs and links").pack(side=tk.LEFT, padx=5)
+            if on_apply:
+                ttk.Button(frame, text="Extract", command=on_apply).pack(side=tk.LEFT, padx=5)
+            return frame
+
+except ImportError:
+    pass

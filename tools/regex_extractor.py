@@ -520,3 +520,53 @@ def process_regex_extraction(input_text, settings):
     """Process regex extraction with the specified settings."""
     return RegexExtractorProcessor.process_text(input_text, settings)
 
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import BaseTool
+    from typing import Dict, Any
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class RegexExtractorV2(BaseTool):
+        """
+        BaseTool-compatible version of RegexExtractor.
+        """
+        
+        TOOL_NAME = "Regex Extractor"
+        TOOL_DESCRIPTION = "Extract text matches using regular expressions"
+        TOOL_VERSION = "2.0.0"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Extract regex matches from text."""
+            return RegexExtractorProcessor.extract_matches(
+                input_text,
+                settings.get("pattern", ""),
+                settings.get("match_mode", "all_per_line"),
+                settings.get("omit_duplicates", False),
+                settings.get("hide_counts", True),
+                settings.get("sort_results", False),
+                settings.get("case_sensitive", False)
+            )
+        
+        def get_default_settings(self) -> Dict[str, Any]:
+            return {
+                "pattern": "",
+                "match_mode": "all_per_line",
+                "omit_duplicates": False,
+                "hide_counts": True,
+                "sort_results": False,
+                "case_sensitive": False
+            }
+        
+        def create_ui(self, parent: tk.Widget, settings: Dict[str, Any], 
+                     on_change=None, on_apply=None) -> tk.Widget:
+            """Create a simple UI for Regex Extractor."""
+            frame = ttk.Frame(parent)
+            ttk.Label(frame, text="Extract regex matches").pack(side=tk.LEFT, padx=5)
+            if on_apply:
+                ttk.Button(frame, text="Extract", command=on_apply).pack(side=tk.LEFT, padx=5)
+            return frame
+
+except ImportError:
+    pass

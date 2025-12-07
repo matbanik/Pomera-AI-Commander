@@ -789,3 +789,97 @@ class CronTool:
             "compare_expressions": self.compare_text.get("1.0", tk.END).strip(),
             "next_runs_count": self.next_runs_var.get()
         }
+
+
+# Static cron parsing functions for BaseTool
+def _explain_cron_static(expression):
+    """Explain a cron expression without UI dependencies."""
+    parts = expression.strip().split()
+    if len(parts) != 5:
+        return f"Invalid cron expression: expected 5 fields, got {len(parts)}"
+    
+    minute, hour, day, month, weekday = parts
+    field_names = ["minute", "hour", "day of month", "month", "day of week"]
+    
+    def explain_field(field, field_type):
+        if field == "*":
+            return f"every {field_type}"
+        elif field.startswith("*/"):
+            return f"every {field[2:]} {field_type}s"
+        elif "," in field:
+            return f"at {field_type}s {field}"
+        elif "-" in field:
+            return f"{field_type}s {field}"
+        else:
+            return f"at {field_type} {field}"
+    
+    explanations = []
+    for i, (field, name) in enumerate(zip(parts, field_names)):
+        if field != "*":
+            explanations.append(explain_field(field, name))
+    
+    if not explanations:
+        return "Runs every minute"
+    
+    return "Runs " + ", ".join(explanations)
+
+
+def _validate_cron_static(expression):
+    """Validate a cron expression without UI dependencies."""
+    parts = expression.strip().split()
+    if len(parts) != 5:
+        return f"✗ Invalid: expected 5 fields, got {len(parts)}"
+    
+    ranges = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)]
+    field_names = ["minute", "hour", "day", "month", "weekday"]
+    
+    for i, (field, (min_val, max_val), name) in enumerate(zip(parts, ranges, field_names)):
+        if field == "*":
+            continue
+        if field.startswith("*/"):
+            try:
+                int(field[2:])
+            except ValueError:
+                return f"✗ Invalid {name}: {field}"
+        elif field.isdigit():
+            val = int(field)
+            if not (min_val <= val <= max_val):
+                return f"✗ Invalid {name}: {val} not in range {min_val}-{max_val}"
+    
+    return "✓ Valid cron expression"
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    from typing import Dict, Any
+    
+    class CronToolV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of CronTool.
+        """
+        
+        TOOL_NAME = "Cron Tool"
+        TOOL_DESCRIPTION = "Parse and explain cron expressions"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Explain", "explain"),
+            ("Validate", "validate"),
+        ]
+        OPTIONS_LABEL = "Action"
+        DEFAULT_OPTION = "explain"
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process cron expression."""
+            mode = settings.get("mode", "explain")
+            
+            if mode == "explain":
+                return _explain_cron_static(input_text)
+            elif mode == "validate":
+                return _validate_cron_static(input_text)
+            else:
+                return input_text
+
+except ImportError:
+    pass

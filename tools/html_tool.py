@@ -613,3 +613,45 @@ def get_settings_ui_config():
             "show_when": {"extraction_method": "extract_tables"}
         }
     }
+
+
+# BaseTool-compatible wrapper
+try:
+    from tools.base_tool import ToolWithOptions
+    import tkinter as tk
+    from tkinter import ttk
+    
+    class HTMLToolV2(ToolWithOptions):
+        """
+        BaseTool-compatible version of HTMLExtractionTool.
+        """
+        
+        TOOL_NAME = "HTML Tool"
+        TOOL_DESCRIPTION = "Extract and process HTML content"
+        TOOL_VERSION = "2.0.0"
+        
+        OPTIONS = [
+            ("Visible Text", "visible_text"),
+            ("Clean HTML", "clean_html"),
+            ("Extract Links", "extract_links"),
+            ("Extract Images", "extract_images"),
+            ("Extract Headings", "extract_headings"),
+            ("Extract Tables", "extract_tables"),
+            ("Extract Forms", "extract_forms"),
+        ]
+        OPTIONS_LABEL = "Operation"
+        USE_DROPDOWN = True
+        DEFAULT_OPTION = "visible_text"
+        
+        def __init__(self):
+            super().__init__()
+            self._tool = HTMLExtractionTool()
+        
+        def process_text(self, input_text: str, settings: Dict[str, Any]) -> str:
+            """Process HTML content."""
+            mode = settings.get("mode", "visible_text")
+            tool_settings = {"extraction_method": mode}
+            return self._tool.process_text(input_text, tool_settings)
+
+except ImportError:
+    pass
