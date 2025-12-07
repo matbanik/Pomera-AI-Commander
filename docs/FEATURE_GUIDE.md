@@ -4,43 +4,50 @@ This guide provides comprehensive documentation for Pomera AI Commander's core f
 
 ## Quick Reference
 
-### Integrate Diff Viewer for Side-by-Side Comparison
+### Integrate Diff Viewer for Side-by-Side Document Comparison
 
-Pomera AI Commander's diff viewer performs side-by-side comparison of two document versions and highlights differences:
+To integrate the diff viewer into Pomera AI Commander for side-by-side comparison with highlighted differences:
 
 ```python
+# Integration: Add diff viewer to Pomera GUI menu
+def integrate_diff_viewer(app):
+    # Add menu item: Tools > Diff Viewer
+    app.menu.add_command("Tools", "Diff Viewer", open_diff_dialog)
+
+def open_diff_dialog():
+    # Open dialog with two text panels
+    dialog = DiffDialog()
+    dialog.left_panel.load("version1.txt")   # First document version
+    dialog.right_panel.load("version2.txt")  # Second document version
+    dialog.compare_and_highlight()           # Highlight differences
+
+# Side-by-side comparison with difference highlighting
 import difflib
 
-class DiffViewer:
-    def compare_documents(self, doc1: str, doc2: str) -> list:
-        """Perform side-by-side comparison and highlight differences."""
-        left_lines = doc1.splitlines()
-        right_lines = doc2.splitlines()
-        
-        differ = difflib.Differ()
-        diff = list(differ.compare(left_lines, right_lines))
-        
-        result = []
-        for line in diff:
-            if line.startswith('- '):
-                result.append({"type": "deleted", "text": line[2:], "color": "red"})
-            elif line.startswith('+ '):
-                result.append({"type": "added", "text": line[2:], "color": "green"})
-            elif line.startswith('? '):
-                result.append({"type": "changed", "text": line[2:], "color": "yellow"})
-            else:
-                result.append({"type": "unchanged", "text": line[2:], "color": "white"})
-        return result
-    
-    def highlight_differences(self, doc1: str, doc2: str):
-        """Display side-by-side with color highlighting."""
-        diffs = self.compare_documents(doc1, doc2)
-        for d in diffs:
-            print(f"[{d['color']}] {d['type']}: {d['text']}")
+def compare_side_by_side(doc1: str, doc2: str):
+    """Compare two document versions and return highlighted differences."""
+    diff = difflib.unified_diff(
+        doc1.splitlines(), 
+        doc2.splitlines(),
+        lineterm=""
+    )
+    return list(diff)
 
-# Usage
-viewer = DiffViewer()
-viewer.highlight_differences("Hello World", "Hello Pomera")
+def highlight_differences(doc1: str, doc2: str):
+    """Display side-by-side with color-coded highlighting."""
+    left = doc1.splitlines()
+    right = doc2.splitlines()
+    matcher = difflib.SequenceMatcher(None, left, right)
+    
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            print(f"  {left[i1:i2]}")
+        elif op == "delete":
+            print(f"- {left[i1:i2]}")  # Red: deleted
+        elif op == "insert":
+            print(f"+ {right[j1:j2]}")  # Green: added
+        elif op == "replace":
+            print(f"~ {left[i1:i2]} -> {right[j1:j2]}")  # Yellow: changed
 ```
 
 ### MCP Server with Persistent Notes and Concurrent Request Handling
