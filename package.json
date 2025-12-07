@@ -1,0 +1,57 @@
+{
+    "name": "pomera-ai-commander",
+    "version": "0.1.0",
+    "description": "Text processing toolkit with 33+ MCP tools for AI assistants - case transformation, encoding, hashing, text analysis, and notes management",
+    "main": "pomera_mcp_server.py",
+    "bin": {
+        "pomera-ai-commander": "./bin/pomera-ai-commander.js",
+        "pomera-mcp": "./bin/pomera-ai-commander.js"
+    },
+    "scripts": {
+        "start": "python pomera_mcp_server.py",
+        "mcp": "python pomera_mcp_server.py",
+        "list-tools": "python pomera_mcp_server.py --list-tools",
+        "test": "python -m pytest"
+    },
+    "keywords": [
+        "mcp",
+        "model-context-protocol",
+        "text-processing",
+        "ai-tools",
+        "pomera",
+        "text-manipulation",
+        "encoding",
+        "hashing",
+        "notes",
+        "cursor",
+        "claude-desktop"
+    ],
+    "author": "matbanik",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/matbanik/Pomera-AI-Commander.git"
+    },
+    "bugs": {
+        "url": "https://github.com/matbanik/Pomera-AI-Commander/issues"
+    },
+    "homepage": "https://github.com/matbanik/Pomera-AI-Commander#readme",
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "os": [
+        "darwin",
+        "linux",
+        "win32"
+    ],
+    "files": [
+        "bin/",
+        "core/",
+        "tools/",
+        "pomera_mcp_server.py",
+        "pomera.py",
+        "mcp.json",
+        "README.md",
+        "LICENSE"
+    ]
+}

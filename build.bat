@@ -11,6 +11,42 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Verify MCP integration files
+echo Checking MCP integration files...
+if not exist mcp.json (
+    echo ERROR: mcp.json manifest is missing!
+    echo This file is required for MCP server integration.
+    pause
+    exit /b 1
+)
+echo   [OK] mcp.json found
+
+if not exist llms.txt (
+    echo   [WARN] llms.txt is missing - recommended for AI discoverability
+) else (
+    echo   [OK] llms.txt found
+)
+
+if not exist context7.json (
+    echo   [WARN] context7.json is missing - recommended for Context7 integration
+) else (
+    echo   [OK] context7.json found
+)
+
+if not exist pyproject.toml (
+    echo   [WARN] pyproject.toml is missing - required for PyPI publishing
+) else (
+    echo   [OK] pyproject.toml found
+)
+
+if not exist package.json (
+    echo   [WARN] package.json is missing - required for npm publishing
+) else (
+    echo   [OK] package.json found
+)
+echo MCP file verification complete!
+echo.
+
 REM Check if PyInstaller is installed
 python -c "import PyInstaller" >nul 2>&1
 if errorlevel 1 (

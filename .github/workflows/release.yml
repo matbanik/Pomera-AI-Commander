@@ -27,6 +27,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Verify MCP files exist
+        shell: bash
+        run: |
+          echo "Checking for required MCP integration files..."
+          
+          if [ ! -f "mcp.json" ]; then
+            echo "ERROR: mcp.json manifest is missing!"
+            exit 1
+          fi
+          echo "✅ mcp.json found"
+          
+          if [ ! -f "llms.txt" ]; then
+            echo "WARNING: llms.txt is missing (recommended for AI discoverability)"
+          else
+            echo "✅ llms.txt found"
+          fi
+          
+          if [ ! -f "context7.json" ]; then
+            echo "WARNING: context7.json is missing (recommended for Context7 integration)"
+          else
+            echo "✅ context7.json found"
+          fi
+          
+          if [ ! -f "pyproject.toml" ]; then
+            echo "WARNING: pyproject.toml is missing (required for PyPI publishing)"
+          else
+            echo "✅ pyproject.toml found"
+          fi
+          
+          if [ ! -f "package.json" ]; then
+            echo "WARNING: package.json is missing (required for npm publishing)"
+          else
+            echo "✅ package.json found"
+          fi
+          
+          echo "MCP file verification complete!"
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

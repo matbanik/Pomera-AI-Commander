@@ -1,0 +1,97 @@
+# Pomera AI Commander
+
+> Pomera AI Commander is a comprehensive text processing toolkit with 33+ MCP (Model Context Protocol) tools for AI assistants. It provides case transformation, encoding/decoding, hashing, text analysis, regex extraction, email/URL parsing, notes management, and more.
+
+Important notes:
+- Pomera can run as a standalone GUI application OR as an MCP server for AI integration
+- All 33 tools are available via MCP protocol for use with Cursor, Claude Desktop, VS Code, etc.
+- Written in Python with cross-platform support (Windows, Linux, macOS)
+
+## MCP Server Documentation
+
+- [MCP Project Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/MCP_PROJECT.md): Complete MCP server documentation
+- [MCP Tasks Status](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/MCP_TASKS.md): Implementation status of MCP features
+- [Tools Documentation](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/TOOLS_DOCUMENTATION.md): Comprehensive guide to all available tools
+
+## Available MCP Tools
+
+### Text Transform Tools
+- `pomera_case_transform`: Transform text case (sentence, lower, upper, title, alternating, inverse)
+- `pomera_whitespace`: Normalize whitespace, remove blank lines, trim lines
+- `pomera_line_tools`: Add/remove line numbers, wrap lines, prefix/suffix operations
+- `pomera_sort`: Sort lines alphabetically, numerically, by length, randomize
+
+### Encoding Tools
+- `pomera_base64`: Encode/decode Base64, URL-safe Base64
+- `pomera_hash`: Generate MD5, SHA-1, SHA-256, SHA-512, CRC32 hashes
+- `pomera_string_escape`: Escape/unescape HTML, URL, JSON, regex characters
+- `pomera_slug`: Generate URL-friendly slugs from text
+
+### Data Format Tools
+- `pomera_json_xml`: Format, minify, convert between JSON and XML
+- `pomera_markdown`: Convert markdown to HTML or plain text
+- `pomera_column_tools`: Extract, reorder, merge CSV/TSV columns
+
+### Extraction Tools
+- `pomera_regex_extract`: Extract text matching regex patterns
+- `pomera_extract_emails`: Extract all email addresses from text
+- `pomera_extract_urls`: Extract all URLs from text
+- `pomera_html`: Strip HTML tags, extract text content
+- `pomera_email_header_analyzer`: Parse and analyze email headers
+
+### Utility Tools
+- `pomera_url_parse`: Parse URLs into components (protocol, host, path, query)
+- `pomera_timestamp`: Convert between Unix timestamps and human dates
+- `pomera_cron`: Parse and explain cron expressions
+- `pomera_number_base`: Convert between decimal, hex, binary, octal
+- `pomera_text_wrap`: Wrap text at specified width
+- `pomera_text_stats`: Count characters, words, lines, paragraphs
+- `pomera_word_frequency`: Analyze word frequency in text
+- `pomera_list_compare`: Find differences between two lists
+
+### Generator Tools
+- `pomera_generators`: Generate passwords, UUIDs, lorem ipsum, sequences
+- `pomera_translator`: Translate text to Morse code, binary, NATO alphabet
+
+### Notes Database Tools
+- `pomera_notes_save`: Save a note with title and content
+- `pomera_notes_get`: Retrieve a note by title
+- `pomera_notes_list`: List all saved notes
+- `pomera_notes_search`: Search notes by keyword
+- `pomera_notes_update`: Update an existing note
+- `pomera_notes_delete`: Delete a note
+
+## Quick Start
+
+### Install via pip
+```bash
+pip install pomera-ai-commander
+```
+
+### Install via npm
+```bash
+npm install -g pomera-ai-commander
+```
+
+### Run as MCP Server
+```bash
+pomera-mcp
+# or
+pomera-ai-commander
+```
+
+### Configure in Cursor/Claude Desktop
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "pomera-mcp"
+    }
+  }
+}
+```
+
+## Optional
+
+- [Build Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/BUILD.md): How to build from source
+- [Troubleshooting](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/TROUBLESHOOTING.md): Common issues and solutions
