@@ -35,7 +35,7 @@ A comprehensive text processing GUI application built with Python and Tkinter, f
 
 ### Quick Links
 - **[Tools Documentation](docs/TOOLS_DOCUMENTATION.md)** - Comprehensive guide to all available tools
-- **[MCP Server Guide](docs/MCP_PROJECT.md)** - MCP server setup and integration
+- **[MCP Server Guide](#troubleshooting-mcp-integration)** - MCP server setup and integration
 - **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Solutions for common issues
 - **[Release Process Guide](docs/RELEASE_PROCESS.md)** - Detailed release procedures for maintainers
 - **[Release Testing Guide](docs/RELEASE_TESTING.md)** - Testing procedures for releases
