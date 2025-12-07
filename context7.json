@@ -1,36 +1,4 @@
 {
-    "$schema": "https://context7.com/schema/context7.json",
-    "projectTitle": "Pomera AI Commander",
-    "description": "Text processing toolkit with 33+ MCP tools for AI assistants - case transformation, encoding, hashing, text analysis, and notes management",
-    "folders": [
-        "docs",
-        "core/mcp"
-    ],
-    "excludeFolders": [
-        "__pycache__",
-        ".git",
-        ".github",
-        "build",
-        "dist",
-        "releases",
-        ".pytest_cache",
-        ".vscode",
-        ".cursor"
-    ],
-    "excludeFiles": [
-        "*.pyc",
-        "*.pyo",
-        "*.log",
-        "*.spec",
-        "*.jpg",
-        "*.png"
-    ],
-    "rules": [
-        "Use Python 3.8+ for compatibility",
-        "Run MCP server with: python pomera_mcp_server.py",
-        "All MCP tools are prefixed with 'pomera_'",
-        "Tool parameters use snake_case naming",
-        "Supports stdio transport for MCP communication"
-    ],
-    "previousVersions": []
+    "url": "https://context7.com/matbanik/pomera-ai-commander",
+    "public_key": "pk_Cvzym4K3ooqZx1JPTUfCa"
 }
