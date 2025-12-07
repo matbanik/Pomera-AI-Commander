@@ -4,12 +4,133 @@ This guide provides comprehensive documentation for Pomera AI Commander's core f
 
 ## Table of Contents
 
-1. [Multi-Tab Interface with Independent Find & Replace](#multi-tab-interface-with-independent-find--replace)
-2. [Real-Time Text Statistics](#real-time-text-statistics)
-3. [Multiple AI Providers Configuration](#multiple-ai-providers-configuration)
-4. [Custom Text Processing Pipelines](#custom-text-processing-pipelines)
-5. [Intelligent Caching System](#intelligent-caching-system)
-6. [MCP Server Integration](#mcp-server-integration)
+1. [AI Provider Middleware and Fallback](#ai-provider-middleware-and-fallback-mechanisms)
+2. [Diff Viewer Integration](#diff-viewer-integration)
+3. [Multi-Tab Interface with Independent Find & Replace](#multi-tab-interface-with-independent-find--replace)
+4. [Real-Time Text Statistics](#real-time-text-statistics)
+5. [Multiple AI Providers Configuration](#multiple-ai-providers-configuration)
+6. [Custom Text Processing Pipelines](#custom-text-processing-pipelines)
+7. [Intelligent Caching System](#intelligent-caching-system)
+8. [MCP Server Integration](#mcp-server-integration)
+
+---
+
+## AI Provider Middleware and Fallback Mechanisms
+
+### Overview
+
+Implement a custom middleware layer to intercept and transform AI provider responses based on complex contextual rules, including fallback mechanisms when primary AI providers are unavailable.
+
+### Implementing Custom Middleware for AI Providers
+
+```python
+class AIMiddleware:
+    """Middleware layer to intercept and transform AI provider responses."""
+    
+    def __init__(self):
+        self.pre_processors = []
+        self.response_transformers = []
+    
+    def add_pre_processor(self, processor):
+        """Add a pre-processor to modify input before sending to AI."""
+        self.pre_processors.append(processor)
+    
+    def add_response_transformer(self, transformer, context_rules=None):
+        """Add a response transformer with context-based rules."""
+        self.response_transformers.append({"transformer": transformer, "rules": context_rules or {}})
+    
+    def process_input(self, text: str, context: dict = None) -> str:
+        for processor in self.pre_processors:
+            text = processor(text, context)
+        return text
+    
+    def process_response(self, response: str, context: dict = None) -> str:
+        for item in self.response_transformers:
+            if self._matches_rules(context, item["rules"]):
+                response = item["transformer"](response, context)
+        return response
+```
+
+### Fallback Mechanism When Primary AI Provider is Unavailable
+
+```python
+class AIProviderWithFallback:
+    """AI Provider manager with automatic fallback support."""
+    
+    def __init__(self, providers: list, middleware: AIMiddleware = None):
+        self.providers = providers  # List of providers in priority order
+        self.middleware = middleware or AIMiddleware()
+    
+    def process_with_fallback(self, text: str, operation: str, context: dict = None) -> str:
+        """Process text with automatic fallback to secondary providers."""
+        processed_input = self.middleware.process_input(text, context)
+        
+        for i, provider in enumerate(self.providers):
+            try:
+                response = provider.process(processed_input, operation)
+                return self.middleware.process_response(response, context)
+            except Exception as e:
+                print(f"Provider {provider.name} failed: {e}")
+                if i < len(self.providers) - 1:
+                    print(f"Falling back to {self.providers[i+1].name}")
+        
+        raise Exception("All AI providers failed")
+
+# Usage with fallback
+providers = [OpenAIProvider(), VertexAIProvider(), OllamaProvider()]
+ai_manager = AIProviderWithFallback(providers, AIMiddleware())
+result = ai_manager.process_with_fallback("Summarize this", "summarize")
+```
+
+---
+
+## Diff Viewer Integration
+
+### Integrate Diff Viewer for Side-by-Side Document Comparison
+
+Pomera AI Commander's diff viewer integrates into the application to perform side-by-side comparison of two document versions and highlight differences:
+
+```python
+# Integration: Add diff viewer to Pomera GUI menu
+def integrate_diff_viewer(app):
+    # Add menu item: Tools > Diff Viewer
+    app.menu.add_command("Tools", "Diff Viewer", open_diff_dialog)
+
+def open_diff_dialog():
+    # Open dialog with two text panels
+    dialog = DiffDialog()
+    dialog.left_panel.load("version1.txt")   # First document version
+    dialog.right_panel.load("version2.txt")  # Second document version
+    dialog.compare_and_highlight()           # Highlight differences
+
+# Side-by-side comparison with difference highlighting
+import difflib
+
+def compare_side_by_side(doc1: str, doc2: str):
+    """Compare two document versions and return highlighted differences."""
+    diff = difflib.unified_diff(
+        doc1.splitlines(), 
+        doc2.splitlines(),
+        lineterm=""
+    )
+    return list(diff)
+
+def highlight_differences(doc1: str, doc2: str):
+    """Display side-by-side with color-coded highlighting."""
+    left = doc1.splitlines()
+    right = doc2.splitlines()
+    matcher = difflib.SequenceMatcher(None, left, right)
+    
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            print(f"  {left[i1:i2]}")
+        elif op == "delete":
+            print(f"- {left[i1:i2]}")  # Red: deleted
+        elif op == "insert":
+            print(f"+ {right[j1:j2]}")  # Green: added
+        elif op == "replace":
+            print(f"~ {left[i1:i2]} -> {right[j1:j2]}")  # Yellow: changed
+```
 
 ---
 
@@ -1480,343 +1601,6 @@ async def demo_concurrent_requests():
 
 # Chain multiple tools
 "Use pomera_whitespace to clean this text, then pomera_sort to alphabetize the lines"
-```
-
----
-
-## AI Provider Middleware and Fallback Mechanisms
-
-### Overview
-
-When working with multiple AI providers, you can implement middleware layers to intercept and transform AI responses, as well as fallback mechanisms when primary providers are unavailable.
-
-### Implementing Custom Middleware for AI Providers
-
-#### Middleware Layer Architecture
-
-```python
-class AIMiddleware:
-    """Middleware layer to intercept and transform AI provider responses."""
-    
-    def __init__(self):
-        self.pre_processors = []
-        self.post_processors = []
-        self.response_transformers = []
-    
-    def add_pre_processor(self, processor):
-        """Add a pre-processor to modify input before sending to AI."""
-        self.pre_processors.append(processor)
-    
-    def add_post_processor(self, processor):
-        """Add a post-processor to transform AI responses."""
-        self.post_processors.append(processor)
-    
-    def add_response_transformer(self, transformer, context_rules=None):
-        """Add a response transformer with optional context-based rules."""
-        self.response_transformers.append({
-            "transformer": transformer,
-            "rules": context_rules or {}
-        })
-    
-    def process_input(self, text: str, context: dict = None) -> str:
-        """Apply all pre-processors to input text."""
-        result = text
-        for processor in self.pre_processors:
-            result = processor(result, context)
-        return result
-    
-    def process_response(self, response: str, context: dict = None) -> str:
-        """Apply all post-processors and transformers to AI response."""
-        result = response
-        
-        # Apply post-processors
-        for processor in self.post_processors:
-            result = processor(result, context)
-        
-        # Apply context-based transformers
-        for item in self.response_transformers:
-            transformer = item["transformer"]
-            rules = item["rules"]
-            
-            # Check if context matches rules
-            if self._matches_rules(context, rules):
-                result = transformer(result, context)
-        
-        return result
-    
-    def _matches_rules(self, context: dict, rules: dict) -> bool:
-        """Check if context matches the specified rules."""
-        if not rules:
-            return True
-        for key, value in rules.items():
-            if context.get(key) != value:
-                return False
-        return True
-```
-
-#### Fallback Mechanism When Primary AI Provider is Unavailable
-
-```python
-class AIProviderWithFallback:
-    """AI Provider manager with automatic fallback support."""
-    
-    def __init__(self, providers: list, middleware: AIMiddleware = None):
-        self.providers = providers  # List of providers in priority order
-        self.middleware = middleware or AIMiddleware()
-        self.last_error = None
-        self.fallback_attempts = 0
-    
-    def process_with_fallback(self, text: str, operation: str, context: dict = None) -> str:
-        """
-        Process text with automatic fallback to secondary providers.
-        
-        Tries each provider in order until one succeeds.
-        """
-        context = context or {}
-        
-        # Apply middleware pre-processing
-        processed_input = self.middleware.process_input(text, context)
-        
-        # Try each provider in order
-        for i, provider in enumerate(self.providers):
-            try:
-                # Attempt to use this provider
-                response = provider.process(processed_input, operation)
-                
-                # Apply middleware post-processing
-                transformed_response = self.middleware.process_response(response, context)
-                
-                # Success - reset fallback counter
-                self.fallback_attempts = 0
-                return transformed_response
-                
-            except Exception as e:
-                self.last_error = str(e)
-                self.fallback_attempts += 1
-                
-                # Log the failure and try next provider
-                print(f"Provider {provider.name} failed: {e}")
-                
-                if i < len(self.providers) - 1:
-                    print(f"Falling back to {self.providers[i+1].name}")
-                continue
-        
-        # All providers failed
-        raise Exception(f"All AI providers failed. Last error: {self.last_error}")
-    
-    def get_fallback_stats(self) -> dict:
-        """Get statistics about fallback usage."""
-        return {
-            "total_fallback_attempts": self.fallback_attempts,
-            "last_error": self.last_error,
-            "available_providers": [p.name for p in self.providers if p.is_available()]
-        }
-```
-
-#### Example: Complex Contextual Rules for Response Transformation
-
-```python
-# Create middleware with context-based transformers
-middleware = AIMiddleware()
-
-# Add a pre-processor to clean input
-middleware.add_pre_processor(lambda text, ctx: text.strip())
-
-# Add a post-processor for code responses
-def format_code_response(response: str, context: dict) -> str:
-    """Format code blocks in AI responses."""
-    if "```" in response:
-        # Ensure proper code block formatting
-        return response.replace("```python", "```python\n")
-    return response
-
-middleware.add_post_processor(format_code_response)
-
-# Add context-based transformer for summarization tasks
-def summarization_transformer(response: str, context: dict) -> str:
-    """Transform summaries based on context."""
-    max_length = context.get("max_summary_length", 500)
-    if len(response) > max_length:
-        return response[:max_length] + "..."
-    return response
-
-middleware.add_response_transformer(
-    summarization_transformer,
-    context_rules={"task_type": "summarize"}
-)
-
-# Set up providers with fallback
-providers = [
-    OpenAIProvider(config),    # Primary
-    VertexAIProvider(config),  # Secondary fallback
-    OllamaProvider(config)     # Local fallback (always available)
-]
-
-ai_manager = AIProviderWithFallback(providers, middleware)
-
-# Use with automatic fallback
-try:
-    result = ai_manager.process_with_fallback(
-        text="Summarize this document...",
-        operation="summarize",
-        context={"task_type": "summarize", "max_summary_length": 200}
-    )
-except Exception as e:
-    print(f"All providers failed: {e}")
-```
-
----
-
-## Diff Viewer for Side-by-Side Comparison
-
-### Overview
-
-Pomera AI Commander includes a Diff Viewer that performs side-by-side comparison of two document versions with highlighted differences. This is especially useful when comparing different versions of processed text saved as notes.
-
-### How to Use the Diff Viewer
-
-#### Step-by-Step: Comparing Two Document Versions
-
-1. **Process your text** using various tools (regex, line tools, whitespace, etc.)
-2. **Save as note** using `pomera_notes_save` with a version identifier (e.g., "my_text_v1")
-3. **Apply different processing** to create an alternative version
-4. **Save another note** (e.g., "my_text_v2")
-5. **Open Diff Viewer** from the Pomera GUI menu: `Tools > Diff Viewer`
-6. **Load both versions** into the left and right panels
-7. **View highlighted differences** - additions, deletions, and changes are color-coded
-
-#### Diff Viewer Implementation
-
-```python
-class DiffViewer:
-    """Side-by-side diff viewer with difference highlighting."""
-    
-    def __init__(self, parent):
-        self.parent = parent
-        self.left_text = None
-        self.right_text = None
-        self.diff_results = []
-    
-    def load_documents(self, doc1: str, doc2: str):
-        """Load two documents for comparison."""
-        self.left_text = doc1
-        self.right_text = doc2
-        self.diff_results = self.compute_diff()
-    
-    def compute_diff(self) -> list:
-        """Compute differences between two documents."""
-        import difflib
-        
-        left_lines = self.left_text.splitlines()
-        right_lines = self.right_text.splitlines()
-        
-        matcher = difflib.SequenceMatcher(None, left_lines, right_lines)
-        
-        differences = []
-        for op, i1, i2, j1, j2 in matcher.get_opcodes():
-            if op == 'equal':
-                differences.append({
-                    "type": "equal",
-                    "left": left_lines[i1:i2],
-                    "right": right_lines[j1:j2]
-                })
-            elif op == 'replace':
-                differences.append({
-                    "type": "changed",
-                    "left": left_lines[i1:i2],
-                    "right": right_lines[j1:j2]
-                })
-            elif op == 'delete':
-                differences.append({
-                    "type": "deleted",
-                    "left": left_lines[i1:i2],
-                    "right": []
-                })
-            elif op == 'insert':
-                differences.append({
-                    "type": "added",
-                    "left": [],
-                    "right": right_lines[j1:j2]
-                })
-        
-        return differences
-    
-    def highlight_differences(self):
-        """Apply visual highlighting to differences."""
-        colors = {
-            "added": "#d4edda",      # Light green
-            "deleted": "#f8d7da",    # Light red
-            "changed": "#fff3cd",    # Light yellow
-            "equal": "#ffffff"       # White
-        }
-        
-        for diff in self.diff_results:
-            diff_type = diff["type"]
-            color = colors.get(diff_type, "#ffffff")
-            
-            # Apply highlighting to GUI widgets
-            self.apply_highlight(diff, color)
-    
-    def get_summary(self) -> dict:
-        """Get a summary of differences."""
-        added = sum(1 for d in self.diff_results if d["type"] == "added")
-        deleted = sum(1 for d in self.diff_results if d["type"] == "deleted")
-        changed = sum(1 for d in self.diff_results if d["type"] == "changed")
-        
-        return {
-            "total_differences": added + deleted + changed,
-            "lines_added": added,
-            "lines_deleted": deleted,
-            "lines_changed": changed,
-            "documents_identical": (added + deleted + changed) == 0
-        }
-```
-
-#### Example: Comparing Two Versions of Processed Text
-
-```python
-# Workflow: Process text, save versions, compare with Diff Viewer
-
-# Step 1: Original text
-original_text = """
-1. Item One
-2. Item Two  
-3. Item Three
-
-Extra spacing here...
-"""
-
-# Step 2: Process with first pipeline (remove line numbers, normalize whitespace)
-version1 = pomera_line_tools(original_text, operation="remove_numbers")
-version1 = pomera_whitespace(version1, operation="normalize")
-pomera_notes_save(title="my_text_v1", content=version1)
-
-# Step 3: Process with alternative pipeline (keep numbers, just trim)
-version2 = pomera_whitespace(original_text, operation="trim")
-pomera_notes_save(title="my_text_v2", content=version2)
-
-# Step 4: Compare in Diff Viewer (GUI)
-# - Open Tools > Diff Viewer
-# - Load "my_text_v1" in left panel
-# - Load "my_text_v2" in right panel
-# - View highlighted differences
-
-# Programmatic comparison
-diff_viewer = DiffViewer(root)
-diff_viewer.load_documents(version1, version2)
-diff_viewer.highlight_differences()
-summary = diff_viewer.get_summary()
-print(f"Found {summary['total_differences']} differences")
-```
-
----
-
-## Text Processing Pipeline: TTS Preparation Example
-
-### Overview
-
-A common use case for Pomera's pipeline capabilities is preparing text for Text-to-Speech (TTS) processing. This involves cleaning up unwanted characters, formatting issues, and preparing consistent output.
-
 ### Complete TTS Preparation Pipeline
 
 This example demonstrates chaining multiple operations: regex extraction to remove unwanted characters, line tools to clean up formatting, whitespace normalization, and saving versions as notes for comparison.
