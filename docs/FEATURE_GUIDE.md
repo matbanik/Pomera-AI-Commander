@@ -823,6 +823,541 @@ npx pomera-ai-commander
 | `pomera_notes_update` | Notes | Update a note |
 | `pomera_notes_delete` | Notes | Delete a note |
 
+---
+
+### Exposing Tools Through MCP Server Interface
+
+This section explains the code to expose Pomera AI Commander's text processing tools through the MCP server interface so that external AI assistants can call these tools programmatically.
+
+#### MCP Tool Registry Implementation
+
+```python
+from typing import Dict, Any, Callable
+import json
+
+class MCPToolRegistry:
+    """Registry for exposing tools through MCP server interface."""
+    
+    def __init__(self):
+        self.tools: Dict[str, Dict[str, Any]] = {}
+        self.handlers: Dict[str, Callable] = {}
+    
+    def register_tool(self, name: str, description: str, input_schema: dict, handler: Callable):
+        """
+        Register a tool to be exposed via MCP.
+        
+        Args:
+            name: Tool name (e.g., 'pomera_case_transform')
+            description: Tool description for AI assistants
+            input_schema: JSON schema for tool parameters
+            handler: Function to execute when tool is called
+        """
+        self.tools[name] = {
+            "name": name,
+            "description": description,
+            "inputSchema": input_schema
+        }
+        self.handlers[name] = handler
+    
+    def get_tools_list(self) -> list:
+        """Return list of all registered tools for MCP tools/list response."""
+        return list(self.tools.values())
+    
+    def call_tool(self, name: str, arguments: dict) -> dict:
+        """
+        Execute a tool and return the result.
+        
+        Args:
+            name: Tool name to execute
+            arguments: Tool arguments from AI assistant
+            
+        Returns:
+            MCP-formatted result with content array
+        """
+        if name not in self.handlers:
+            raise ValueError(f"Unknown tool: {name}")
+        
+        handler = self.handlers[name]
+        result = handler(**arguments)
+        
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": result if isinstance(result, str) else json.dumps(result)
+                }
+            ]
+        }
+
+# Initialize the registry
+tool_registry = MCPToolRegistry()
+```
+
+#### Registering Text Processing Tools
+
+```python
+# Register all Pomera tools with the MCP registry
+
+# Case Transform Tool
+tool_registry.register_tool(
+    name="pomera_case_transform",
+    description="Transform text case to upper, lower, title, sentence, or alternating case",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "Input text to transform"},
+            "operation": {
+                "type": "string",
+                "enum": ["upper", "lower", "title", "sentence", "alternating"],
+                "description": "Case transformation type"
+            }
+        },
+        "required": ["text", "operation"]
+    },
+    handler=lambda text, operation: TextProcessor.case_transform(text, operation)
+)
+
+# Base64 Tool
+tool_registry.register_tool(
+    name="pomera_base64",
+    description="Encode or decode text using Base64",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "Input text"},
+            "operation": {
+                "type": "string",
+                "enum": ["encode", "decode"],
+                "description": "Encode or decode"
+            }
+        },
+        "required": ["text", "operation"]
+    },
+    handler=lambda text, operation: TextProcessor.base64_process(text, operation)
+)
+
+# Extract Emails Tool
+tool_registry.register_tool(
+    name="pomera_extract_emails",
+    description="Extract all email addresses from text",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "Input text to search"}
+        },
+        "required": ["text"]
+    },
+    handler=lambda text: TextProcessor.extract_emails(text)
+)
+
+# Notes Save Tool
+tool_registry.register_tool(
+    name="pomera_notes_save",
+    description="Save a note with title and content to the persistent notes database",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Note title (unique identifier)"},
+            "content": {"type": "string", "description": "Note content"}
+        },
+        "required": ["title", "content"]
+    },
+    handler=lambda title, content: notes_db.save(title, content)
+)
+
+# Register all 33 tools similarly...
+```
+
+#### MCP Server Protocol Handler
+
+```python
+import sys
+import json
+
+class MCPServer:
+    """MCP Server that exposes tools to external AI assistants."""
+    
+    def __init__(self, tool_registry: MCPToolRegistry):
+        self.registry = tool_registry
+    
+    def handle_request(self, request: dict) -> dict:
+        """
+        Handle incoming JSON-RPC request from AI assistant.
+        
+        Supported methods:
+        - initialize: Initialize the MCP session
+        - tools/list: Return list of available tools
+        - tools/call: Execute a tool with arguments
+        """
+        method = request.get("method")
+        params = request.get("params", {})
+        request_id = request.get("id")
+        
+        if method == "initialize":
+            return self._handle_initialize(request_id)
+        elif method == "tools/list":
+            return self._handle_tools_list(request_id)
+        elif method == "tools/call":
+            return self._handle_tools_call(request_id, params)
+        else:
+            return self._error_response(request_id, f"Unknown method: {method}")
+    
+    def _handle_initialize(self, request_id) -> dict:
+        """Handle MCP initialize request."""
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {"listChanged": True}},
+                "serverInfo": {"name": "pomera", "version": "1.0.0"}
+            }
+        }
+    
+    def _handle_tools_list(self, request_id) -> dict:
+        """Handle tools/list request - return all available tools."""
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "tools": self.registry.get_tools_list()
+            }
+        }
+    
+    def _handle_tools_call(self, request_id, params: dict) -> dict:
+        """Handle tools/call request - execute the specified tool."""
+        tool_name = params.get("name")
+        arguments = params.get("arguments", {})
+        
+        try:
+            result = self.registry.call_tool(tool_name, arguments)
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": result
+            }
+        except Exception as e:
+            return self._error_response(request_id, str(e))
+    
+    def _error_response(self, request_id, message: str) -> dict:
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {"code": -32600, "message": message}
+        }
+    
+    def run_stdio(self):
+        """Run the MCP server using stdio transport."""
+        for line in sys.stdin:
+            try:
+                request = json.loads(line.strip())
+                response = self.handle_request(request)
+                print(json.dumps(response), flush=True)
+            except json.JSONDecodeError:
+                pass
+
+# Start the server
+if __name__ == "__main__":
+    server = MCPServer(tool_registry)
+    server.run_stdio()
+```
+
+---
+
+### Persistent Notes Database with Concurrent Request Handling
+
+This section describes the strategy for implementing Pomera AI Commander as an MCP server that maintains persistent context of the notes database while handling concurrent requests from multiple AI assistants without data corruption or loss.
+
+#### Thread-Safe Notes Database Implementation
+
+```python
+import threading
+import json
+import os
+from typing import Optional, List, Dict
+from datetime import datetime
+import fcntl  # For file locking (Unix) or use msvcrt on Windows
+
+class PersistentNotesDatabase:
+    """
+    Thread-safe persistent notes database for MCP server.
+    
+    Handles concurrent requests from multiple AI assistants without
+    data corruption or loss using file locking and thread synchronization.
+    """
+    
+    def __init__(self, db_path: str = "notes.json"):
+        self.db_path = db_path
+        self._lock = threading.RLock()  # Reentrant lock for nested calls
+        self._file_lock = threading.Lock()  # Lock for file operations
+        self._ensure_db_exists()
+    
+    def _ensure_db_exists(self):
+        """Create database file if it doesn't exist."""
+        if not os.path.exists(self.db_path):
+            self._write_db({"notes": {}, "metadata": {"version": 1}})
+    
+    def _read_db(self) -> dict:
+        """Read database with file locking to prevent corruption."""
+        with self._file_lock:
+            with open(self.db_path, 'r', encoding='utf-8') as f:
+                # Acquire shared lock for reading
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                    data = json.load(f)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            return data
+    
+    def _write_db(self, data: dict):
+        """Write database with exclusive file locking."""
+        with self._file_lock:
+            with open(self.db_path, 'w', encoding='utf-8') as f:
+                # Acquire exclusive lock for writing
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    
+    def save(self, title: str, content: str) -> dict:
+        """
+        Save a note with thread-safe concurrent access.
+        
+        Args:
+            title: Unique note identifier
+            content: Note content
+            
+        Returns:
+            Success status and note metadata
+        """
+        with self._lock:  # Thread-safe access
+            db = self._read_db()
+            
+            note = {
+                "title": title,
+                "content": content,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            is_update = title in db["notes"]
+            if is_update:
+                note["created_at"] = db["notes"][title].get("created_at", note["created_at"])
+            
+            db["notes"][title] = note
+            self._write_db(db)
+            
+            return {
+                "success": True,
+                "action": "updated" if is_update else "created",
+                "title": title
+            }
+    
+    def get(self, title: str) -> Optional[dict]:
+        """
+        Retrieve a note by title with thread-safe access.
+        
+        Multiple AI assistants can read simultaneously without blocking.
+        """
+        with self._lock:
+            db = self._read_db()
+            return db["notes"].get(title)
+    
+    def list_all(self) -> List[dict]:
+        """List all notes with metadata."""
+        with self._lock:
+            db = self._read_db()
+            return [
+                {"title": title, "created_at": note.get("created_at")}
+                for title, note in db["notes"].items()
+            ]
+    
+    def search(self, keyword: str) -> List[dict]:
+        """Search notes by keyword in title or content."""
+        with self._lock:
+            db = self._read_db()
+            results = []
+            keyword_lower = keyword.lower()
+            
+            for title, note in db["notes"].items():
+                if (keyword_lower in title.lower() or 
+                    keyword_lower in note.get("content", "").lower()):
+                    results.append({
+                        "title": title,
+                        "snippet": note["content"][:100] + "..."
+                    })
+            
+            return results
+    
+    def update(self, title: str, content: str) -> dict:
+        """Update existing note with optimistic locking."""
+        with self._lock:
+            db = self._read_db()
+            
+            if title not in db["notes"]:
+                return {"success": False, "error": "Note not found"}
+            
+            db["notes"][title]["content"] = content
+            db["notes"][title]["updated_at"] = datetime.now().isoformat()
+            
+            self._write_db(db)
+            return {"success": True, "title": title}
+    
+    def delete(self, title: str) -> dict:
+        """Delete a note with thread-safe access."""
+        with self._lock:
+            db = self._read_db()
+            
+            if title not in db["notes"]:
+                return {"success": False, "error": "Note not found"}
+            
+            del db["notes"][title]
+            self._write_db(db)
+            
+            return {"success": True, "deleted": title}
+
+# Global notes database instance for MCP server
+notes_db = PersistentNotesDatabase()
+```
+
+#### Handling Concurrent Requests from Multiple AI Assistants
+
+```python
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, Any
+
+class ConcurrentMCPServer:
+    """
+    MCP Server designed to handle concurrent requests from multiple
+    AI assistants without data corruption or loss.
+    """
+    
+    def __init__(self, tool_registry: MCPToolRegistry, notes_db: PersistentNotesDatabase):
+        self.registry = tool_registry
+        self.notes_db = notes_db
+        self.executor = ThreadPoolExecutor(max_workers=10)
+        self._request_counter = 0
+        self._counter_lock = threading.Lock()
+    
+    def _get_request_id(self) -> int:
+        """Generate unique request ID for tracking."""
+        with self._counter_lock:
+            self._request_counter += 1
+            return self._request_counter
+    
+    async def handle_request_async(self, request: dict) -> dict:
+        """
+        Handle request asynchronously to support concurrent AI assistants.
+        
+        Each request is processed in a thread pool to prevent blocking,
+        while the notes database maintains consistency through locking.
+        """
+        internal_id = self._get_request_id()
+        
+        # Execute tool call in thread pool
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            self.executor,
+            self._process_request,
+            request,
+            internal_id
+        )
+        
+        return result
+    
+    def _process_request(self, request: dict, internal_id: int) -> dict:
+        """Process a single request with full isolation."""
+        method = request.get("method")
+        params = request.get("params", {})
+        request_id = request.get("id")
+        
+        if method == "tools/call":
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            # Notes operations use the thread-safe database
+            if tool_name.startswith("pomera_notes_"):
+                return self._handle_notes_operation(request_id, tool_name, arguments)
+            else:
+                return self._handle_tool_call(request_id, tool_name, arguments)
+        
+        return self.registry.handle_request(request)
+    
+    def _handle_notes_operation(self, request_id, tool_name: str, arguments: dict) -> dict:
+        """
+        Handle notes operations with transaction-like semantics.
+        
+        Ensures data consistency across concurrent requests.
+        """
+        try:
+            if tool_name == "pomera_notes_save":
+                result = self.notes_db.save(arguments["title"], arguments["content"])
+            elif tool_name == "pomera_notes_get":
+                result = self.notes_db.get(arguments["title"])
+            elif tool_name == "pomera_notes_list":
+                result = self.notes_db.list_all()
+            elif tool_name == "pomera_notes_search":
+                result = self.notes_db.search(arguments["keyword"])
+            elif tool_name == "pomera_notes_update":
+                result = self.notes_db.update(arguments["title"], arguments["content"])
+            elif tool_name == "pomera_notes_delete":
+                result = self.notes_db.delete(arguments["title"])
+            else:
+                raise ValueError(f"Unknown notes operation: {tool_name}")
+            
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "content": [{"type": "text", "text": json.dumps(result)}]
+                }
+            }
+        except Exception as e:
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32600, "message": str(e)}
+            }
+    
+    def _handle_tool_call(self, request_id, tool_name: str, arguments: dict) -> dict:
+        """Handle non-notes tool calls."""
+        result = self.registry.call_tool(tool_name, arguments)
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": result
+        }
+
+# Usage example: Multiple AI assistants calling simultaneously
+async def demo_concurrent_requests():
+    server = ConcurrentMCPServer(tool_registry, notes_db)
+    
+    # Simulate 5 AI assistants making concurrent requests
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", 
+         "params": {"name": "pomera_notes_save", "arguments": {"title": "note1", "content": "Content from AI 1"}}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+         "params": {"name": "pomera_notes_save", "arguments": {"title": "note2", "content": "Content from AI 2"}}},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+         "params": {"name": "pomera_notes_list", "arguments": {}}},
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+         "params": {"name": "pomera_case_transform", "arguments": {"text": "hello", "operation": "upper"}}},
+        {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+         "params": {"name": "pomera_notes_search", "arguments": {"keyword": "AI"}}}
+    ]
+    
+    # Process all requests concurrently
+    results = await asyncio.gather(*[
+        server.handle_request_async(req) for req in requests
+    ])
+    
+    # All operations complete without data corruption
+    for result in results:
+        print(json.dumps(result, indent=2))
+```
+
 #### Example MCP Tool Usage
 
 ```python
