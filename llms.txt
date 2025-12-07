@@ -7,10 +7,52 @@ Important notes:
 - All 33 tools are available via MCP protocol for use with Cursor, Claude Desktop, VS Code, etc.
 - Written in Python with cross-platform support (Windows, Linux, macOS)
 
+## Core Features
+
+### Multi-Tab Interface with Independent Find & Replace
+- Create multiple text tabs with `Ctrl+T`
+- Each tab has its own independent find/replace state
+- Switch tabs with `Ctrl+Tab` or click tab headers
+- Per-tab undo/redo history and cursor position
+- Find in current tab: `Ctrl+F`, Replace: `Ctrl+H`
+
+### Real-Time Text Statistics
+- Live character, word, line, paragraph counting in status bar
+- Statistics update automatically as you type
+- Use `pomera_text_stats` MCP tool for comprehensive analysis
+- Includes bytes, unique words, average word length
+
+### Multiple AI Providers Configuration
+Supported providers:
+- **OpenAI**: GPT-4, GPT-3.5-turbo (set OPENAI_API_KEY)
+- **Google Vertex AI**: Gemini Pro/Ultra (set GOOGLE_APPLICATION_CREDENTIALS)
+- **Azure OpenAI**: Azure-hosted GPT models (set AZURE_OPENAI_KEY)
+- **Anthropic**: Claude 3/2 models (set ANTHROPIC_API_KEY)
+- **Ollama**: Local models like Llama, Mistral (run on localhost:11434)
+
+Switch providers using `AIProviderManager.switch_provider("provider_name")` or via Settings > AI Configuration.
+
+### Custom Text Processing Pipelines
+Chain multiple operations together for complex transformations:
+```python
+# Example pipeline: clean, format, sort
+pipeline = [
+    {"tool": "pomera_whitespace", "operation": "normalize"},
+    {"tool": "pomera_case_transform", "operation": "sentence"},
+    {"tool": "pomera_sort", "operation": "alphabetical"}
+]
+```
+
+### Intelligent Caching System
+- Content-hash-based caching via `ContentHashCache` class
+- Same input + operation returns cached result instantly
+- Memory and disk caching with configurable TTL
+- View cache stats: hits, misses, hit rate
+
 ## MCP Server Documentation
 
+- [Feature Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/FEATURE_GUIDE.md): Detailed feature documentation
 - [MCP Project Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/MCP_PROJECT.md): Complete MCP server documentation
-- [MCP Tasks Status](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/MCP_TASKS.md): Implementation status of MCP features
 - [Tools Documentation](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/TOOLS_DOCUMENTATION.md): Comprehensive guide to all available tools
 
 ## Available MCP Tools
@@ -78,6 +120,8 @@ npm install -g pomera-ai-commander
 pomera-mcp
 # or
 pomera-ai-commander
+# or
+python pomera.py --mcp-server
 ```
 
 ### Configure in Cursor/Claude Desktop
@@ -89,6 +133,35 @@ pomera-ai-commander
     }
   }
 }
+```
+
+## Configuration Examples
+
+### AI Provider Configuration (settings.json)
+```json
+{
+  "ai_providers": {
+    "openai": {
+      "enabled": true,
+      "api_key": "sk-...",
+      "model": "gpt-4"
+    },
+    "vertex_ai": {
+      "enabled": true,
+      "project_id": "my-project",
+      "model": "gemini-pro"
+    }
+  },
+  "active_provider": "openai"
+}
+```
+
+### Caching Configuration
+```python
+from core.content_hash_cache import ContentHashCache
+
+cache = ContentHashCache(cache_dir=".cache", max_size_mb=100)
+# Cache automatically used for all text processing operations
 ```
 
 ## Optional
