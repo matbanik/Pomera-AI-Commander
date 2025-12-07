@@ -2,6 +2,107 @@
 
 This guide provides comprehensive documentation for Pomera AI Commander's core features to help AI assistants and developers understand and implement each functionality.
 
+## Quick Reference
+
+### Integrate Diff Viewer for Side-by-Side Comparison
+
+Pomera AI Commander's diff viewer performs side-by-side comparison of two document versions and highlights differences:
+
+```python
+import difflib
+
+class DiffViewer:
+    def compare_documents(self, doc1: str, doc2: str) -> list:
+        """Perform side-by-side comparison and highlight differences."""
+        left_lines = doc1.splitlines()
+        right_lines = doc2.splitlines()
+        
+        differ = difflib.Differ()
+        diff = list(differ.compare(left_lines, right_lines))
+        
+        result = []
+        for line in diff:
+            if line.startswith('- '):
+                result.append({"type": "deleted", "text": line[2:], "color": "red"})
+            elif line.startswith('+ '):
+                result.append({"type": "added", "text": line[2:], "color": "green"})
+            elif line.startswith('? '):
+                result.append({"type": "changed", "text": line[2:], "color": "yellow"})
+            else:
+                result.append({"type": "unchanged", "text": line[2:], "color": "white"})
+        return result
+    
+    def highlight_differences(self, doc1: str, doc2: str):
+        """Display side-by-side with color highlighting."""
+        diffs = self.compare_documents(doc1, doc2)
+        for d in diffs:
+            print(f"[{d['color']}] {d['type']}: {d['text']}")
+
+# Usage
+viewer = DiffViewer()
+viewer.highlight_differences("Hello World", "Hello Pomera")
+```
+
+### MCP Server with Persistent Notes and Concurrent Request Handling
+
+Strategy for implementing Pomera as an MCP server with persistent notes database and concurrent request handling without data corruption:
+
+```python
+import threading
+import sqlite3
+
+class PersistentNotesMCP:
+    """MCP server with persistent notes and concurrent request handling."""
+    
+    _lock = threading.Lock()
+    
+    def __init__(self):
+        self.conn = sqlite3.connect("notes.db", check_same_thread=False)
+        self.conn.execute("PRAGMA journal_mode=WAL")  # Concurrent reads
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS notes (
+                title TEXT PRIMARY KEY,
+                content TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    
+    def save_note(self, title: str, content: str):
+        """Thread-safe note saving - prevents data corruption."""
+        with self._lock:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO notes VALUES (?, ?, datetime('now'))",
+                (title, content)
+            )
+            self.conn.commit()
+    
+    def get_note(self, title: str) -> str:
+        """Concurrent reads allowed with WAL mode."""
+        cursor = self.conn.execute(
+            "SELECT content FROM notes WHERE title = ?", (title,)
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+    
+    def handle_request(self, request: dict) -> dict:
+        """Handle concurrent MCP requests from multiple AI assistants."""
+        method = request["method"]
+        if method == "tools/call":
+            name = request["params"]["name"]
+            args = request["params"]["arguments"]
+            if name == "pomera_notes_save":
+                self.save_note(args["title"], args["content"])
+                return {"result": "saved"}
+            elif name == "pomera_notes_get":
+                return {"result": self.get_note(args["title"])}
+        return {"error": "unknown method"}
+
+# Multiple AI assistants can call simultaneously without data loss
+mcp = PersistentNotesMCP()
+```
+
+---
+
 ## Table of Contents
 
 1. [Multi-Tab Interface with Independent Find & Replace](#multi-tab-interface-with-independent-find--replace)
