@@ -69,7 +69,7 @@ def main():
     parser.add_argument(
         "--version",
         action="version",
-        version="pomera-mcp-server 0.1.0"
+        version="pomera-mcp-server 1.1.1"
     )
     parser.add_argument(
         "--list-tools",
@@ -121,7 +121,7 @@ def main():
     server = StdioMCPServer(
         tool_registry=registry,
         server_name="pomera-mcp-server",
-        server_version="0.1.0"
+        server_version="1.1.1"
     )
     
     logger.info("Starting Pomera MCP Server...")
