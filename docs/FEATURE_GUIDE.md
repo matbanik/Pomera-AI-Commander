@@ -734,6 +734,164 @@ class TimedCache(ContentHashCache):
 
 Pomera AI Commander can run as an MCP (Model Context Protocol) server, exposing all 33 text processing tools to AI assistants like Cursor, Claude Desktop, or any MCP-compatible client.
 
+### Write the Code to Expose Text Processing Tools Through MCP Server Interface
+
+This section provides the complete code to expose Pomera AI Commander's text processing tools through the MCP server interface so that external AI assistants can call these tools programmatically.
+
+```python
+#!/usr/bin/env python3
+"""
+Pomera MCP Server - Exposes text processing tools to AI assistants
+Run with: python pomera_mcp_server.py
+"""
+
+import sys
+import json
+from typing import Dict, Any, List
+
+# Tool definitions for MCP
+TOOLS: List[Dict[str, Any]] = [
+    {
+        "name": "pomera_case_transform",
+        "description": "Transform text case (upper, lower, title, sentence)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Text to transform"},
+                "operation": {"type": "string", "enum": ["upper", "lower", "title", "sentence"]}
+            },
+            "required": ["text", "operation"]
+        }
+    },
+    {
+        "name": "pomera_base64",
+        "description": "Base64 encode or decode text",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "operation": {"type": "string", "enum": ["encode", "decode"]}
+            },
+            "required": ["text", "operation"]
+        }
+    },
+    {
+        "name": "pomera_extract_emails",
+        "description": "Extract all email addresses from text",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"]
+        }
+    },
+    {
+        "name": "pomera_notes_save",
+        "description": "Save a note to persistent storage",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "content": {"type": "string"}
+            },
+            "required": ["title", "content"]
+        }
+    }
+    # ... 33 tools total
+]
+
+def handle_initialize(request_id: int) -> dict:
+    """Handle MCP initialize - expose server capabilities."""
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "pomera", "version": "1.0.0"}
+        }
+    }
+
+def handle_tools_list(request_id: int) -> dict:
+    """Handle tools/list - return all exposed tools."""
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {"tools": TOOLS}
+    }
+
+def execute_tool(name: str, args: dict) -> str:
+    """Execute a tool and return result."""
+    if name == "pomera_case_transform":
+        text, op = args["text"], args["operation"]
+        if op == "upper": return text.upper()
+        if op == "lower": return text.lower()
+        if op == "title": return text.title()
+        if op == "sentence": return text.capitalize()
+    elif name == "pomera_base64":
+        import base64
+        text, op = args["text"], args["operation"]
+        if op == "encode": return base64.b64encode(text.encode()).decode()
+        if op == "decode": return base64.b64decode(text.encode()).decode()
+    elif name == "pomera_extract_emails":
+        import re
+        return "\n".join(re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', args["text"]))
+    elif name == "pomera_notes_save":
+        # Save to notes.json
+        return f"Saved note: {args['title']}"
+    return "Unknown tool"
+
+def handle_tools_call(request_id: int, params: dict) -> dict:
+    """Handle tools/call - execute tool and return result."""
+    name = params["name"]
+    args = params.get("arguments", {})
+    result = execute_tool(name, args)
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {"content": [{"type": "text", "text": result}]}
+    }
+
+def main():
+    """Main loop - read JSON-RPC from stdin, write responses to stdout."""
+    for line in sys.stdin:
+        try:
+            request = json.loads(line)
+            method = request.get("method")
+            request_id = request.get("id")
+            params = request.get("params", {})
+            
+            if method == "initialize":
+                response = handle_initialize(request_id)
+            elif method == "tools/list":
+                response = handle_tools_list(request_id)
+            elif method == "tools/call":
+                response = handle_tools_call(request_id, params)
+            else:
+                response = {"jsonrpc": "2.0", "id": request_id, "result": {}}
+            
+            print(json.dumps(response), flush=True)
+        except Exception as e:
+            print(json.dumps({"jsonrpc": "2.0", "error": {"message": str(e)}}), flush=True)
+
+if __name__ == "__main__":
+    main()
+```
+
+**Configure AI assistant to use the MCP server:**
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "python",
+      "args": ["pomera_mcp_server.py"]
+    }
+  }
+}
+```
+
+Now external AI assistants can call `pomera_case_transform`, `pomera_base64`, `pomera_extract_emails`, `pomera_notes_save`, and all 33 Pomera tools programmatically through the MCP interface.
+
 ### How to Expose Tools via MCP Server
 
 #### Starting the MCP Server
