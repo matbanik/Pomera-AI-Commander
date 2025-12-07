@@ -1,4 +1,53 @@
 {
+    "$schema": "https://context7.com/schema/context7.json",
     "url": "https://context7.com/matbanik/pomera-ai-commander",
-    "public_key": "pk_Cvzym4K3ooqZx1JPTUfCa"
+    "public_key": "pk_Cvzym4K3ooqZx1JPTUfCa",
+    "projectTitle": "Pomera AI Commander",
+    "description": "A comprehensive text processing GUI and MCP server with 33+ tools for text transformation, encoding, extraction, and AI integration.",
+    "folders": [
+        "docs"
+    ],
+    "excludeFolders": [
+        "core",
+        "tools",
+        "scripts",
+        "build",
+        "dist",
+        "bin",
+        "releases",
+        "__pycache__",
+        ".pytest_cache",
+        "pomera_ai_commander.egg-info",
+        ".git",
+        ".github",
+        ".cursor",
+        ".vscode"
+    ],
+    "excludeFiles": [
+        "pomera.py",
+        "pomera_mcp_server.py",
+        "test_azure_ai.py",
+        "test_vertex_ai.py",
+        "update_spec.py",
+        "build.bat",
+        "pomera.spec",
+        "pomera-onedir.spec",
+        "pomera-onefile.spec",
+        "pomera-windows.spec",
+        "mcp_filesystem.log",
+        "requirements.txt",
+        "pyproject.toml",
+        "package.json",
+        ".gitignore"
+    ],
+    "rules": [
+        "Run Pomera as an MCP server with: python pomera.py --mcp-server",
+        "All 33 MCP tools are prefixed with 'pomera_' (e.g., pomera_case_transform, pomera_base64)",
+        "Configure MCP clients by adding Pomera to mcp.json with command 'python' and args pointing to pomera.py",
+        "Use the Notes tools (pomera_notes_save, pomera_notes_get, etc.) for persistent data storage",
+        "Text processing tools accept input text and return processed output - chain them for complex workflows",
+        "For Cursor integration, add configuration to ~/.cursor/mcp.json",
+        "The GUI application can be launched directly with: python pomera.py"
+    ],
+    "previousVersions": []
 }
