@@ -189,37 +189,54 @@ if __name__ == "__main__":
 {"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "HELLO"}]}}
 ```
 
-## 6. Diff Viewer Side-by-Side Comparison
+## 6. Diff Viewer Integration
 
-Integrate diff viewer for side-by-side comparison with highlighted differences.
+### Integrate Diff Viewer for Side-by-Side Document Comparison
+
+Pomera AI Commander's diff viewer integrates into the application to perform side-by-side comparison of two document versions and highlight differences:
 
 ```python
-import difflib
-
+# Integration: Add diff viewer to Pomera GUI menu
 def integrate_diff_viewer(app):
+    # Add menu item: Tools > Diff Viewer
     app.menu.add_command("Tools", "Diff Viewer", open_diff_dialog)
 
-class DiffViewer:
-    def compare(self, doc1, doc2):
-        left, right = doc1.splitlines(), doc2.splitlines()
-        matcher = difflib.SequenceMatcher(None, left, right)
-        diffs = []
-        for op, i1, i2, j1, j2 in matcher.get_opcodes():
-            if op == "equal": diffs.append(("equal", left[i1:i2]))
-            elif op == "delete": diffs.append(("deleted", left[i1:i2]))  # Red
-            elif op == "insert": diffs.append(("added", right[j1:j2]))   # Green
-            elif op == "replace": diffs.append(("changed", left[i1:i2], right[j1:j2]))  # Yellow
-        return diffs
-    
-    def highlight_differences(self, doc1, doc2):
-        for diff in self.compare(doc1, doc2):
-            # Apply color highlighting to GUI panels
-            pass
+def open_diff_dialog():
+    # Open dialog with two text panels
+    dialog = DiffDialog()
+    dialog.left_panel.load("version1.txt")   # First document version
+    dialog.right_panel.load("version2.txt")  # Second document version
+    dialog.compare_and_highlight()           # Highlight differences
 
-# Usage
-viewer = DiffViewer()
-viewer.highlight_differences(version1, version2)
+# Side-by-side comparison with difference highlighting
+import difflib
+
+def compare_side_by_side(doc1: str, doc2: str):
+    """Compare two document versions and return highlighted differences."""
+    diff = difflib.unified_diff(
+        doc1.splitlines(), 
+        doc2.splitlines(),
+        lineterm=""
+    )
+    return list(diff)
+
+def highlight_differences(doc1: str, doc2: str):
+    """Display side-by-side with color-coded highlighting."""
+    left = doc1.splitlines()
+    right = doc2.splitlines()
+    matcher = difflib.SequenceMatcher(None, left, right)
+    
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            print(f"  {left[i1:i2]}")
+        elif op == "delete":
+            print(f"- {left[i1:i2]}")  # Red: deleted
+        elif op == "insert":
+            print(f"+ {right[j1:j2]}")  # Green: added
+        elif op == "replace":
+            print(f"~ {left[i1:i2]} -> {right[j1:j2]}")  # Yellow: changed
 ```
+
 
 ## 7. Multi-Tab with Independent Find/Replace
 
