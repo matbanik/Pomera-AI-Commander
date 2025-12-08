@@ -329,11 +329,30 @@ ai_manager.switch_provider("vertex_ai")  # For translation
 translated = ai_manager.process_text(text, "translate to Spanish")
 ```
 
-## 10. Pipeline Chaining: Case + Regex + Email Extraction
+## 10. Custom Text Processing Pipelines
 
-Chain operations: case conversion -> regex find-replace -> email extraction.
+Create custom pipelines by chaining multiple operations together. Complex text transformations with a single command.
+
+### How to Create Custom Processing Pipelines
+
+1. **Define pipeline steps**: List operations in order
+2. **Configure each step**: Set parameters for each operation
+3. **Chain operations**: Connect output of one step to input of the next
+4. **Execute pipeline**: Run all steps sequentially
 
 ```python
+# Pipeline Definition Structure
+pipeline = {
+    "name": "Clean and Format",
+    "description": "Clean text, normalize whitespace, and format",
+    "steps": [
+        {"tool": "pomera_whitespace", "operation": "normalize", "params": {}},
+        {"tool": "pomera_case_transform", "operation": "sentence", "params": {}},
+        {"tool": "pomera_line_tools", "operation": "trim", "params": {}}
+    ]
+}
+
+# Pipeline Executor
 class PipelineExecutor:
     def __init__(self, tool_registry):
         self.tools = tool_registry
@@ -348,25 +367,84 @@ class PipelineExecutor:
             params = step.get("params", {})
             
             tool = self.tools.get(tool_name)
+            if not tool:
+                raise ValueError(f"Tool not found: {tool_name}")
+            
             result = tool.execute(result, operation, **params)
             
         return result
+    
+    def create_pipeline(self, name: str, steps: list) -> dict:
+        """Create a new pipeline definition."""
+        return {"name": name, "steps": steps}
+```
 
-# Example: Case conversion + Regex + Email extraction pipeline
-email_pipeline = {
+### Example Pipelines
+
+**Pipeline 1: Code Cleanup**
+```python
+code_cleanup_pipeline = {
+    "name": "Code Cleanup",
+    "steps": [
+        {"tool": "pomera_whitespace", "operation": "normalize"},
+        {"tool": "pomera_line_tools", "operation": "remove_empty"},
+        {"tool": "pomera_line_tools", "operation": "trim"}
+    ]
+}
+cleaned_code = executor.execute_pipeline(messy_code, code_cleanup_pipeline)
+```
+
+**Pipeline 2: Email Extraction and Formatting**
+```python
+email_extract_pipeline = {
     "name": "Extract and Format Emails",
     "steps": [
-        {"tool": "pomera_case_transform", "operation": "lower"},
-        {"tool": "pomera_regex", "operation": "replace", "params": {"pattern": r"@(\w+)\.(com|org)", "replacement": r"@\1.example"}},
         {"tool": "pomera_extract_emails", "operation": "extract"},
         {"tool": "pomera_sort", "operation": "alphabetical"},
         {"tool": "pomera_line_tools", "operation": "deduplicate"}
     ]
 }
+email_list = executor.execute_pipeline(raw_text, email_extract_pipeline)
+```
 
-# Usage
-executor = PipelineExecutor(tool_registry)
-emails = executor.execute_pipeline(raw_text, email_pipeline)
+**Pipeline 3: Document Preparation**
+```python
+doc_prep_pipeline = {
+    "name": "Document Preparation",
+    "steps": [
+        {"tool": "pomera_whitespace", "operation": "normalize"},
+        {"tool": "pomera_case_transform", "operation": "sentence"},
+        {"tool": "pomera_text_wrap", "operation": "wrap", "params": {"width": 80}},
+        {"tool": "pomera_line_tools", "operation": "number", "params": {"start": 1}}
+    ]
+}
+```
+
+### Chaining Operations via MCP
+
+```python
+# Chain multiple MCP tool calls
+def chain_mcp_tools(text: str, operations: list) -> str:
+    """Chain multiple MCP tool calls."""
+    result = text
+    
+    for op in operations:
+        tool_result = call_mcp_tool(op["tool"], {
+            "text": result,
+            **op.get("args", {})
+        })
+        result = tool_result["output"]
+    
+    return result
+
+# Example: Chain case transform -> whitespace cleanup -> sort
+operations = [
+    {"tool": "pomera_case_transform", "args": {"operation": "lower"}},
+    {"tool": "pomera_whitespace", "args": {"operation": "normalize"}},
+    {"tool": "pomera_sort", "args": {"operation": "alphabetical"}}
+]
+
+final_result = chain_mcp_tools(input_text, operations)
 ```
 
 ---
