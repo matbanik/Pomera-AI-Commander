@@ -1,4 +1,4 @@
-# Pomera AI Commander - Benchmark Guide
+# Pomera AI Commander - Feature Guide
 
 ## 1. AI Middleware with Fallback
 
@@ -47,26 +47,50 @@ result = ai.process("text", "summarize", {"max_length": 100})
 MCP server maintains persistent notes database. Handles concurrent requests without data corruption.
 
 ```python
-import threading, sqlite3
+import threading
+import json
+from datetime import datetime
 
-class PersistentNotesMCP:
+class PersistentNotesDatabase:
+    """Thread-safe persistent notes database for MCP server."""
+    
     _lock = threading.Lock()
     
-    def __init__(self):
-        self.conn = sqlite3.connect("notes.db", check_same_thread=False)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("CREATE TABLE IF NOT EXISTS notes(title TEXT PRIMARY KEY, content TEXT)")
+    def __init__(self, db_path="notes.json"):
+        self.db_path = db_path
     
-    def save(self, title, content):
+    def _read_db(self):
+        try:
+            with open(self.db_path, 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {"notes": {}}
+    
+    def _write_db(self, db):
+        with open(self.db_path, 'w') as f:
+            json.dump(db, f, indent=2)
+    
+    def save(self, title: str, content: str) -> dict:
+        """Thread-safe note saving - prevents data corruption."""
         with self._lock:
-            self.conn.execute("INSERT OR REPLACE INTO notes VALUES(?,?)", (title, content))
-            self.conn.commit()
+            db = self._read_db()
+            db["notes"][title] = {
+                "content": content,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            self._write_db(db)
+            return {"success": True, "title": title}
     
-    def get(self, title):
-        return self.conn.execute("SELECT content FROM notes WHERE title=?", (title,)).fetchone()
+    def get(self, title: str) -> str:
+        """Concurrent reads allowed."""
+        db = self._read_db()
+        note = db["notes"].get(title)
+        return note["content"] if note else None
 
 # Concurrent requests handled via ThreadPoolExecutor + asyncio.gather()
 # Lock prevents data corruption during writes
+notes_db = PersistentNotesDatabase()
 ```
 
 ## 3. Base64 Encoding/Decoding
@@ -74,29 +98,59 @@ class PersistentNotesMCP:
 ```python
 import base64
 
-def pomera_base64(text, operation):
-    if operation == "encode": return base64.b64encode(text.encode()).decode()
-    if operation == "decode": return base64.b64decode(text.encode()).decode()
+def pomera_base64(text: str, operation: str) -> str:
+    """
+    Base64 encode or decode text.
+    
+    Args:
+        text: Input text to process
+        operation: 'encode' or 'decode'
+    
+    Returns:
+        Encoded or decoded string
+    """
+    if operation == "encode":
+        return base64.b64encode(text.encode("utf-8")).decode("utf-8")
+    elif operation == "decode":
+        return base64.b64decode(text.encode("utf-8")).decode("utf-8")
+    else:
+        raise ValueError(f"Unknown operation: {operation}")
 
-# Usage
+# Usage - quick convert between plain text and Base64
 encoded = pomera_base64("Hello World", "encode")  # SGVsbG8gV29ybGQ=
 decoded = pomera_base64(encoded, "decode")  # Hello World
 ```
 
 ## 4. URL Parsing and Email Extraction
 
+Process bulk text and extract all valid email addresses and URLs.
+
 ```python
 import re
+from typing import List
 
-def pomera_extract_emails(text):
-    return re.findall(r'[\w.-]+@[\w.-]+\.\w+', text)
+def pomera_extract_emails(text: str) -> List[str]:
+    """Extract all valid email addresses from bulk text."""
+    pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    return re.findall(pattern, text)
 
-def pomera_extract_urls(text):
-    return re.findall(r'https?://\S+|www\.\S+', text)
+def pomera_extract_urls(text: str) -> List[str]:
+    """Extract all valid URLs from bulk text."""
+    pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+    return re.findall(pattern, text)
 
 # Usage - bulk text processing
-emails = pomera_extract_emails("Contact: user@example.com, admin@test.org")
-urls = pomera_extract_urls("Visit https://example.com or www.test.org")
+text = """
+Contact us at support@example.com or sales@company.org
+Visit https://example.com/docs or https://api.test.org/v2
+Also reach admin@test.net
+"""
+
+emails = pomera_extract_emails(text)
+# ['support@example.com', 'sales@company.org', 'admin@test.net']
+
+urls = pomera_extract_urls(text)
+# ['https://example.com/docs', 'https://api.test.org/v2']
 ```
 
 ## 5. Expose Tools via MCP Server Interface
@@ -224,28 +278,55 @@ class TextStatsWidget:
 
 ## 9. Multiple AI Providers + Task-Based Switching
 
-Configure multiple AI providers. Switch based on task type.
+Configure multiple AI providers. Switch between them based on task type.
 
 ```python
 class AIProviderManager:
-    def __init__(self):
-        self.providers = {
-            "openai": OpenAIProvider(),
-            "vertex": VertexAIProvider(),
-            "ollama": OllamaProvider()
-        }
-        self.task_mapping = {
-            "summarize": "openai",
-            "translate": "vertex", 
-            "code": "ollama"
-        }
+    def __init__(self, config_path="settings.json"):
+        self.config = self.load_config(config_path)
+        self.providers = {}
+        self.active_provider = None
+        self.initialize_providers()
     
-    def process(self, text, task):
-        provider_name = self.task_mapping.get(task, "openai")
-        return self.providers[provider_name].process(text, task)
+    def initialize_providers(self):
+        """Initialize all enabled AI providers."""
+        config = self.config.get("ai_providers", {})
+        
+        if config.get("openai", {}).get("enabled"):
+            self.providers["openai"] = OpenAIProvider(config["openai"])
+        
+        if config.get("vertex_ai", {}).get("enabled"):
+            self.providers["vertex_ai"] = VertexAIProvider(config["vertex_ai"])
+        
+        if config.get("ollama", {}).get("enabled"):
+            self.providers["ollama"] = OllamaProvider(config["ollama"])
+        
+        # Set active provider
+        active = self.config.get("active_provider", "openai")
+        if active in self.providers:
+            self.active_provider = self.providers[active]
+    
+    def switch_provider(self, provider_name: str) -> bool:
+        """Switch to a different AI provider based on task type."""
+        if provider_name in self.providers:
+            self.active_provider = self.providers[provider_name]
+            return True
+        return False
+    
+    def process_text(self, text: str, operation: str) -> str:
+        """Process text using the active AI provider."""
+        return self.active_provider.process(text, operation)
 
 # Config in settings.json:
-# {"ai_providers": {"openai": {"api_key": "...", "model": "gpt-4"}, ...}}
+# {"ai_providers": {"openai": {"enabled": true, "api_key": "...", "model": "gpt-4"}, ...}}
+
+# Usage - switch based on task type
+ai_manager = AIProviderManager()
+ai_manager.switch_provider("openai")  # For summarization
+summary = ai_manager.process_text(text, "summarize")
+
+ai_manager.switch_provider("vertex_ai")  # For translation
+translated = ai_manager.process_text(text, "translate to Spanish")
 ```
 
 ## 10. Pipeline Chaining: Case + Regex + Email Extraction
@@ -253,32 +334,39 @@ class AIProviderManager:
 Chain operations: case conversion -> regex find-replace -> email extraction.
 
 ```python
-def extraction_pipeline(text):
-    # Step 1: Case conversion
-    text = pomera_case_transform(text, "lower")
-    
-    # Step 2: Regex find-and-replace
-    text = pomera_regex(text, r"@(\w+)\.(com|org)", r"@\1.example")
-    
-    # Step 3: Email extraction
-    emails = pomera_extract_emails(text)
-    
-    # Step 4: Sort and dedupe
-    emails = sorted(set(emails.split("\n")))
-    
-    # Save as note
-    pomera_notes_save("extracted_emails", "\n".join(emails))
-    return emails
-
-# Pipeline executor
 class PipelineExecutor:
-    def __init__(self, steps):
-        self.steps = steps
+    def __init__(self, tool_registry):
+        self.tools = tool_registry
     
-    def run(self, text):
-        for step in self.steps:
-            text = step["tool"](text, **step["params"])
-        return text
+    def execute_pipeline(self, text: str, pipeline: dict) -> str:
+        """Execute a text processing pipeline."""
+        result = text
+        
+        for step in pipeline["steps"]:
+            tool_name = step["tool"]
+            operation = step.get("operation", "default")
+            params = step.get("params", {})
+            
+            tool = self.tools.get(tool_name)
+            result = tool.execute(result, operation, **params)
+            
+        return result
+
+# Example: Case conversion + Regex + Email extraction pipeline
+email_pipeline = {
+    "name": "Extract and Format Emails",
+    "steps": [
+        {"tool": "pomera_case_transform", "operation": "lower"},
+        {"tool": "pomera_regex", "operation": "replace", "params": {"pattern": r"@(\w+)\.(com|org)", "replacement": r"@\1.example"}},
+        {"tool": "pomera_extract_emails", "operation": "extract"},
+        {"tool": "pomera_sort", "operation": "alphabetical"},
+        {"tool": "pomera_line_tools", "operation": "deduplicate"}
+    ]
+}
+
+# Usage
+executor = PipelineExecutor(tool_registry)
+emails = executor.execute_pipeline(raw_text, email_pipeline)
 ```
 
 ---
