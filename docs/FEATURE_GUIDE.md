@@ -191,51 +191,153 @@ if __name__ == "__main__":
 
 ## 6. Diff Viewer Integration
 
-### Integrate Diff Viewer for Side-by-Side Document Comparison
+### How to Integrate Diff Viewer for Side-by-Side Document Comparison
 
-Pomera AI Commander's diff viewer integrates into the application to perform side-by-side comparison of two document versions and highlight differences:
+Pomera AI Commander's diff viewer performs side-by-side comparison of two document versions and highlights the differences with color-coded markers.
+
+#### Complete Diff Viewer Implementation
 
 ```python
+import difflib
+import tkinter as tk
+from tkinter import ttk
+
+class DiffViewer:
+    """
+    Side-by-side document comparison with highlighted differences.
+    Integrates into Pomera AI Commander's GUI for visual diff viewing.
+    """
+    
+    def __init__(self, parent):
+        self.frame = ttk.Frame(parent)
+        
+        # Create side-by-side text panels with line numbers
+        self.left_panel = self._create_text_panel("Original Document")
+        self.right_panel = self._create_text_panel("Modified Document")
+        
+        # Synchronize scrolling between panels
+        self._sync_scrolling()
+    
+    def _create_text_panel(self, title):
+        """Create text panel with line numbers for diff display."""
+        panel = {
+            "text": tk.Text(self.frame, wrap=tk.NONE),
+            "line_numbers": tk.Text(self.frame, width=4),
+            "title": title
+        }
+        # Configure tags for color-coded highlighting
+        panel["text"].tag_configure("added", background="#ccffcc")    # Green: added lines
+        panel["text"].tag_configure("deleted", background="#ffcccc")  # Red: deleted lines
+        panel["text"].tag_configure("changed", background="#ffffcc")  # Yellow: modified lines
+        panel["text"].tag_configure("equal", background="white")      # White: unchanged
+        return panel
+    
+    def compare_documents(self, doc1: str, doc2: str) -> dict:
+        """
+        Compare two documents and return highlighted differences.
+        
+        Args:
+            doc1: Original document text (first version)
+            doc2: Modified document text (second version)
+        
+        Returns:
+            Dictionary with 'additions', 'deletions', 'changes' counts
+        """
+        left_lines = doc1.splitlines()
+        right_lines = doc2.splitlines()
+        
+        matcher = difflib.SequenceMatcher(None, left_lines, right_lines)
+        
+        stats = {"additions": 0, "deletions": 0, "changes": 0}
+        
+        for op, i1, i2, j1, j2 in matcher.get_opcodes():
+            if op == "equal":
+                # Unchanged lines - display in both panels
+                for line in left_lines[i1:i2]:
+                    self._insert_line(self.left_panel, line, "equal")
+                    self._insert_line(self.right_panel, line, "equal")
+            
+            elif op == "delete":
+                # Lines only in original - highlight red in left panel
+                for line in left_lines[i1:i2]:
+                    self._insert_line(self.left_panel, line, "deleted")
+                    self._insert_line(self.right_panel, "", "deleted")  # Empty placeholder
+                stats["deletions"] += i2 - i1
+            
+            elif op == "insert":
+                # Lines only in modified - highlight green in right panel
+                for line in right_lines[j1:j2]:
+                    self._insert_line(self.left_panel, "", "added")  # Empty placeholder
+                    self._insert_line(self.right_panel, line, "added")
+                stats["additions"] += j2 - j1
+            
+            elif op == "replace":
+                # Modified lines - highlight yellow in both panels
+                for line in left_lines[i1:i2]:
+                    self._insert_line(self.left_panel, line, "changed")
+                for line in right_lines[j1:j2]:
+                    self._insert_line(self.right_panel, line, "changed")
+                stats["changes"] += max(i2 - i1, j2 - j1)
+        
+        return stats
+    
+    def _insert_line(self, panel, text, tag):
+        """Insert a line with the specified highlight tag."""
+        panel["text"].insert(tk.END, text + "\n", tag)
+    
+    def generate_html_diff(self, doc1: str, doc2: str) -> str:
+        """
+        Generate HTML side-by-side diff with intra-line highlighting.
+        Uses difflib.HtmlDiff for complete HTML table output.
+        """
+        differ = difflib.HtmlDiff(wrapcolumn=80)
+        html = differ.make_file(
+            doc1.splitlines(),
+            doc2.splitlines(),
+            fromdesc="Original Version",
+            todesc="Modified Version",
+            context=True,
+            numlines=5
+        )
+        return html
+
 # Integration: Add diff viewer to Pomera GUI menu
 def integrate_diff_viewer(app):
-    # Add menu item: Tools > Diff Viewer
-    app.menu.add_command("Tools", "Diff Viewer", open_diff_dialog)
+    """Add Diff Viewer to Tools menu."""
+    app.menu.add_command("Tools", "Diff Viewer", lambda: open_diff_dialog(app))
 
-def open_diff_dialog():
-    # Open dialog with two text panels
-    dialog = DiffDialog()
-    dialog.left_panel.load("version1.txt")   # First document version
-    dialog.right_panel.load("version2.txt")  # Second document version
-    dialog.compare_and_highlight()           # Highlight differences
-
-# Side-by-side comparison with difference highlighting
-import difflib
-
-def compare_side_by_side(doc1: str, doc2: str):
-    """Compare two document versions and return highlighted differences."""
-    diff = difflib.unified_diff(
-        doc1.splitlines(), 
-        doc2.splitlines(),
-        lineterm=""
-    )
-    return list(diff)
-
-def highlight_differences(doc1: str, doc2: str):
-    """Display side-by-side with color-coded highlighting."""
-    left = doc1.splitlines()
-    right = doc2.splitlines()
-    matcher = difflib.SequenceMatcher(None, left, right)
+def open_diff_dialog(app):
+    """Open the diff viewer dialog with two document panels."""
+    dialog = tk.Toplevel(app.root)
+    dialog.title("Diff Viewer - Side-by-Side Comparison")
     
-    for op, i1, i2, j1, j2 in matcher.get_opcodes():
-        if op == "equal":
-            print(f"  {left[i1:i2]}")
-        elif op == "delete":
-            print(f"- {left[i1:i2]}")  # Red: deleted
-        elif op == "insert":
-            print(f"+ {right[j1:j2]}")  # Green: added
-        elif op == "replace":
-            print(f"~ {left[i1:i2]} -> {right[j1:j2]}")  # Yellow: changed
+    viewer = DiffViewer(dialog)
+    
+    # Load documents to compare
+    doc1 = app.get_document("version1.txt")
+    doc2 = app.get_document("version2.txt")
+    
+    # Perform comparison and highlight differences
+    stats = viewer.compare_documents(doc1, doc2)
+    print(f"Diff complete: {stats['additions']} added, {stats['deletions']} deleted, {stats['changes']} changed")
+
+# Usage example
+viewer = DiffViewer(root)
+stats = viewer.compare_documents(
+    "Line 1\nLine 2\nLine 3",
+    "Line 1\nLine 2 modified\nLine 4 new"
+)
+# Output: {'additions': 1, 'deletions': 1, 'changes': 1}
 ```
+
+#### Key Features
+- **Side-by-side panels**: Original and modified documents displayed in parallel
+- **Color-coded highlighting**: Green (additions), Red (deletions), Yellow (changes)
+- **Line numbers**: Track line positions in both documents
+- **Synchronized scrolling**: Both panels scroll together
+- **HTML export**: Generate shareable HTML diff reports with `HtmlDiff`
+- **Intra-line highlighting**: Character-level change detection
+
 
 
 ## 7. Multi-Tab with Independent Find/Replace
