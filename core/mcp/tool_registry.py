@@ -168,8 +168,7 @@ class ToolRegistry:
         """Register all built-in Pomera tools."""
         # Core text transformation tools
         self._register_case_tool()
-        self._register_base64_tool()
-        self._register_hash_tool()
+        self._register_encode_tool()  # Consolidated: base64, hash, number_base
         self._register_line_tools()
         self._register_whitespace_tools()
         self._register_string_escape_tool()
@@ -178,20 +177,16 @@ class ToolRegistry:
         self._register_json_xml_tool()
         self._register_url_parser_tool()
         self._register_text_wrapper_tool()
-        self._register_number_base_tool()
         self._register_timestamp_tool()
         
         # Additional tools (Phase 2)
-        self._register_regex_extractor_tool()
+        self._register_extract_tool()  # Consolidated: regex, emails, urls
         self._register_markdown_tools()
         self._register_translator_tools()
         self._register_cron_tool()
-        self._register_email_extraction_tool()
-        self._register_url_extractor_tool()
         self._register_word_frequency_tool()
         self._register_column_tools()
         self._register_generator_tools()
-        self._register_slug_generator_tool()
         
         # Notes tools (Phase 3)
         self._register_notes_tools()
@@ -254,77 +249,141 @@ class ToolRegistry:
         
         return CaseToolProcessor.process_text(text, processor_mode, exclusions)
     
-    def _register_base64_tool(self) -> None:
-        """Register the Base64 Tool."""
+    def _register_encode_tool(self) -> None:
+        """Register unified Encoding Tool."""
         self.register(MCPToolAdapter(
-            name="pomera_base64",
-            description="Encode or decode text using Base64 encoding. "
-                       "Encode converts text to Base64, decode converts Base64 back to text.",
+            name="pomera_encode",
+            description="Encoding and conversion operations. Types: base64 (encode/decode text), "
+                       "hash (MD5/SHA/CRC32 hashes), number_base (binary/octal/decimal/hex conversion).",
             input_schema={
                 "type": "object",
                 "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["base64", "hash", "number_base"],
+                        "description": "Encoding type"
+                    },
                     "text": {
                         "type": "string",
-                        "description": "The text to encode or decode"
+                        "description": "Text to process (for base64/hash)"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "For number_base: number to convert (0x/0b/0o prefix ok)"
                     },
                     "operation": {
                         "type": "string",
                         "enum": ["encode", "decode"],
-                        "description": "Operation to perform"
+                        "description": "For base64: encode or decode",
+                        "default": "encode"
+                    },
+                    "algorithm": {
+                        "type": "string",
+                        "enum": ["md5", "sha1", "sha256", "sha512", "crc32"],
+                        "description": "For hash: algorithm to use",
+                        "default": "sha256"
+                    },
+                    "uppercase": {
+                        "type": "boolean",
+                        "description": "For hash: output in uppercase",
+                        "default": False
+                    },
+                    "from_base": {
+                        "type": "string",
+                        "enum": ["binary", "octal", "decimal", "hex", "auto"],
+                        "description": "For number_base: source base",
+                        "default": "auto"
+                    },
+                    "to_base": {
+                        "type": "string",
+                        "enum": ["binary", "octal", "decimal", "hex", "all"],
+                        "description": "For number_base: target base",
+                        "default": "all"
                     }
                 },
-                "required": ["text", "operation"]
+                "required": ["type"]
             },
-            handler=self._handle_base64
+            handler=self._handle_encode
         ))
+    
+    def _handle_encode(self, args: Dict[str, Any]) -> str:
+        """Route encoding to appropriate handler."""
+        encode_type = args.get("type", "")
+        
+        if encode_type == "base64":
+            return self._handle_base64(args)
+        elif encode_type == "hash":
+            return self._handle_hash(args)
+        elif encode_type == "number_base":
+            return self._handle_number_base(args)
+        else:
+            return f"Unknown encoding type: {encode_type}. Valid types: base64, hash, number_base"
     
     def _handle_base64(self, args: Dict[str, Any]) -> str:
         """Handle Base64 tool execution."""
         from tools.base64_tools import Base64Tools
         
         text = args.get("text", "")
+        if not text:
+            return "Error: 'text' is required for base64"
         operation = args.get("operation", "encode")
         
         return Base64Tools.base64_processor(text, operation)
-    
-    def _register_hash_tool(self) -> None:
-        """Register the Hash Generator Tool."""
-        self.register(MCPToolAdapter(
-            name="pomera_hash",
-            description="Generate cryptographic hashes of text. "
-                       "Supports MD5, SHA-1, SHA-256, SHA-512, and CRC32 algorithms.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "text": {
-                        "type": "string",
-                        "description": "The text to hash"
-                    },
-                    "algorithm": {
-                        "type": "string",
-                        "enum": ["md5", "sha1", "sha256", "sha512", "crc32"],
-                        "description": "Hash algorithm to use"
-                    },
-                    "uppercase": {
-                        "type": "boolean",
-                        "description": "Output hash in uppercase",
-                        "default": False
-                    }
-                },
-                "required": ["text", "algorithm"]
-            },
-            handler=self._handle_hash
-        ))
     
     def _handle_hash(self, args: Dict[str, Any]) -> str:
         """Handle hash generation tool execution."""
         from tools.hash_generator import HashGeneratorProcessor
         
         text = args.get("text", "")
+        if not text:
+            return "Error: 'text' is required for hash"
         algorithm = args.get("algorithm", "sha256")
         uppercase = args.get("uppercase", False)
         
         return HashGeneratorProcessor.generate_hash(text, algorithm, uppercase)
+    
+    def _handle_number_base(self, args: Dict[str, Any]) -> str:
+        """Handle number base converter tool execution."""
+        value = args.get("value", "").strip()
+        if not value:
+            return "Error: 'value' is required for number_base"
+        from_base = args.get("from_base", "auto")
+        to_base = args.get("to_base", "all")
+        
+        try:
+            # Parse input number
+            if from_base == "auto":
+                if value.startswith('0x') or value.startswith('0X'):
+                    num = int(value, 16)
+                elif value.startswith('0b') or value.startswith('0B'):
+                    num = int(value, 2)
+                elif value.startswith('0o') or value.startswith('0O'):
+                    num = int(value, 8)
+                else:
+                    num = int(value, 10)
+            else:
+                bases = {"binary": 2, "octal": 8, "decimal": 10, "hex": 16}
+                num = int(value.replace('0x', '').replace('0b', '').replace('0o', ''), bases[from_base])
+            
+            # Convert to target base(s)
+            if to_base == "all":
+                return (f"Decimal: {num}\n"
+                       f"Binary: 0b{bin(num)[2:]}\n"
+                       f"Octal: 0o{oct(num)[2:]}\n"
+                       f"Hexadecimal: 0x{hex(num)[2:]}")
+            elif to_base == "binary":
+                return f"0b{bin(num)[2:]}"
+            elif to_base == "octal":
+                return f"0o{oct(num)[2:]}"
+            elif to_base == "decimal":
+                return str(num)
+            elif to_base == "hex":
+                return f"0x{hex(num)[2:]}"
+            else:
+                return f"Unknown target base: {to_base}"
+                
+        except ValueError as e:
+            return f"Error: Invalid number format - {str(e)}"
     
     def _register_line_tools(self) -> None:
         """Register the Line Tools."""
@@ -981,27 +1040,32 @@ class ToolRegistry:
     # Phase 2 Tools - Additional Pomera Tools
     # =========================================================================
     
-    def _register_regex_extractor_tool(self) -> None:
-        """Register the Regex Extractor Tool."""
+    def _register_extract_tool(self) -> None:
+        """Register unified Extraction Tool."""
         self.register(MCPToolAdapter(
-            name="pomera_regex_extract",
-            description="Extract text matches using regular expressions. Supports capture groups, "
-                       "deduplication, and multiple match modes.",
+            name="pomera_extract",
+            description="Extract content from text. Types: regex (pattern matching), emails (email addresses), "
+                       "urls (web links). All types support deduplication and sorting.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to search"
+                        "description": "Text to extract from"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["regex", "emails", "urls"],
+                        "description": "Extraction type"
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Regular expression pattern"
+                        "description": "For regex: regular expression pattern"
                     },
                     "match_mode": {
                         "type": "string",
                         "enum": ["all_per_line", "first_per_line"],
-                        "description": "Match all occurrences or first per line",
+                        "description": "For regex: match all occurrences or first per line",
                         "default": "all_per_line"
                     },
                     "omit_duplicates": {
@@ -1016,14 +1080,57 @@ class ToolRegistry:
                     },
                     "case_sensitive": {
                         "type": "boolean",
-                        "description": "Case-sensitive matching",
+                        "description": "For regex: case-sensitive matching",
                         "default": False
+                    },
+                    "only_domain": {
+                        "type": "boolean",
+                        "description": "For emails: extract only domains",
+                        "default": False
+                    },
+                    "extract_href": {
+                        "type": "boolean",
+                        "description": "For urls: extract from HTML href",
+                        "default": False
+                    },
+                    "extract_https": {
+                        "type": "boolean",
+                        "description": "For urls: extract http/https URLs",
+                        "default": True
+                    },
+                    "extract_any_protocol": {
+                        "type": "boolean",
+                        "description": "For urls: extract any protocol",
+                        "default": False
+                    },
+                    "extract_markdown": {
+                        "type": "boolean",
+                        "description": "For urls: extract markdown links",
+                        "default": False
+                    },
+                    "filter_text": {
+                        "type": "string",
+                        "description": "For urls: filter by text",
+                        "default": ""
                     }
                 },
-                "required": ["text", "pattern"]
+                "required": ["text", "type"]
             },
-            handler=self._handle_regex_extract
+            handler=self._handle_extract
         ))
+    
+    def _handle_extract(self, args: Dict[str, Any]) -> str:
+        """Route extraction to appropriate handler."""
+        extract_type = args.get("type", "")
+        
+        if extract_type == "regex":
+            return self._handle_regex_extract(args)
+        elif extract_type == "emails":
+            return self._handle_email_extraction(args)
+        elif extract_type == "urls":
+            return self._handle_url_extraction(args)
+        else:
+            return f"Unknown extraction type: {extract_type}. Valid types: regex, emails, urls"
     
     def _handle_regex_extract(self, args: Dict[str, Any]) -> str:
         """Handle regex extractor tool execution."""
@@ -1031,6 +1138,8 @@ class ToolRegistry:
         
         text = args.get("text", "")
         pattern = args.get("pattern", "")
+        if not pattern:
+            return "Error: 'pattern' is required for regex extraction"
         match_mode = args.get("match_mode", "all_per_line")
         omit_duplicates = args.get("omit_duplicates", False)
         sort_results = args.get("sort_results", False)
@@ -1508,14 +1617,18 @@ class ToolRegistry:
         """Register the Generator Tools."""
         self.register(MCPToolAdapter(
             name="pomera_generators",
-            description="Generate passwords, UUIDs, Lorem Ipsum text, or random emails.",
+            description="Generate passwords, UUIDs, Lorem Ipsum text, random emails, or URL slugs.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "generator": {
                         "type": "string",
-                        "enum": ["password", "uuid", "lorem_ipsum", "random_email"],
+                        "enum": ["password", "uuid", "lorem_ipsum", "random_email", "slug"],
                         "description": "Generator type"
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "For slug: text to convert to URL-friendly slug"
                     },
                     "length": {
                         "type": "integer",
@@ -1538,6 +1651,31 @@ class ToolRegistry:
                         "enum": ["words", "sentences", "paragraphs"],
                         "description": "For lorem_ipsum: unit type",
                         "default": "paragraphs"
+                    },
+                    "separator": {
+                        "type": "string",
+                        "description": "For slug: word separator character",
+                        "default": "-"
+                    },
+                    "lowercase": {
+                        "type": "boolean",
+                        "description": "For slug: convert to lowercase",
+                        "default": True
+                    },
+                    "transliterate": {
+                        "type": "boolean",
+                        "description": "For slug: convert accented characters to ASCII",
+                        "default": True
+                    },
+                    "max_length": {
+                        "type": "integer",
+                        "description": "For slug: maximum slug length (0 = unlimited)",
+                        "default": 0
+                    },
+                    "remove_stopwords": {
+                        "type": "boolean",
+                        "description": "For slug: remove common stop words",
+                        "default": False
                     }
                 },
                 "required": ["generator"]
@@ -1612,208 +1750,97 @@ class ToolRegistry:
                 results.append(f"{name}@{domain}")
             return "\n".join(results)
         
+        elif generator == "slug":
+            from tools.slug_generator import SlugGeneratorProcessor
+            
+            text = args.get("text", "")
+            if not text:
+                return "Error: 'text' is required for slug generator"
+            separator = args.get("separator", "-")
+            lowercase = args.get("lowercase", True)
+            transliterate = args.get("transliterate", True)
+            max_length = args.get("max_length", 0)
+            remove_stopwords = args.get("remove_stopwords", False)
+            
+            return SlugGeneratorProcessor.generate_slug(
+                text, separator, lowercase, transliterate, 
+                max_length, remove_stopwords
+            )
+        
         else:
             return f"Unknown generator: {generator}"
-    
-    def _register_slug_generator_tool(self) -> None:
-        """Register the Slug Generator Tool."""
-        self.register(MCPToolAdapter(
-            name="pomera_slug",
-            description="Generate URL-friendly slugs from text with transliteration and customization options.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "text": {
-                        "type": "string",
-                        "description": "Text to convert to slug"
-                    },
-                    "separator": {
-                        "type": "string",
-                        "description": "Word separator character",
-                        "default": "-"
-                    },
-                    "lowercase": {
-                        "type": "boolean",
-                        "description": "Convert to lowercase",
-                        "default": True
-                    },
-                    "transliterate": {
-                        "type": "boolean",
-                        "description": "Convert accented characters to ASCII",
-                        "default": True
-                    },
-                    "max_length": {
-                        "type": "integer",
-                        "description": "Maximum slug length (0 = unlimited)",
-                        "default": 0
-                    },
-                    "remove_stopwords": {
-                        "type": "boolean",
-                        "description": "Remove common stop words",
-                        "default": False
-                    }
-                },
-                "required": ["text"]
-            },
-            handler=self._handle_slug_generator
-        ))
-    
-    def _handle_slug_generator(self, args: Dict[str, Any]) -> str:
-        """Handle slug generator tool execution."""
-        from tools.slug_generator import SlugGeneratorProcessor
-        
-        text = args.get("text", "")
-        separator = args.get("separator", "-")
-        lowercase = args.get("lowercase", True)
-        transliterate = args.get("transliterate", True)
-        max_length = args.get("max_length", 0)
-        remove_stopwords = args.get("remove_stopwords", False)
-        
-        return SlugGeneratorProcessor.generate_slug(
-            text, separator, lowercase, transliterate, 
-            max_length, remove_stopwords
-        )
     
     # =========================================================================
     # Phase 3 Tools - Notes Widget Integration
     # =========================================================================
     
     def _register_notes_tools(self) -> None:
-        """Register Notes widget tools for MCP access."""
-        # Save note tool
+        """Register unified Notes tool for MCP access."""
         self.register(MCPToolAdapter(
-            name="pomera_notes_save",
-            description="Save a new note with title, input content, and output content to Pomera's notes database.",
+            name="pomera_notes",
+            description="Manage notes in Pomera's database. Actions: save (create new note), get (retrieve by ID), "
+                       "list (list/filter notes), search (full-text search with content), update (modify existing), "
+                       "delete (remove note).",
             input_schema={
                 "type": "object",
                 "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["save", "get", "list", "search", "update", "delete"],
+                        "description": "Action to perform on notes"
+                    },
+                    "note_id": {
+                        "type": "integer",
+                        "description": "Note ID (required for get/update/delete)"
+                    },
                     "title": {
                         "type": "string",
-                        "description": "Title of the note"
+                        "description": "Note title (required for save, optional for update)"
                     },
                     "input_content": {
                         "type": "string",
-                        "description": "Input/source content to save",
+                        "description": "Input/source content",
                         "default": ""
                     },
                     "output_content": {
                         "type": "string",
-                        "description": "Output/result content to save",
+                        "description": "Output/result content",
                         "default": ""
-                    }
-                },
-                "required": ["title"]
-            },
-            handler=self._handle_notes_save
-        ))
-        
-        # Get note by ID tool
-        self.register(MCPToolAdapter(
-            name="pomera_notes_get",
-            description="Get a note by its ID from Pomera's notes database.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "note_id": {
-                        "type": "integer",
-                        "description": "ID of the note to retrieve"
-                    }
-                },
-                "required": ["note_id"]
-            },
-            handler=self._handle_notes_get
-        ))
-        
-        # List notes tool
-        self.register(MCPToolAdapter(
-            name="pomera_notes_list",
-            description="List all notes or search notes in Pomera's database. Returns ID, title, and timestamps.",
-            input_schema={
-                "type": "object",
-                "properties": {
+                    },
                     "search_term": {
                         "type": "string",
-                        "description": "Optional FTS5 search term to filter notes. Use * for wildcards.",
+                        "description": "FTS5 search term for list/search. Use * for wildcards.",
                         "default": ""
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of notes to return",
+                        "description": "Max results for list/search",
                         "default": 50
                     }
                 },
-                "required": []
+                "required": ["action"]
             },
-            handler=self._handle_notes_list
+            handler=self._handle_notes
         ))
+    
+    def _handle_notes(self, args: Dict[str, Any]) -> str:
+        """Route notes action to appropriate handler."""
+        action = args.get("action", "")
         
-        # Search notes (full content) tool
-        self.register(MCPToolAdapter(
-            name="pomera_notes_search",
-            description="Search notes with full content. Returns matching notes with their complete input/output content.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "search_term": {
-                        "type": "string",
-                        "description": "FTS5 search term. Examples: 'python', 'python AND tutorial', 'title:refactor'"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of notes to return",
-                        "default": 10
-                    }
-                },
-                "required": ["search_term"]
-            },
-            handler=self._handle_notes_search
-        ))
-        
-        # Update note tool
-        self.register(MCPToolAdapter(
-            name="pomera_notes_update",
-            description="Update an existing note by ID.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "note_id": {
-                        "type": "integer",
-                        "description": "ID of the note to update"
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "New title (optional)"
-                    },
-                    "input_content": {
-                        "type": "string",
-                        "description": "New input content (optional)"
-                    },
-                    "output_content": {
-                        "type": "string",
-                        "description": "New output content (optional)"
-                    }
-                },
-                "required": ["note_id"]
-            },
-            handler=self._handle_notes_update
-        ))
-        
-        # Delete note tool
-        self.register(MCPToolAdapter(
-            name="pomera_notes_delete",
-            description="Delete a note by ID from Pomera's database.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "note_id": {
-                        "type": "integer",
-                        "description": "ID of the note to delete"
-                    }
-                },
-                "required": ["note_id"]
-            },
-            handler=self._handle_notes_delete
-        ))
+        if action == "save":
+            return self._handle_notes_save(args)
+        elif action == "get":
+            return self._handle_notes_get(args)
+        elif action == "list":
+            return self._handle_notes_list(args)
+        elif action == "search":
+            return self._handle_notes_search(args)
+        elif action == "update":
+            return self._handle_notes_update(args)
+        elif action == "delete":
+            return self._handle_notes_delete(args)
+        else:
+            return f"Unknown action: {action}. Valid actions: save, get, list, search, update, delete"
     
     def _get_notes_db_path(self) -> str:
         """Get the path to the notes database."""

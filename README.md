@@ -64,7 +64,7 @@ A comprehensive text processing GUI application built with Python and Tkinter, f
 
 ### MCP Server (Model Context Protocol)
 - **Expose Tools to AI Assistants** - Run Pomera as an MCP server for AI IDE integration
-- **33 Text Processing Tools** - All major tools available via MCP protocol
+- **22 Text Processing Tools** - All major tools available via MCP protocol
 - **Notes Database** - Store, retrieve, and search notes via MCP
 - **Multiple Transports** - stdio transport for seamless subprocess integration
 - **Works with Cursor, Claude Desktop** - Compatible with any MCP-enabled client
@@ -317,17 +317,17 @@ python pomera.py --mcp-server
 pomera.exe --mcp-server
 ```
 
-### Available MCP Tools (33 total)
+### Available MCP Tools (22 total)
 
 | Category | Tools |
 |----------|-------|
 | **Text Transform** | `pomera_case_transform`, `pomera_whitespace`, `pomera_line_tools`, `pomera_sort` |
-| **Encoding** | `pomera_base64`, `pomera_hash`, `pomera_string_escape`, `pomera_slug` |
+| **Encoding** | `pomera_encode` (base64, hash, number_base), `pomera_string_escape` |
 | **Data Formats** | `pomera_json_xml`, `pomera_markdown`, `pomera_column_tools` |
-| **Extraction** | `pomera_regex_extract`, `pomera_extract_emails`, `pomera_extract_urls`, `pomera_html`, `pomera_email_header_analyzer` |
-| **Utilities** | `pomera_url_parse`, `pomera_timestamp`, `pomera_cron`, `pomera_number_base`, `pomera_text_wrap`, `pomera_text_stats`, `pomera_word_frequency`, `pomera_list_compare` |
-| **Generators** | `pomera_generators`, `pomera_translator` |
-| **Notes** | `pomera_notes_save`, `pomera_notes_get`, `pomera_notes_list`, `pomera_notes_search`, `pomera_notes_update`, `pomera_notes_delete` |
+| **Extraction** | `pomera_extract` (regex, emails, urls), `pomera_html`, `pomera_email_header_analyzer` |
+| **Utilities** | `pomera_url_parse`, `pomera_timestamp`, `pomera_cron`, `pomera_text_wrap`, `pomera_text_stats`, `pomera_word_frequency`, `pomera_list_compare` |
+| **Generators** | `pomera_generators` (password, uuid, lorem, email, slug), `pomera_translator` |
+| **Notes** | `pomera_notes` (save, get, list, search, update, delete) |
 
 ### MCP Configuration Example
 
@@ -414,7 +414,7 @@ After saving the configuration, restart Cursor IDE for the changes to take effec
 
 1. Open Cursor's MCP panel (usually in settings or via command palette)
 2. You should see "pomera" listed as an available server
-3. The 33 Pomera tools will be available to the AI assistant
+3. The 22 Pomera tools will be available to the AI assistant
 
 #### Using Pomera Tools in Cursor
 
@@ -422,9 +422,9 @@ Once configured, you can ask Cursor's AI to use Pomera tools:
 
 ```
 "Use pomera_case_transform to convert this text to title case"
-"Hash this text using pomera_hash with SHA256"
-"Extract all URLs from this document using pomera_extract_urls"
-"Save this as a note using pomera_notes_save"
+"Use pomera_encode type=hash to create an SHA256 hash of this text"
+"Extract all URLs from this document using pomera_extract type=urls"
+"Save this as a note using pomera_notes action=save"
 ```
 
 ### Setting Up Pomera MCP Server with Visual Studio Code

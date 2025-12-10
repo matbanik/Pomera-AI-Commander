@@ -117,6 +117,7 @@ def pomera_base64(text: str, operation: str) -> str:
         raise ValueError(f"Unknown operation: {operation}")
 
 # Usage - quick convert between plain text and Base64
+# Note: Now accessed via pomera_encode tool with type="base64"
 encoded = pomera_base64("Hello World", "encode")  # SGVsbG8gV29ybGQ=
 decoded = pomera_base64(encoded, "decode")  # Hello World
 ```
@@ -140,6 +141,7 @@ def pomera_extract_urls(text: str) -> List[str]:
     return re.findall(pattern, text)
 
 # Usage - bulk text processing
+# Note: Now accessed via pomera_extract tool with type="emails" or type="urls"
 text = """
 Contact us at support@example.com or sales@company.org
 Visit https://example.com/docs or https://api.test.org/v2
@@ -169,9 +171,13 @@ def pomera_case_transform(text: str, op: str) -> str:
     if op == "title": return text.title()
 
 @mcp.tool()
-def pomera_extract_emails(text: str) -> str:
+def pomera_extract(text: str, type: str) -> str:
+    """Consolidated extraction tool (type: emails, urls, regex)"""
     import re
-    return "\n".join(re.findall(r'[\w.-]+@[\w.-]+\.\w+', text))
+    if type == "emails":
+        return "\n".join(re.findall(r'[\w.-]+@[\w.-]+\.\w+', text))
+    elif type == "urls":
+        return "\n".join(re.findall(r'https?://[^\s]+', text))
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')
@@ -518,7 +524,7 @@ cleaned_code = executor.execute_pipeline(messy_code, code_cleanup_pipeline)
 email_extract_pipeline = {
     "name": "Extract and Format Emails",
     "steps": [
-        {"tool": "pomera_extract_emails", "operation": "extract"},
+        {"tool": "pomera_extract", "operation": "extract", "params": {"type": "emails"}},
         {"tool": "pomera_sort", "operation": "alphabetical"},
         {"tool": "pomera_line_tools", "operation": "deduplicate"}
     ]
@@ -571,7 +577,7 @@ final_result = chain_mcp_tools(input_text, operations)
 ## Summary
 
 Pomera AI Commander provides:
-- 33 MCP tools for text processing
+- 22 MCP tools for text processing (consolidated from 33)
 - Multi-tab editing with independent find/replace
 - Real-time statistics
 - Multiple AI provider support with fallback
