@@ -39,6 +39,7 @@ License: MIT
 
 import sys
 import os
+import json
 import logging
 import argparse
 
@@ -75,6 +76,17 @@ def main():
         "--list-tools",
         action="store_true",
         help="List available tools and exit"
+    )
+    parser.add_argument(
+        "--call",
+        metavar="TOOL_NAME",
+        help="Call a tool directly and exit (bypasses MCP protocol)"
+    )
+    parser.add_argument(
+        "--args",
+        metavar="JSON",
+        default="{}",
+        help="JSON arguments for --call (default: {})"
     )
     
     args = parser.parse_args()
@@ -115,6 +127,33 @@ def main():
                     required = prop_name in tool.inputSchema.get("required", [])
                     req_marker = "*" if required else ""
                     print(f"    - {prop_name}{req_marker} ({prop_type}): {prop_desc}")
+        return
+    
+    # One-shot call mode
+    if args.call:
+        try:
+            tool_args = json.loads(args.args)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in --args: {e}", file=sys.stderr)
+            sys.exit(1)
+        
+        if args.call not in registry:
+            print(f"Error: Unknown tool '{args.call}'", file=sys.stderr)
+            print(f"Available tools: {', '.join(registry.get_tool_names())}", file=sys.stderr)
+            sys.exit(1)
+        
+        try:
+            result = registry.execute(args.call, tool_args)
+            output = result.to_dict()
+            # For simple text results, just print the text
+            if len(output.get('content', [])) == 1 and output['content'][0].get('type') == 'text':
+                print(output['content'][0]['text'])
+            else:
+                print(json.dumps(output, indent=2, ensure_ascii=False))
+            sys.exit(1 if result.isError else 0)
+        except Exception as e:
+            print(f"Error executing tool: {e}", file=sys.stderr)
+            sys.exit(1)
         return
     
     # Create and run server

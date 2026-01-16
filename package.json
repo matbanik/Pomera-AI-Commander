@@ -52,7 +52,8 @@
         "pomera.py",
         "mcp.json",
         "README.md",
-        "LICENSE"
+        "LICENSE",
+        "requirements.txt"
     ],
     "dependencies": {
         "@upstash/c7score": "^3.0.5"

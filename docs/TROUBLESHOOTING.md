@@ -204,7 +204,42 @@ shasum -a 256 -c checksums.txt  # macOS
 pip install -r requirements.txt
 
 # If requirements.txt doesn't exist, install manually:
-pip install tkinter requests reportlab python-docx
+pip install requests reportlab python-docx
+```
+
+#### Tkinter Not Found
+**Error**: `ModuleNotFoundError: No module named '_tkinter'`
+
+**Solutions by platform:**
+
+**macOS (Homebrew)**:
+```bash
+# Replace @3.14 with your Python version
+brew install python-tk@3.14
+```
+
+**Ubuntu/Debian**:
+```bash
+sudo apt-get install python3-tk
+```
+
+**Windows**: Tkinter is included with Python from [python.org](https://python.org). If missing, reinstall Python and ensure "tcl/tk" is selected.
+
+#### PEP 668 Protected Environment
+**Error**: `externally-managed-environment`
+
+**Solutions**:
+```bash
+# Option 1: Use --user flag
+pip3 install --user requests reportlab python-docx
+
+# Option 2: Use --break-system-packages (not recommended)
+pip3 install --break-system-packages requests reportlab python-docx
+
+# Option 3: Use a virtual environment (recommended)
+python3 -m venv ~/.pomera-venv
+source ~/.pomera-venv/bin/activate
+pip install requests reportlab python-docx
 ```
 
 #### Import Errors

@@ -21,6 +21,33 @@ A desktop text "workbench" + MCP server: clean, transform, extract, and analyze 
 
 ---
 
+## Prerequisites
+
+**Python 3.8+** is required for all installation methods.
+
+### macOS (Homebrew)
+```bash
+# Tkinter support (replace @3.14 with your Python version)
+brew install python-tk@3.14
+pip3 install requests reportlab python-docx
+```
+
+### Ubuntu/Debian
+```bash
+sudo apt-get install python3-tk
+pip3 install requests reportlab python-docx
+```
+
+### Windows
+Tkinter is included with Python from [python.org](https://python.org).
+```cmd
+pip install requests reportlab python-docx
+```
+
+> **Note:** For PEP 668 protected environments, use `pip3 install --user` or a virtual environment.
+
+---
+
 ## Install / Run
 ### Option A — Prebuilt executable (recommended)
 [Download from Releases](https://github.com/matbanik/Pomera-AI-Commander/releases) and run.
