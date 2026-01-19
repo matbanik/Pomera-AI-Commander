@@ -47,9 +47,14 @@ class NotesWidget:
         self.send_to_input_callback = send_to_input_callback
         self.dialog_manager = dialog_manager
         
-        # Database path - use same directory as Pomera
-        db_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.db_path = os.path.join(db_dir, 'notes.db')
+        # Database path - use platform-appropriate data directory
+        try:
+            from core.data_directory import get_database_path
+            self.db_path = get_database_path('notes.db')
+        except ImportError:
+            # Fallback to legacy behavior - same directory as Pomera
+            db_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.db_path = os.path.join(db_dir, 'notes.db')
         
         # State management
         self.search_debounce_timer: Optional[str] = None

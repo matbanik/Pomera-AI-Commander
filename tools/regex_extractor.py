@@ -350,7 +350,7 @@ class RegexExtractorUI:
             new_item_id = len(pattern_library) - 1
             tree.selection_set(str(new_item_id))
             tree.focus(str(new_item_id))
-            self.settings_manager.save_settings()
+            self.settings_manager.set_pattern_library(pattern_library) if hasattr(self.settings_manager, 'set_pattern_library') else self.settings_manager.save_settings()
         
         def delete_pattern():
             selection = tree.selection()
@@ -358,7 +358,7 @@ class RegexExtractorUI:
                 item_id = int(selection[0])
                 del pattern_library[item_id]
                 refresh_tree()
-                self.settings_manager.save_settings()
+                self.settings_manager.set_pattern_library(pattern_library) if hasattr(self.settings_manager, 'set_pattern_library') else self.settings_manager.save_settings()
         
         def move_up():
             selection = tree.selection()
@@ -371,7 +371,7 @@ class RegexExtractorUI:
                     refresh_tree()
                     tree.selection_set(str(item_id-1))
                     tree.focus(str(item_id-1))
-                    self.settings_manager.save_settings()
+                    self.settings_manager.set_pattern_library(pattern_library) if hasattr(self.settings_manager, 'set_pattern_library') else self.settings_manager.save_settings()
         
         def move_down():
             selection = tree.selection()
@@ -384,7 +384,7 @@ class RegexExtractorUI:
                     refresh_tree()
                     tree.selection_set(str(item_id+1))
                     tree.focus(str(item_id+1))
-                    self.settings_manager.save_settings()
+                    self.settings_manager.set_pattern_library(pattern_library) if hasattr(self.settings_manager, 'set_pattern_library') else self.settings_manager.save_settings()
         
         ttk.Button(left_buttons, text="Add", command=add_pattern).pack(side=tk.LEFT, padx=(0,5))
         ttk.Button(left_buttons, text="Delete", command=delete_pattern).pack(side=tk.LEFT, padx=5)
@@ -470,7 +470,7 @@ class RegexExtractorUI:
                 pattern["purpose"] = new_value
                 tree.set(item, column, new_value)
             entry.destroy()
-            self.settings_manager.save_settings()
+            self.settings_manager.set_pattern_library(pattern_library) if hasattr(self.settings_manager, 'set_pattern_library') else self.settings_manager.save_settings()
         
         def cancel_edit():
             entry.destroy()

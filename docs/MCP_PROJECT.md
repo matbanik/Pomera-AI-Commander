@@ -143,11 +143,11 @@ tools/
 
 ---
 
-## MCP Server - All 22 Exposed Tools ✅ CONSOLIDATED
+## MCP Server - All 24 Exposed Tools ✅ CONSOLIDATED
 
 Text manipulation tools and Notes exposed via MCP (excluding AI providers and cURL):
 
-### Text Tools (17 tools)
+### Text Tools (21 tools)
 
 | # | Tool | MCP Tool Name | Description | Status |
 |---|------|---------------|-------------|--------|
@@ -179,6 +179,13 @@ Text manipulation tools and Notes exposed via MCP (excluding AI providers and cU
 |---|------|---------------|-------------|--------|
 | 22 | Notes | `pomera_notes` | action: save, get, list, search, update, delete | ✅ |
 
+### AI Agent Workflow Tools (2 tools) 🆕
+
+| # | Tool | MCP Tool Name | Description | Status |
+|---|------|---------------|-------------|--------|
+| 23 | Safe Update | `pomera_safe_update` | Backup → update → verify workflow for AI changes | ✅ |
+| 24 | Find Replace Diff | `pomera_find_replace_diff` | Regex find/replace with diff preview + Notes backup | ✅ |
+
 ### Excluded Tools (Security/UI-dependent)
 
 | Tool | Reason |
@@ -188,6 +195,7 @@ Text manipulation tools and Notes exposed via MCP (excluding AI providers and cU
 | Diff Viewer | UI-dependent - visual comparison tool |
 | Folder File Reporter | Security - filesystem access |
 | Find & Replace | State-dependent - modifies active tab content |
+
 
 ---
 

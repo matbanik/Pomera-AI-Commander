@@ -421,6 +421,8 @@ class BackupRecoveryManager:
         """
         Export settings to a file.
         
+        Also exports notes from notes.db if available.
+        
         Args:
             settings_data: Settings data to export
             export_path: Path to export file
@@ -445,18 +447,25 @@ class BackupRecoveryManager:
             export_file.parent.mkdir(parents=True, exist_ok=True)
             self.logger.debug(f"Export directory created/verified: {export_file.parent}")
             
+            # Include notes data from notes.db
+            notes_data = self._export_notes_data()
+            if notes_data:
+                settings_data['notes'] = notes_data
+                self.logger.info(f"Including {len(notes_data)} notes in export")
+            
             # Count items being exported for logging
             tool_count = len(settings_data.get("tool_settings", {}))
+            notes_count = len(settings_data.get("notes", []))
             total_keys = len(settings_data.keys())
             
             if format_type == "compressed":
                 with gzip.open(export_path, 'wt', encoding='utf-8') as f:
                     json.dump(settings_data, f, indent=2, ensure_ascii=False)
-                self.logger.info(f"Settings exported (compressed) to: {export_path} - {total_keys} keys, {tool_count} tools")
+                self.logger.info(f"Settings exported (compressed) to: {export_path} - {total_keys} keys, {tool_count} tools, {notes_count} notes")
             else:
                 with open(export_path, 'w', encoding='utf-8') as f:
                     json.dump(settings_data, f, indent=2, ensure_ascii=False)
-                self.logger.info(f"Settings exported to: {export_path} - {total_keys} keys, {tool_count} tools")
+                self.logger.info(f"Settings exported to: {export_path} - {total_keys} keys, {tool_count} tools, {notes_count} notes")
             
             # Verify file was created and has content
             if export_file.exists():
@@ -481,9 +490,158 @@ class BackupRecoveryManager:
             self.logger.error(f"Export failed with unexpected error: {e}", exc_info=True)
             return False
     
+    def _export_notes_data(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Export notes from notes.db.
+        
+        Returns:
+            List of note dictionaries, or None if notes.db not available
+        """
+        try:
+            # Get notes database path
+            try:
+                from core.data_directory import get_database_path
+                notes_db_path = get_database_path('notes.db')
+            except ImportError:
+                # Fallback to backup directory parent
+                notes_db_path = str(self.backup_dir.parent / 'notes.db')
+            
+            if not os.path.exists(notes_db_path):
+                self.logger.debug(f"Notes database not found: {notes_db_path}")
+                return None
+            
+            import sqlite3
+            conn = sqlite3.connect(notes_db_path, timeout=10.0)
+            conn.row_factory = sqlite3.Row
+            
+            try:
+                cursor = conn.execute('''
+                    SELECT id, Created, Modified, Title, Input, Output
+                    FROM notes ORDER BY id
+                ''')
+                notes = []
+                for row in cursor.fetchall():
+                    notes.append({
+                        'id': row['id'],
+                        'Created': row['Created'],
+                        'Modified': row['Modified'],
+                        'Title': row['Title'],
+                        'Input': row['Input'],
+                        'Output': row['Output']
+                    })
+                
+                self.logger.debug(f"Exported {len(notes)} notes from notes.db")
+                return notes
+                
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to export notes data: {e}")
+            return None
+    
+    def _import_notes_data(self, notes_data: List[Dict[str, Any]]) -> int:
+        """
+        Import notes to notes.db.
+        
+        Notes are imported with their original IDs if no conflict exists,
+        otherwise they are inserted with new IDs.
+        
+        Args:
+            notes_data: List of note dictionaries to import
+            
+        Returns:
+            Number of notes successfully imported
+        """
+        if not notes_data:
+            return 0
+            
+        try:
+            # Get notes database path
+            try:
+                from core.data_directory import get_database_path
+                notes_db_path = get_database_path('notes.db')
+            except ImportError:
+                # Fallback to backup directory parent
+                notes_db_path = str(self.backup_dir.parent / 'notes.db')
+            
+            import sqlite3
+            conn = sqlite3.connect(notes_db_path, timeout=10.0)
+            
+            try:
+                # Ensure tables exist
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS notes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Created DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        Modified DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        Title TEXT(255),
+                        Input TEXT,
+                        Output TEXT
+                    )
+                ''')
+                
+                # Check if FTS table exists
+                fts_exists = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='notes_fts'"
+                ).fetchone() is not None
+                
+                imported_count = 0
+                for note in notes_data:
+                    try:
+                        # Check if note with this ID already exists
+                        existing = conn.execute(
+                            'SELECT id FROM notes WHERE id = ?', 
+                            (note.get('id'),)
+                        ).fetchone()
+                        
+                        if existing:
+                            # Skip notes that already exist
+                            self.logger.debug(f"Skipping existing note ID {note.get('id')}")
+                            continue
+                        
+                        # Insert with original ID if possible
+                        conn.execute('''
+                            INSERT INTO notes (id, Created, Modified, Title, Input, Output)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        ''', (
+                            note.get('id'),
+                            note.get('Created'),
+                            note.get('Modified'),
+                            note.get('Title'),
+                            note.get('Input'),
+                            note.get('Output')
+                        ))
+                        imported_count += 1
+                        
+                    except Exception as e:
+                        self.logger.debug(f"Failed to import note {note.get('id')}: {e}")
+                
+                conn.commit()
+                
+                # Rebuild FTS index if table exists
+                if fts_exists:
+                    try:
+                        conn.execute('INSERT INTO notes_fts(notes_fts) VALUES("rebuild")')
+                        conn.commit()
+                    except Exception as e:
+                        self.logger.debug(f"FTS rebuild skipped: {e}")
+                
+                self.logger.debug(f"Imported {imported_count} notes to notes.db")
+                return imported_count
+                
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to import notes data: {e}")
+            return 0
+    
     def import_settings(self, import_path: str) -> Optional[Dict[str, Any]]:
         """
         Import settings from a file.
+        
+        Also imports notes to notes.db if present in the import file.
         
         Args:
             import_path: Path to import file
@@ -523,6 +681,13 @@ class BackupRecoveryManager:
             if not isinstance(settings_data, dict):
                 self.logger.error(f"Import failed: Invalid data format - expected dict, got {type(settings_data)}")
                 return None
+            
+            # Import notes if present
+            if 'notes' in settings_data:
+                notes_data = settings_data.pop('notes')  # Remove from settings_data
+                if notes_data:
+                    imported_count = self._import_notes_data(notes_data)
+                    self.logger.info(f"Imported {imported_count} notes to notes.db")
             
             # Count imported items for logging
             tool_count = len(settings_data.get("tool_settings", {}))
@@ -865,7 +1030,8 @@ class BackupRecoveryManager:
             # Get table counts
             table_counts = {}
             tables = ['core_settings', 'tool_settings', 'tab_content', 
-                     'performance_settings', 'font_settings', 'dialog_settings']
+                     'performance_settings', 'font_settings', 'dialog_settings',
+                     'notes', 'notes_fts']
             
             for table in tables:
                 try:

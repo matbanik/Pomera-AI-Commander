@@ -161,7 +161,7 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 
 ---
 
-## Available MCP Tools (22 Total)
+## Available MCP Tools (24 Total)
 
 ### Text Processing Tools (21)
 
@@ -195,7 +195,48 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 |-----------|-------------|
 | `pomera_notes` | Save, get, list, search, update, delete notes |
 
+### AI Agent Workflow Tools (2)
+
+| Tool Name | Description |
+|-----------|-------------|
+| `pomera_safe_update` | Backup → update → verify workflow for AI-initiated changes |
+| `pomera_find_replace_diff` | Regex find/replace with diff preview and auto-backup to Notes |
+
 ---
+
+## pomera_find_replace_diff - Recovery Workflow
+
+This tool is designed for AI agents that need recoverable text operations:
+
+### Operations
+
+| Operation | Description |
+|-----------|-------------|
+| `validate` | Check regex syntax before use |
+| `preview` | Show compact diff of proposed changes |
+| `execute` | Perform replacement with auto-backup to Notes |
+| `recall` | Retrieve previous operation by note_id for rollback |
+
+### Usage Example
+
+```
+# 1. Validate regex
+AI uses: pomera_find_replace_diff(operation="validate", find_pattern="\d+")
+Result: {"valid": true, "groups": 0}
+
+# 2. Preview changes
+AI uses: pomera_find_replace_diff(operation="preview", text="Item 123", find_pattern="\d+", replace_pattern="NUM")
+Result: {"match_count": 1, "diff": "-1: Item 123\n+1: Item NUM"}
+
+# 3. Execute with backup
+AI uses: pomera_find_replace_diff(operation="execute", text="Item 123", find_pattern="\d+", replace_pattern="NUM")
+Result: {"success": true, "note_id": 42, "modified_text": "Item NUM"}
+
+# 4. Rollback if needed
+AI uses: pomera_find_replace_diff(operation="recall", note_id=42)
+Result: {"original_text": "Item 123", "modified_text": "Item NUM"}
+```
+
 
 ## Usage Examples
 

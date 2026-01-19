@@ -1,6 +1,6 @@
 {
     "name": "pomera-ai-commander",
-    "version": "1.2.0",
+    "version": "1.2.2",
     "description": "Text processing toolkit with 22 MCP tools for AI assistants - case transformation, encoding, hashing, text analysis, and notes management",
     "main": "pomera_mcp_server.py",
     "bin": {
@@ -11,7 +11,8 @@
         "start": "python pomera_mcp_server.py",
         "mcp": "python pomera_mcp_server.py",
         "list-tools": "python pomera_mcp_server.py --list-tools",
-        "test": "python -m pytest"
+        "test": "python -m pytest",
+        "postinstall": "node scripts/postinstall.js"
     },
     "keywords": [
         "mcp",
@@ -48,8 +49,10 @@
         "bin/",
         "core/",
         "tools/",
+        "scripts/",
         "pomera_mcp_server.py",
         "pomera.py",
+        "migrate_data.py",
         "mcp.json",
         "README.md",
         "LICENSE",

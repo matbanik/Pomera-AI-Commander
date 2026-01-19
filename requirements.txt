@@ -3,6 +3,7 @@ requests>=2.25.0
 reportlab>=3.6.0
 python-docx>=0.8.11
 aiohttp>=3.9.0
+platformdirs>=4.0.0
 
 # AI Tools dependencies
 huggingface-hub>=0.16.0

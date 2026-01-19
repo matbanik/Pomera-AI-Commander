@@ -12,6 +12,13 @@ import logging
 import time
 from typing import Optional, Tuple, Dict, Any, List
 
+# Import diff utilities for preview
+try:
+    from core.diff_utils import generate_find_replace_preview, FindReplacePreview
+    DIFF_UTILS_AVAILABLE = True
+except ImportError:
+    DIFF_UTILS_AVAILABLE = False
+
 # Import optimized components if available
 try:
     from core.optimized_search_highlighter import get_search_highlighter, OptimizedSearchHighlighter, HighlightMode
@@ -28,6 +35,16 @@ try:
     AI_TOOLS_AVAILABLE = True
 except ImportError:
     AI_TOOLS_AVAILABLE = False
+
+# Import Memento pattern for undo/redo functionality
+try:
+    from core.memento import (
+        FindReplaceMemento, MementoCaretaker, TextState,
+        capture_text_state, restore_text_state
+    )
+    MEMENTO_AVAILABLE = True
+except ImportError:
+    MEMENTO_AVAILABLE = False
 
 
 class FindReplaceWidget:
@@ -79,8 +96,17 @@ class FindReplaceWidget:
         self.skipped_matches = set()
         self.all_matches_processed = False
         self.loop_start_position = None
+        
+        # Undo/Redo system using Memento pattern
+        if MEMENTO_AVAILABLE:
+            self.memento_caretaker = MementoCaretaker(max_history=50)
+            self.memento_caretaker.add_change_callback(self._on_undo_redo_change)
+        else:
+            self.memento_caretaker = None
+        # Legacy undo stack for fallback
         self.undo_stack = []  # For undo functionality
         self.max_undo_stack = 10  # Limit undo history
+
         
         # UI components (will be created by create_widgets)
         self.find_text_field = None
@@ -227,6 +253,12 @@ class FindReplaceWidget:
         replace_buttons_frame2.pack(fill=tk.X, pady=2)
         self.undo_button = ttk.Button(replace_buttons_frame2, text="Undo", command=self.undo_replace_all, state="disabled")
         self.undo_button.pack(side=tk.LEFT, padx=5)
+        self.redo_button = ttk.Button(replace_buttons_frame2, text="Redo", command=self.redo_replace_all, state="disabled")
+        self.redo_button.pack(side=tk.LEFT, padx=5)
+        # Preview Diff button - shows unified diff before Replace All
+        if DIFF_UTILS_AVAILABLE:
+            ttk.Button(replace_buttons_frame2, text="Preview Diff", command=self.show_diff_preview).pack(side=tk.LEFT, padx=5)
+
 
         # Initialize search state
         self.current_match_index = 0
@@ -382,6 +414,12 @@ class FindReplaceWidget:
                 del self._regex_cache[key]
         
         if self.regex_mode_var.get():
+            # Validate regex before using it
+            is_valid, error_msg, suggestion = self._validate_regex(find_str)
+            if not is_valid:
+                # Return empty pattern for invalid regex - caller should check validation first
+                self.logger.warning(f"Invalid regex pattern: {error_msg}")
+                return ""
             pattern = find_str
         else:
             search_term = re.escape(find_str)
@@ -415,6 +453,51 @@ class FindReplaceWidget:
             result = result.replace(escape, char)
         
         return result
+    
+    def _validate_regex(self, pattern: str) -> Tuple[bool, str, str]:
+        """
+        Validate a regex pattern before execution.
+        
+        Args:
+            pattern: The regex pattern string to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message, suggestion)
+            If valid: (True, "", "")
+            If invalid: (False, error_message, helpful_suggestion)
+        """
+        if not pattern:
+            return True, "", ""
+        
+        try:
+            compiled = re.compile(pattern)
+            # Return info about groups for debugging
+            return True, "", ""
+        except re.error as e:
+            error_msg = str(e)
+            suggestion = self._get_regex_error_help(error_msg)
+            return False, error_msg, suggestion
+    
+    def validate_current_pattern(self) -> Tuple[bool, str]:
+        """
+        Validate the current find pattern in the UI.
+        
+        Returns:
+            Tuple of (is_valid, error_message_with_suggestion)
+        """
+        if not self.regex_mode_var.get():
+            # Text mode patterns are always valid (they get escaped)
+            return True, ""
+        
+        find_str = self.find_text_field.get().strip()
+        if not find_str:
+            return True, ""
+        
+        is_valid, error_msg, suggestion = self._validate_regex(find_str)
+        if is_valid:
+            return True, ""
+        else:
+            return False, f"Invalid regex: {error_msg}\n{suggestion}"
 
     def preview_find_replace(self):
         """Highlights matches in input and output without replacing using progressive search."""
@@ -448,6 +531,14 @@ class FindReplaceWidget:
         if not find_str:
             active_output_tab.text.config(state="disabled")
             self.match_count_label.config(text="Found matches: 0")
+            return
+        
+        # Validate regex before proceeding
+        is_valid, error_msg = self.validate_current_pattern()
+        if not is_valid:
+            self._show_warning("Regex Error", error_msg)
+            self.match_count_label.config(text="Found matches: Regex Error")
+            active_output_tab.text.config(state="disabled")
             return
         
         # Use progressive search if available
@@ -769,13 +860,23 @@ class FindReplaceWidget:
         find_str = self.find_text_field.get().strip()
         replace_str = self.replace_text_field.get().strip()
         
-        input_text = active_input_tab.text.get("1.0", tk.END)
+        input_text = active_input_tab.text.get("1.0", "end-1c")
 
         if not find_str:
-            return input_text.strip()
+            return input_text
         
-        # Save state for undo
-        self._save_undo_state(input_text, find_str, replace_str)
+        # Validate regex before proceeding
+        is_valid, error_msg = self.validate_current_pattern()
+        if not is_valid:
+            self._show_warning("Regex Error", error_msg)
+            return input_text
+        
+        # Save OUTPUT tab state for undo (not input tab - undo restores output)
+        if self.output_tabs:
+            active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+            output_text = active_output_tab.text.get("1.0", "end-1c")
+            self._save_undo_state(output_text, find_str, replace_str)
+
         
         # Reset replacement count for Replace All
         self.replaced_count = 0
@@ -898,6 +999,10 @@ class FindReplaceWidget:
         
         # Focus on output text area
         active_output_tab.text.focus_set()
+        
+        # Save undo state before making changes (use end-1c to avoid trailing newline)
+        current_text = active_output_tab.text.get("1.0", "end-1c")
+        self._save_undo_state(current_text, find_str, replace_str)
         
         # Enable editing
         active_output_tab.text.config(state="normal")
@@ -1350,7 +1455,27 @@ class FindReplaceWidget:
         self.settings_manager.save_settings()
     
     def _save_undo_state(self, text: str, find_str: str, replace_str: str):
-        """Save current state for undo functionality."""
+        """Save current state for undo functionality using Memento pattern if available."""
+        # Use Memento pattern if available
+        if self.memento_caretaker and MEMENTO_AVAILABLE:
+            try:
+                active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+                before_state = capture_text_state(active_output_tab.text)
+                before_state.content = text  # Original text before replacement
+                
+                memento = FindReplaceMemento(
+                    before_state=before_state,
+                    find_pattern=find_str,
+                    replace_pattern=replace_str,
+                    is_regex=self.regex_mode_var.get() if self.regex_mode_var else False,
+                    match_case=self.match_case_var.get() if self.match_case_var else False
+                )
+                self.memento_caretaker.save(memento)
+                return
+            except Exception as e:
+                self.logger.warning(f"Memento save failed, using fallback: {e}")
+        
+        # Fallback to legacy undo stack
         undo_entry = {
             'text': text,
             'find': find_str,
@@ -1368,10 +1493,47 @@ class FindReplaceWidget:
         if hasattr(self, 'undo_button'):
             self.undo_button.config(state="normal")
     
+    def _on_undo_redo_change(self, can_undo: bool, can_redo: bool):
+        """Callback when undo/redo availability changes."""
+        try:
+            if hasattr(self, 'undo_button'):
+                self.undo_button.config(state="normal" if can_undo else "disabled")
+            if hasattr(self, 'redo_button'):
+                self.redo_button.config(state="normal" if can_redo else "disabled")
+        except Exception:
+            pass  # UI might not be initialized yet
+    
     def undo_replace_all(self):
         """Undo the last Replace All operation."""
+        # Try Memento-based undo first
+        if self.memento_caretaker and MEMENTO_AVAILABLE and self.memento_caretaker.can_undo():
+            try:
+                memento = self.memento_caretaker.undo()
+                if memento and memento.before_state:
+                    active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+                    
+                    # Capture current state as after_state before restoring
+                    memento.after_state = capture_text_state(active_output_tab.text)
+                    
+                    # Restore the before state
+                    restore_text_state(active_output_tab.text, memento.before_state)
+                    
+                    # Reset replacement count
+                    self.replaced_count = 0
+                    self.replaced_count_label.config(text="Replaced matches: 0")
+                    
+                    # Silent undo - just log instead of showing dialog
+                    self.logger.info(f"Undone: Replace '{memento.find_pattern[:30]}...' with '{memento.replace_pattern[:30]}...'")
+                    
+                    # Re-apply highlighting to show remaining matches
+                    self._refresh_highlighting_after_undo()
+                    return
+            except Exception as e:
+                self.logger.error(f"Memento undo failed: {e}")
+        
+        # Fallback to legacy undo stack
         if not self.undo_stack:
-            self._show_info("Undo", "No Replace All operations to undo.")
+            # Silent - no operations to undo
             return
         
         if not self.output_tabs:
@@ -1396,10 +1558,375 @@ class FindReplaceWidget:
             if not self.undo_stack and hasattr(self, 'undo_button'):
                 self.undo_button.config(state="disabled")
             
-            self._show_info("Undo", f"Undone: Replace '{undo_entry['find']}' with '{undo_entry['replace']}'")
+            # Silent undo - just log
+            self.logger.info(f"Undone: Replace '{undo_entry['find']}' with '{undo_entry['replace']}'")
+            
+            # Re-apply highlighting to show remaining matches
+            self._refresh_highlighting_after_undo()
         except Exception as e:
             self.logger.error(f"Error during undo: {e}")
             self._show_warning("Undo Error", f"Failed to undo: {e}")
+    
+    def _refresh_highlighting_after_undo(self):
+        """Refresh match highlighting after an undo operation.
+        
+        This highlights remaining matches in the EXISTING output content,
+        without overwriting it with input content (unlike preview_find_replace).
+        """
+        try:
+            find_str = self.find_text_field.get()
+            if not find_str or not self.output_tabs:
+                return
+            
+            active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+            
+            # Clear existing highlights
+            active_output_tab.text.tag_remove("pink_highlight", "1.0", tk.END)
+            active_output_tab.text.tag_remove("current_match", "1.0", tk.END)
+            
+            # Get current output content (already restored by undo)
+            output_text = active_output_tab.text.get("1.0", "end-1c")
+            
+            # Find all matches in the output
+            try:
+                if self.regex_mode_var.get():
+                    flags = 0 if self.match_case_var.get() else re.IGNORECASE
+                    pattern = re.compile(find_str, flags)
+                    matches = list(pattern.finditer(output_text))
+                else:
+                    # Plain text search
+                    matches = []
+                    search_text = output_text if self.match_case_var.get() else output_text.lower()
+                    search_pattern = find_str if self.match_case_var.get() else find_str.lower()
+                    start = 0
+                    while True:
+                        pos = search_text.find(search_pattern, start)
+                        if pos == -1:
+                            break
+                        # Create a simple match-like object
+                        class SimpleMatch:
+                            def __init__(self, s, e):
+                                self._start = s
+                                self._end = e
+                            def start(self):
+                                return self._start
+                            def end(self):
+                                return self._end
+                        matches.append(SimpleMatch(pos, pos + len(find_str)))
+                        start = pos + 1
+                
+                # Highlight all matches
+                active_output_tab.text.config(state="normal")
+                for match in matches:
+                    start_idx = f"1.0+{match.start()}c"
+                    end_idx = f"1.0+{match.end()}c"
+                    active_output_tab.text.tag_add("pink_highlight", start_idx, end_idx)
+                
+                active_output_tab.text.tag_config("pink_highlight", background="pink")
+                active_output_tab.text.config(state="disabled")
+                
+                # Update match count
+                self.match_count_label.config(text=f"Found matches: {len(matches)}")
+                
+            except re.error:
+                pass  # Invalid regex, skip highlighting
+                
+        except Exception as e:
+            self.logger.debug(f"Could not refresh highlighting after undo: {e}")
+    
+    
+    
+    def redo_replace_all(self):
+        """Redo the last undone Replace All operation."""
+        if not self.memento_caretaker or not MEMENTO_AVAILABLE:
+            # Silent - redo not available
+            return
+        
+        if not self.memento_caretaker.can_redo():
+            # Silent - no operations to redo
+            return
+        
+        if not self.output_tabs:
+            return
+        
+        try:
+            memento = self.memento_caretaker.redo()
+            if memento and memento.after_state:
+                active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+                
+                # Restore the after state (the result of the replacement)
+                restore_text_state(active_output_tab.text, memento.after_state)
+                
+                # Silent redo - just log
+                self.logger.info(f"Redone: Replace '{memento.find_pattern[:30]}...' with '{memento.replace_pattern[:30]}...'")
+            else:
+                # Silent - can't redo without after state
+                self.logger.warning("Cannot redo - after state not captured.")
+
+        except Exception as e:
+            self.logger.error(f"Error during redo: {e}")
+            self._show_warning("Redo Error", f"Failed to redo: {e}")
+    
+
+    def show_diff_preview(self):
+        """
+        Show a unified diff preview of the find/replace operation.
+        Displays in a popup window before executing Replace All.
+        """
+        if not DIFF_UTILS_AVAILABLE:
+            self._show_warning("Not Available", "Diff preview is not available. Missing diff_utils module.")
+            return
+        
+        if not self.input_tabs:
+            return
+        
+        # Validate regex first
+        is_valid, error_msg = self.validate_current_pattern()
+        if not is_valid:
+            self._show_warning("Regex Error", error_msg)
+            return
+        
+        active_input_tab, _ = self._get_active_tabs()
+        find_str = self.find_text_field.get().strip()
+        replace_str = self.replace_text_field.get()
+        
+        if not find_str:
+            self._show_info("No Pattern", "Enter a find pattern to preview changes.")
+            return
+        
+        input_text = active_input_tab.text.get("1.0", tk.END)
+        if input_text.endswith('\n'):
+            input_text = input_text[:-1]
+        
+        try:
+            # Generate preview using diff_utils
+            preview = generate_find_replace_preview(
+                text=input_text,
+                find_pattern=find_str if self.regex_mode_var.get() else find_str,
+                replace_pattern=replace_str,
+                use_regex=self.regex_mode_var.get(),
+                case_sensitive=self.match_case_var.get(),
+                context_lines=3
+            )
+            
+            if preview.match_count == 0:
+                self._show_info("No Matches", "No matches found for the current find pattern.")
+                return
+            
+            # Create preview popup window
+            self._show_diff_preview_window(preview, find_str, replace_str)
+            
+        except Exception as e:
+            self.logger.error(f"Error generating diff preview: {e}")
+            self._show_warning("Preview Error", f"Failed to generate preview: {e}")
+    
+    def _show_diff_preview_window(self, preview: 'FindReplacePreview', find_str: str, replace_str: str):
+        """Display the diff preview in a popup window."""
+        popup = tk.Toplevel(self.parent)
+        popup.title("Find & Replace Preview")
+        popup.geometry("800x500")
+        popup.transient(self.parent)
+        
+        # Center the popup
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (popup.winfo_width() // 2)
+        y = (popup.winfo_screenheight() // 2) - (popup.winfo_height() // 2)
+        popup.geometry(f"+{x}+{y}")
+        
+        # Main frame
+        main_frame = ttk.Frame(popup)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Summary info
+        summary_frame = ttk.Frame(main_frame)
+        summary_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        mode_str = "Regex" if self.regex_mode_var.get() else "Text"
+        case_str = "Case-sensitive" if self.match_case_var.get() else "Case-insensitive"
+        
+        ttk.Label(summary_frame, text=f"Find: ", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        ttk.Label(summary_frame, text=f"'{find_str}'  ", font=("Courier", 10)).pack(side=tk.LEFT)
+        ttk.Label(summary_frame, text=f"→  Replace: ", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        ttk.Label(summary_frame, text=f"'{replace_str}'", font=("Courier", 10)).pack(side=tk.LEFT)
+        
+        stats_frame = ttk.Frame(main_frame)
+        stats_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(stats_frame, 
+                  text=f"Matches: {preview.match_count} | Lines affected: {preview.lines_affected} | Mode: {mode_str} ({case_str})",
+                  foreground="gray").pack(side=tk.LEFT)
+        
+        # Options frame for checkboxes
+        options_frame = ttk.Frame(main_frame)
+        options_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        # Word wrap checkbox
+        wrap_var = tk.BooleanVar(value=True)
+        char_diff_var = tk.BooleanVar(value=False)
+        syntax_var = tk.BooleanVar(value=False)
+        
+        def refresh_diff_display():
+            """Refresh the diff display with current options."""
+            diff_text.config(state="normal")
+            diff_text.delete("1.0", tk.END)
+            
+            # Apply word wrap setting
+            if wrap_var.get():
+                diff_text.config(wrap=tk.WORD)
+            else:
+                diff_text.config(wrap=tk.NONE)
+            
+            # Insert diff with syntax highlighting
+            for line in preview.unified_diff.splitlines(keepends=True):
+                if line.startswith('---') or line.startswith('+++'):
+                    diff_text.insert(tk.END, line, "header")
+                elif line.startswith('@@'):
+                    diff_text.insert(tk.END, line, "context")
+                elif line.startswith('+'):
+                    diff_text.insert(tk.END, line, "addition")
+                elif line.startswith('-'):
+                    diff_text.insert(tk.END, line, "deletion")
+                else:
+                    diff_text.insert(tk.END, line)
+            
+            # Apply char-level highlighting to replacement text in + lines
+            if char_diff_var.get() and replace_str:
+                self._highlight_replacements_in_diff(diff_text, replace_str)
+            
+            # Apply syntax highlighting if enabled
+            if syntax_var.get():
+                self._apply_code_syntax_highlighting(diff_text)
+            
+            diff_text.config(state="disabled")
+
+        
+        ttk.Checkbutton(options_frame, text="Word Wrap", variable=wrap_var, 
+                        command=refresh_diff_display).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(options_frame, text="Char Diff", variable=char_diff_var,
+                        command=refresh_diff_display).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(options_frame, text="Syntax", variable=syntax_var,
+                        command=refresh_diff_display).pack(side=tk.LEFT, padx=5)
+        
+        # Diff display with scrollbars
+        diff_frame = ttk.Frame(main_frame)
+        diff_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Vertical scrollbar
+        v_scrollbar = ttk.Scrollbar(diff_frame, orient=tk.VERTICAL)
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Horizontal scrollbar
+        h_scrollbar = ttk.Scrollbar(diff_frame, orient=tk.HORIZONTAL)
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        diff_text = tk.Text(diff_frame, wrap=tk.WORD,  # Default to word wrap ON
+                           yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set,
+                           font=("Courier New", 10), bg="#1e1e1e", fg="#d4d4d4")
+        diff_text.pack(fill=tk.BOTH, expand=True)
+        v_scrollbar.config(command=diff_text.yview)
+        h_scrollbar.config(command=diff_text.xview)
+
+        
+        # Configure diff syntax highlighting tags
+        diff_text.tag_configure("header", foreground="#569cd6")  # Blue for headers
+        diff_text.tag_configure("addition", foreground="#4ec9b0", background="#1e3a1e")  # Green
+        diff_text.tag_configure("deletion", foreground="#ce9178", background="#3a1e1e")  # Red
+        diff_text.tag_configure("context", foreground="#808080")  # Gray for @@ lines
+        diff_text.tag_configure("char_add", foreground="#ffffff", background="#2d5a2d")  # Bright green for char changes
+        diff_text.tag_configure("char_del", foreground="#ffffff", background="#5a2d2d")  # Bright red for char changes
+        # Syntax highlighting tags
+        diff_text.tag_configure("keyword", foreground="#c586c0")  # Purple for keywords
+        diff_text.tag_configure("string", foreground="#ce9178")   # Orange for strings
+        diff_text.tag_configure("comment", foreground="#6a9955")  # Green for comments
+        diff_text.tag_configure("number", foreground="#b5cea8")   # Light green for numbers
+        
+        # Initial render
+        refresh_diff_display()
+
+        
+        # Buttons frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        def apply_and_close():
+            popup.destroy()
+            self.trigger_replace_all()
+        
+        ttk.Button(button_frame, text="Apply Replace All", command=apply_and_close).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Close", command=popup.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def _highlight_replacements_in_diff(self, text_widget, replace_str: str):
+        """
+        Highlight occurrences of the replacement string within + (addition) lines.
+        This shows exactly what was replaced in the diff output.
+        """
+        if not replace_str:
+            return
+        
+        # Get all content
+        content = text_widget.get("1.0", tk.END)
+        lines = content.split('\n')
+        
+        # Escape the replace string for regex search (treat as literal)
+        escaped_replace = re.escape(replace_str)
+        
+        current_line = 1
+        for line in lines:
+            if line.startswith('+') and not line.startswith('+++'):
+                # This is an addition line - find replacement text in it
+                line_content = line[1:]  # Skip the + prefix
+                for match in re.finditer(escaped_replace, line_content, re.IGNORECASE if not self.match_case_var.get() else 0):
+                    # Calculate positions (add 1 for the + prefix)
+                    start_col = match.start() + 1
+                    end_col = match.end() + 1
+                    start_idx = f"{current_line}.{start_col}"
+                    end_idx = f"{current_line}.{end_col}"
+                    text_widget.tag_add("char_add", start_idx, end_idx)
+            current_line += 1
+
+    
+    def _apply_code_syntax_highlighting(self, text_widget):
+        """
+        Apply basic code syntax highlighting to the diff text.
+        Highlights keywords, strings, comments, and numbers.
+        """
+        content = text_widget.get("1.0", tk.END)
+        
+        # Python/JavaScript keywords
+        keywords = r'\b(def|class|return|if|else|elif|for|while|try|except|import|from|as|' \
+                   r'function|const|let|var|async|await|true|false|True|False|None|null)\b'
+        
+        # Strings (single and double quoted)
+        strings = r'(["\'])(?:(?!\1|\\).|\\.)*\1'
+        
+        # Comments
+        comments = r'(#.*$|//.*$|/\*.*?\*/)'
+        
+        # Numbers
+        numbers = r'\b\d+\.?\d*\b'
+        
+        import re
+        
+        patterns = [
+            (keywords, "keyword"),
+            (strings, "string"),
+            (comments, "comment"),
+            (numbers, "number"),
+        ]
+        
+        for pattern, tag in patterns:
+            for match in re.finditer(pattern, content, re.MULTILINE):
+                start = f"1.0+{match.start()}c"
+                end = f"1.0+{match.end()}c"
+                # Only apply if not already in a header/context line
+                try:
+                    line_start = text_widget.index(f"{start} linestart")
+                    first_char = text_widget.get(line_start, f"{line_start}+1c")
+                    if first_char not in ('@', '-', '+'):
+                        continue  # Only highlight actual diff content
+                    text_widget.tag_add(tag, start, end)
+                except tk.TclError:
+                    pass
+
 
     def on_regex_mode_change(self):
         """Handle changes to regex mode checkbox."""
@@ -1559,7 +2086,11 @@ class FindReplaceWidget:
             new_item_id = len(pattern_library) - 1
             tree.selection_set(str(new_item_id))
             tree.focus(str(new_item_id))
-            self.settings_manager.save_settings()
+            # Explicitly update and save pattern library
+            if hasattr(self.settings_manager, 'set_pattern_library'):
+                self.settings_manager.set_pattern_library(pattern_library)
+            else:
+                self.settings_manager.save_settings()
         
         def delete_pattern():
             selection = tree.selection()
@@ -1567,7 +2098,11 @@ class FindReplaceWidget:
                 item_id = int(selection[0])
                 del pattern_library[item_id]
                 refresh_tree()
-                self.settings_manager.save_settings()
+                # Explicitly update and save pattern library
+                if hasattr(self.settings_manager, 'set_pattern_library'):
+                    self.settings_manager.set_pattern_library(pattern_library)
+                else:
+                    self.settings_manager.save_settings()
         
         def move_up():
             selection = tree.selection()
@@ -1580,7 +2115,7 @@ class FindReplaceWidget:
                     refresh_tree()
                     tree.selection_set(str(item_id-1))
                     tree.focus(str(item_id-1))
-                    self.settings_manager.save_settings()
+                    self.settings_manager.set_pattern_library(pattern_library) if hasattr(self.settings_manager, 'set_pattern_library') else self.settings_manager.save_settings()
         
         def move_down():
             selection = tree.selection()
@@ -1593,7 +2128,7 @@ class FindReplaceWidget:
                     refresh_tree()
                     tree.selection_set(str(item_id+1))
                     tree.focus(str(item_id+1))
-                    self.settings_manager.save_settings()
+                    self.settings_manager.set_pattern_library(pattern_library) if hasattr(self.settings_manager, 'set_pattern_library') else self.settings_manager.save_settings()
         
         ttk.Button(left_buttons, text="Add", command=add_pattern).pack(side=tk.LEFT, padx=(0,5))
         ttk.Button(left_buttons, text="Delete", command=delete_pattern).pack(side=tk.LEFT, padx=5)
@@ -1706,7 +2241,11 @@ Replace: {pattern['replace']}"""
             pattern[field_name] = new_value
             tree.set(item, column, new_value)
             entry.destroy()
-            self.settings_manager.save_settings()
+            # Explicitly update and save pattern library
+            if hasattr(self.settings_manager, 'set_pattern_library'):
+                self.settings_manager.set_pattern_library(pattern_library)
+            else:
+                self.settings_manager.save_settings()
         
         def cancel_edit():
             entry.destroy()

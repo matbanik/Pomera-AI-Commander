@@ -196,7 +196,14 @@ class ToolRegistry:
         self._register_html_tool()
         self._register_list_comparator_tool()
         
+        # Safe Update Tool (Phase 5) - for AI-initiated updates
+        self._register_safe_update_tool()
+        
+        # Find & Replace Diff Tool (Phase 6) - regex find/replace with diff preview and Notes backup
+        self._register_find_replace_diff_tool()
+        
         self._logger.info(f"Registered {len(self._tools)} built-in MCP tools")
+
     
     def _register_case_tool(self) -> None:
         """Register the Case Tool."""
@@ -1844,9 +1851,14 @@ class ToolRegistry:
     
     def _get_notes_db_path(self) -> str:
         """Get the path to the notes database."""
-        import os
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return os.path.join(project_root, 'notes.db')
+        try:
+            from core.data_directory import get_database_path
+            return get_database_path('notes.db')
+        except ImportError:
+            # Fallback to legacy behavior
+            import os
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            return os.path.join(project_root, 'notes.db')
     
     def _get_notes_connection(self):
         """Get a connection to the notes database."""
@@ -2352,9 +2364,324 @@ class ToolRegistry:
             result_lines.extend(in_both if in_both else ["(none)"])
         
         return "\n".join(result_lines)
+    
+    def _register_safe_update_tool(self) -> None:
+        """Register the Safe Update Tool for AI-initiated updates."""
+        self.register(MCPToolAdapter(
+            name="pomera_safe_update",
+            description="Check update safety and get backup instructions before updating Pomera. "
+                       "IMPORTANT: In portable mode, npm/pip updates WILL DELETE user data. "
+                       "Always call this with action='check' before initiating any update.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["check", "backup", "get_update_command"],
+                        "description": "check=analyze risks, backup=create backup to safe location, "
+                                     "get_update_command=get recommended update command"
+                    },
+                    "backup_path": {
+                        "type": "string",
+                        "description": "For backup action: directory to save backup (default: user's Documents folder)"
+                    }
+                },
+                "required": ["action"]
+            },
+            handler=self._handle_safe_update
+        ))
+    
+    def _handle_safe_update(self, args: Dict[str, Any]) -> str:
+        """Handle safe update tool execution."""
+        import json
+        import os
+        import platform
+        from pathlib import Path
+        
+        action = args.get("action", "check")
+        
+        # Determine installation mode
+        try:
+            from core.data_directory import is_portable_mode, get_user_data_dir, get_data_directory_info
+            portable = is_portable_mode()
+            data_info = get_data_directory_info()
+        except ImportError:
+            portable = False
+            data_info = {"error": "data_directory module not available"}
+        
+        # Get current version
+        try:
+            import importlib.metadata
+            version = importlib.metadata.version("pomera-ai-commander")
+        except Exception:
+            version = "unknown"
+        
+        # Get installation directory
+        install_dir = Path(__file__).parent.parent.parent
+        
+        # Find existing databases
+        databases_found = []
+        for db_name in ["settings.db", "notes.db", "settings.json"]:
+            db_path = install_dir / db_name
+            if db_path.exists():
+                databases_found.append({
+                    "name": db_name,
+                    "path": str(db_path),
+                    "size_bytes": db_path.stat().st_size
+                })
+        
+        if action == "check":
+            # Return risk assessment
+            result = {
+                "current_version": version,
+                "installation_mode": "portable" if portable else "platform_dirs",
+                "installation_dir": str(install_dir),
+                "data_at_risk": portable and len(databases_found) > 0,
+                "databases_in_install_dir": databases_found,
+                "backup_required": portable and len(databases_found) > 0,
+                "platform": platform.system(),
+            }
+            
+            if portable and databases_found:
+                result["warning"] = (
+                    "CRITICAL: Portable mode detected with databases in installation directory. "
+                    "Running 'npm update' or 'pip install --upgrade' WILL DELETE these files! "
+                    "You MUST run pomera_safe_update with action='backup' before updating."
+                )
+                result["recommended_action"] = "backup"
+            else:
+                result["info"] = (
+                    "Safe to update. Data is stored in user data directory and will survive package updates."
+                )
+                result["recommended_action"] = "get_update_command"
+            
+            return json.dumps(result, indent=2)
+        
+        elif action == "backup":
+            # Create backup to safe location
+            backup_dir = args.get("backup_path")
+            
+            if not backup_dir:
+                # Default to user's Documents folder
+                if platform.system() == "Windows":
+                    backup_dir = os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "pomera-backup")
+                else:
+                    backup_dir = os.path.join(os.path.expanduser("~"), "Documents", "pomera-backup")
+            
+            backup_path = Path(backup_dir)
+            backup_path.mkdir(parents=True, exist_ok=True)
+            
+            import shutil
+            from datetime import datetime
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backed_up = []
+            
+            for db in databases_found:
+                src = Path(db["path"])
+                dst = backup_path / f"{src.stem}_{timestamp}{src.suffix}"
+                try:
+                    shutil.copy2(src, dst)
+                    backed_up.append({"name": db["name"], "backup_path": str(dst)})
+                except Exception as e:
+                    backed_up.append({"name": db["name"], "error": str(e)})
+            
+            result = {
+                "backup_location": str(backup_path),
+                "files_backed_up": backed_up,
+                "success": all("error" not in b for b in backed_up),
+                "next_step": "You can now safely update Pomera. Use action='get_update_command' for the command."
+            }
+            
+            return json.dumps(result, indent=2)
+        
+        elif action == "get_update_command":
+            # Return appropriate update command
+            result = {
+                "npm_update": "npm update pomera-ai-commander",
+                "pip_update": "pip install --upgrade pomera-ai-commander",
+                "github_releases": "https://github.com/matbanik/Pomera-AI-Commander/releases",
+                "note": "After updating, run the application to trigger automatic data migration."
+            }
+            
+            if portable and databases_found:
+                result["warning"] = (
+                    "Data in installation directory detected! "
+                    "Ensure you have backed up (action='backup') before running update."
+                )
+            
+            return json.dumps(result, indent=2)
+        
+        else:
+            return json.dumps({"error": f"Unknown action: {action}"})
+    
+    def _register_find_replace_diff_tool(self) -> None:
+        """Register the Find & Replace Diff Tool."""
+        self.register(MCPToolAdapter(
+            name="pomera_find_replace_diff",
+            description="Regex find/replace with diff preview and automatic backup to Notes. "
+                       "Designed for AI agent workflows requiring verification and rollback capability. "
+                       "Operations: validate (check regex), preview (show diff), execute (replace+backup), recall (retrieve previous).",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["validate", "preview", "execute", "recall"],
+                        "description": "validate=check regex syntax, preview=show compact diff, execute=replace+backup to Notes, recall=retrieve by note_id"
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Input text to process (for validate/preview/execute)"
+                    },
+                    "find_pattern": {
+                        "type": "string",
+                        "description": "Regex pattern to find"
+                    },
+                    "replace_pattern": {
+                        "type": "string",
+                        "description": "Replacement string (supports backreferences \\1, \\2, etc.)",
+                        "default": ""
+                    },
+                    "flags": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["i", "m", "s", "x"]},
+                        "default": [],
+                        "description": "Regex flags: i=ignore case, m=multiline, s=dotall, x=verbose"
+                    },
+                    "context_lines": {
+                        "type": "integer",
+                        "default": 2,
+                        "minimum": 0,
+                        "maximum": 10,
+                        "description": "Lines of context in diff output (for preview)"
+                    },
+                    "save_to_notes": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Save operation to Notes for rollback (for execute)"
+                    },
+                    "note_id": {
+                        "type": "integer",
+                        "description": "Note ID to recall (for recall operation)"
+                    }
+                },
+                "required": ["operation"]
+            },
+            handler=self._handle_find_replace_diff
+        ))
+    
+    def _handle_find_replace_diff(self, args: Dict[str, Any]) -> str:
+        """Handle find/replace diff tool execution."""
+        import json
+        from core.mcp.find_replace_diff import validate_regex, preview_replace, execute_replace, recall_operation
+        
+        operation = args.get("operation", "")
+        
+        if operation == "validate":
+            pattern = args.get("find_pattern", "")
+            flags = args.get("flags", [])
+            result = validate_regex(pattern, flags)
+            return json.dumps(result, ensure_ascii=False)
+        
+        elif operation == "preview":
+            text = args.get("text", "")
+            find_pattern = args.get("find_pattern", "")
+            replace_pattern = args.get("replace_pattern", "")
+            flags = args.get("flags", [])
+            context_lines = args.get("context_lines", 2)
+            
+            if not text:
+                return json.dumps({"success": False, "error": "text is required for preview"})
+            if not find_pattern:
+                return json.dumps({"success": False, "error": "find_pattern is required for preview"})
+            
+            result = preview_replace(text, find_pattern, replace_pattern, flags, context_lines)
+            return json.dumps(result, ensure_ascii=False)
+        
+        elif operation == "execute":
+            text = args.get("text", "")
+            find_pattern = args.get("find_pattern", "")
+            replace_pattern = args.get("replace_pattern", "")
+            flags = args.get("flags", [])
+            save_to_notes = args.get("save_to_notes", True)
+            
+            if not text:
+                return json.dumps({"success": False, "error": "text is required for execute"})
+            if not find_pattern:
+                return json.dumps({"success": False, "error": "find_pattern is required for execute"})
+            
+            # Create notes handler if saving is requested
+            notes_handler = None
+            if save_to_notes:
+                notes_handler = self._create_notes_handler()
+            
+            result = execute_replace(text, find_pattern, replace_pattern, flags, save_to_notes, notes_handler)
+            return json.dumps(result, ensure_ascii=False)
+        
+        elif operation == "recall":
+            note_id = args.get("note_id")
+            if note_id is None:
+                return json.dumps({"success": False, "error": "note_id is required for recall"})
+            
+            notes_getter = self._create_notes_getter()
+            result = recall_operation(note_id, notes_getter)
+            return json.dumps(result, ensure_ascii=False)
+        
+        else:
+            return json.dumps({"success": False, "error": f"Unknown operation: {operation}"})
+    
+    def _create_notes_handler(self):
+        """Create a handler function for saving to notes."""
+        registry = self  # Capture reference
+        
+        def save_to_notes(title: str, input_content: str, output_content: str) -> int:
+            """Save operation to notes and return note_id."""
+            try:
+                from datetime import datetime
+                conn = registry._get_notes_connection()
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                cursor = conn.execute('''
+                    INSERT INTO notes (Created, Modified, Title, Input, Output)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (now, now, title, input_content, output_content))
+                note_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                return note_id
+            except Exception as e:
+                registry._logger.warning(f"Failed to save to notes: {e}")
+                return -1
+        return save_to_notes
+    
+    def _create_notes_getter(self):
+        """Create a getter function for retrieving notes."""
+        registry = self  # Capture reference
+        
+        def get_note(note_id: int) -> Dict[str, Any]:
+            """Get note by ID."""
+            try:
+                conn = registry._get_notes_connection()
+                row = conn.execute('SELECT * FROM notes WHERE id = ?', (note_id,)).fetchone()
+                conn.close()
+                if row:
+                    return {
+                        'id': row[0],
+                        'created': row[1],
+                        'modified': row[2],
+                        'title': row[3],
+                        'input_content': row[4],
+                        'output_content': row[5]
+                    }
+                return None
+            except Exception as e:
+                registry._logger.warning(f"Failed to get note: {e}")
+                return None
+        return get_note
 
 
 # Singleton instance for convenience
+
 _default_registry: Optional[ToolRegistry] = None
 
 

@@ -59,6 +59,18 @@ except ImportError:
     DATABASE_SETTINGS_AVAILABLE = False
     print("Database Settings Manager not available, falling back to JSON")
 
+# Data Directory module import (cross-platform data storage)
+try:
+    from core.data_directory import (
+        get_database_path, get_backup_dir, migrate_legacy_databases,
+        is_portable_mode, get_data_directory_info, check_portable_mode_warning,
+        check_and_execute_pending_migration, set_custom_data_directory, load_config
+    )
+    DATA_DIRECTORY_AVAILABLE = True
+except ImportError:
+    DATA_DIRECTORY_AVAILABLE = False
+    print("Data Directory module not available, using legacy paths")
+
 # Case Tool module import
 try:
     from tools.case_tool import CaseTool
@@ -527,7 +539,24 @@ else:
             self.linenumbers.bind("<Button-5>", self._on_mousewheel)
             self.text.bind("<<Modified>>", self._on_text_modified)
             self.text.bind("<Configure>", self._on_text_modified)
+            
+            # Paste events - insert undo separator after paste
+            self.text.bind("<<Paste>>", self._on_paste)
+            self.text.bind("<Control-v>", self._on_paste)
+            self.text.bind("<Control-V>", self._on_paste)
+            self.text.bind("<Shift-Insert>", self._on_paste)
+            
             self._on_text_modified()
+        
+        def _on_paste(self, event=None):
+            """Insert undo separator after paste to separate from subsequent typing."""
+            def insert_separator():
+                try:
+                    self.text.edit_separator()
+                except Exception:
+                    pass
+            self.after(10, insert_separator)
+
 
         def _on_text_scroll(self, *args):
             self.text.yview(*args)
@@ -582,9 +611,7 @@ class PromeraAISettingsManager:
     def get_pattern_library(self) -> List[Dict[str, str]]:
         """Get the regex pattern library."""
         # Initialize pattern library if it doesn't exist
-        if ("pattern_library" not in self.app.settings or 
-            len(self.app.settings.get("pattern_library", [])) < 10):
-            
+        if "pattern_library" not in self.app.settings:
             # Try to import and use the comprehensive pattern library
             try:
                 from core.regex_pattern_library import RegexPatternLibrary
@@ -629,6 +656,11 @@ class PromeraAISettingsManager:
             self.app.logger.info(f"Added {added_count} common extraction patterns to pattern library")
         
         return pattern_library
+    
+    def set_pattern_library(self, pattern_library: List[Dict[str, str]]):
+        """Explicitly update and persist the pattern library."""
+        self.app.settings["pattern_library"] = pattern_library
+        self.app.save_settings()
 
 
 class DialogSettingsAdapter:
@@ -748,7 +780,7 @@ class PromeraAIApp(tk.Tk):
         self.title("Pomera AI Commander")
         self.geometry(AppConfig.DEFAULT_WINDOW_SIZE)
 
-        self._after_id = None 
+        self._after_id = None
         self._regex_cache = {}
         self.ai_widgets = {}
         self.ai_provider_urls = {
@@ -775,10 +807,30 @@ class PromeraAIApp(tk.Tk):
         # Initialize database settings manager or fallback to JSON
         if DATABASE_SETTINGS_AVAILABLE:
             try:
+                # Check for and execute any pending data migration FIRST
+                # (before any database connections are opened)
+                if DATA_DIRECTORY_AVAILABLE:
+                    migration_msg = check_and_execute_pending_migration()
+                    if migration_msg:
+                        print(f"Data migration completed: {migration_msg}")
+                    
+                    # Migrate legacy databases if needed (console INFO log only)
+                    migrate_legacy_databases()
+                    db_path = get_database_path("settings.db")
+                    backup_path = str(get_backup_dir() / "settings_backup.db")
+                    json_path = get_database_path("settings.json")
+                    if is_portable_mode():
+                        print("Running in portable mode - data stored in installation directory")
+                else:
+                    # Fallback to legacy relative paths
+                    db_path = "settings.db"
+                    backup_path = "settings_backup.db"
+                    json_path = "settings.json"
+                
                 self.db_settings_manager = DatabaseSettingsManager(
-                    db_path="settings.db",
-                    backup_path="settings_backup.db",
-                    json_settings_path="settings.json"
+                    db_path=db_path,
+                    backup_path=backup_path,
+                    json_settings_path=json_path
                 )
                 # Provide default settings to database manager
                 self.db_settings_manager.set_default_settings_provider(self._get_default_settings)
@@ -897,9 +949,10 @@ class PromeraAIApp(tk.Tk):
         if CURL_TOOL_MODULE_AVAILABLE:
             self.bind_all("<Control-u>", lambda e: self.open_curl_tool_window())
         
-        # Set up Notes widget keyboard shortcut (Ctrl+S for Save as Note)
+        # Set up Notes widget keyboard shortcuts
         if NOTES_WIDGET_MODULE_AVAILABLE:
-            self.bind_all("<Control-s>", lambda e: self.save_as_note())
+            self.bind_all("<Control-s>", lambda e: self.save_as_note())  # Ctrl+S for Save as Note
+            self.bind_all("<Control-n>", lambda e: self.open_notes_widget())  # Ctrl+N for Notes window
         
         # Set up MCP Manager keyboard shortcut (Ctrl+M)
         if MCP_MANAGER_MODULE_AVAILABLE:
@@ -968,6 +1021,348 @@ class PromeraAIApp(tk.Tk):
         
         self.logger.info("Background maintenance tasks scheduled (including auto-backup)")
     
+    def _show_data_location_dialog(self):
+        """Show the Data Location settings dialog."""
+        from tkinter import filedialog
+        
+        dialog = tk.Toplevel(self)
+        dialog.title("Data Location Settings")
+        dialog.withdraw()  # Hide until centered
+        dialog.transient(self)
+        
+        # Get current data info
+        if DATA_DIRECTORY_AVAILABLE:
+            data_info = get_data_directory_info()
+            current_path = data_info.get('user_data_dir', 'Unknown')
+            portable = data_info.get('portable_mode', False)
+            config = load_config()
+            custom_path = config.get('data_directory')
+        else:
+            current_path = "Data directory module not available"
+            portable = False
+            custom_path = None
+        
+        # Main frame with padding
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Current location
+        ttk.Label(main_frame, text="Current Data Location:", font=('TkDefaultFont', 10, 'bold')).pack(anchor=tk.W)
+        
+        path_frame = ttk.Frame(main_frame)
+        path_frame.pack(fill=tk.X, pady=(5, 15))
+        
+        path_entry = ttk.Entry(path_frame, width=60)
+        path_entry.insert(0, current_path)
+        path_entry.config(state='readonly')
+        path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Mode selection
+        ttk.Label(main_frame, text="Data Storage Mode:", font=('TkDefaultFont', 10, 'bold')).pack(anchor=tk.W, pady=(10, 5))
+        
+        mode_var = tk.StringVar()
+        if custom_path:
+            mode_var.set("custom")
+        elif portable:
+            mode_var.set("portable")
+        else:
+            mode_var.set("platform")
+        
+        custom_path_var = tk.StringVar(value=custom_path or "")
+        
+        # Platform default option
+        platform_frame = ttk.Frame(main_frame)
+        platform_frame.pack(fill=tk.X, pady=2)
+        ttk.Radiobutton(platform_frame, text="Use platform default (recommended)", 
+                        variable=mode_var, value="platform").pack(anchor=tk.W)
+        
+        # Custom location option
+        custom_frame = ttk.Frame(main_frame)
+        custom_frame.pack(fill=tk.X, pady=2)
+        ttk.Radiobutton(custom_frame, text="Use custom location:", 
+                        variable=mode_var, value="custom").pack(side=tk.LEFT)
+        
+        custom_entry = ttk.Entry(custom_frame, textvariable=custom_path_var, width=40)
+        custom_entry.pack(side=tk.LEFT, padx=5)
+        
+        def browse_folder():
+            folder = filedialog.askdirectory(title="Select Data Directory")
+            if folder:
+                custom_path_var.set(folder)
+                mode_var.set("custom")
+        
+        ttk.Button(custom_frame, text="Browse...", command=browse_folder).pack(side=tk.LEFT)
+        
+        # Portable mode option
+        portable_frame = ttk.Frame(main_frame)
+        portable_frame.pack(fill=tk.X, pady=2)
+        ttk.Radiobutton(portable_frame, text="Portable mode (store in app folder - NOT RECOMMENDED)", 
+                        variable=mode_var, value="portable").pack(anchor=tk.W)
+        
+        # Warning for portable mode
+        warning_frame = ttk.Frame(main_frame)
+        warning_frame.pack(fill=tk.X, pady=(15, 10))
+        
+        warning_label = ttk.Label(warning_frame, 
+            text="⚠️ Warning: Portable mode data will be LOST during npm/pip updates!",
+            foreground='red')
+        
+        def update_warning(*args):
+            if mode_var.get() == "portable":
+                warning_label.pack(anchor=tk.W)
+            else:
+                warning_label.pack_forget()
+        
+        mode_var.trace_add('write', update_warning)
+        update_warning()
+        
+        # Migrate checkbox
+        migrate_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(main_frame, text="Migrate existing data to new location", 
+                        variable=migrate_var).pack(anchor=tk.W, pady=(10, 0))
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(20, 0))
+        
+        def apply_changes():
+            mode = mode_var.get()
+            migrate = migrate_var.get()
+            
+            if mode == "platform":
+                new_path = None
+            elif mode == "custom":
+                new_path = custom_path_var.get()
+                if not new_path:
+                    messagebox.showerror("Error", "Please specify a custom directory path.")
+                    return
+            else:  # portable
+                # For portable mode, set to installation directory
+                if DATA_DIRECTORY_AVAILABLE:
+                    from core.data_directory import _get_installation_dir
+                    new_path = str(_get_installation_dir())
+                else:
+                    messagebox.showerror("Error", "Portable mode not available.")
+                    return
+            
+            if DATA_DIRECTORY_AVAILABLE:
+                result = set_custom_data_directory(new_path, migrate=migrate)
+                
+                if result.get("restart_required"):
+                    dialog.destroy()
+                    response = messagebox.askyesno(
+                        "Restart Required",
+                        "Data location changed. The application needs to restart to migrate data.\n\n"
+                        "Close the application now?",
+                        icon='warning'
+                    )
+                    if response:
+                        self.on_closing()
+                else:
+                    dialog.destroy()
+                    messagebox.showinfo("Success", result.get("message", "Settings saved."))
+            else:
+                messagebox.showerror("Error", "Data directory module not available.")
+        
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="Apply & Restart", command=apply_changes).pack(side=tk.RIGHT)
+        
+        # Center and show dialog (after all widgets created to avoid blink)
+        dialog.update_idletasks()
+        dialog.geometry("550x380")
+        x = self.winfo_x() + (self.winfo_width() - 550) // 2
+        y = self.winfo_y() + (self.winfo_height() - 380) // 2
+        dialog.geometry(f"550x380+{x}+{y}")
+        dialog.deiconify()
+        dialog.grab_set()
+    
+    def _show_update_dialog(self):
+        """Show the Check for Updates dialog with GitHub version check."""
+        import webbrowser
+        import urllib.request
+        import json
+        import platform
+        
+        dialog = tk.Toplevel(self)
+        dialog.title("Check for Updates")
+        dialog.withdraw()  # Hide until centered
+        dialog.transient(self)
+        
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(main_frame, text="Pomera AI Commander", font=('TkDefaultFont', 14, 'bold')).pack(pady=(0, 10))
+        
+        # Get current version - try pyproject.toml first (for local dev), then importlib.metadata
+        current_version = None
+        try:
+            # Try reading from pyproject.toml (when running from source)
+            import re
+            pyproject_path = Path(__file__).parent / "pyproject.toml"
+            if pyproject_path.exists():
+                content = pyproject_path.read_text()
+                match = re.search(r'version = "([^"]+)"', content)
+                if match:
+                    current_version = match.group(1)
+        except Exception:
+            pass
+        
+        if not current_version:
+            try:
+                import importlib.metadata
+                current_version = importlib.metadata.version("pomera-ai-commander")
+            except Exception:
+                current_version = "Unknown"
+        
+        # Detect OS for download link
+        system = platform.system()
+        if system == "Windows":
+            os_pattern = "windows"
+            os_name = "Windows"
+        elif system == "Darwin":
+            os_pattern = "macos"
+            os_name = "macOS"
+        else:
+            os_pattern = "linux"
+            os_name = "Linux"
+        
+        # Fetch latest version from GitHub
+        latest_version = None
+        update_available = False
+        download_url = None
+        release_data = None
+        
+        try:
+            url = "https://api.github.com/repos/matbanik/Pomera-AI-Commander/releases/latest"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Pomera-AI-Commander'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                release_data = json.loads(response.read().decode())
+                latest_version = release_data.get('tag_name', '').lstrip('v')
+                
+                # Compare versions
+                if current_version != "Unknown" and latest_version:
+                    try:
+                        current_parts = [int(x) for x in current_version.split('.')]
+                        latest_parts = [int(x) for x in latest_version.split('.')]
+                        update_available = latest_parts > current_parts
+                    except ValueError:
+                        update_available = current_version != latest_version
+                
+                # Find platform-specific download URL
+                assets = release_data.get('assets', [])
+                for asset in assets:
+                    name = asset.get('name', '').lower()
+                    if os_pattern in name and (name.endswith('.exe') or name.endswith('.zip') or name.endswith('.tar.gz')):
+                        download_url = asset.get('browser_download_url')
+                        break
+        except Exception as e:
+            latest_version = f"Unable to check ({type(e).__name__})"
+        
+        # Version info frame
+        version_frame = ttk.Frame(main_frame)
+        version_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        ttk.Label(version_frame, text=f"Current Version: {current_version}").pack(anchor=tk.W)
+        
+        if latest_version and not latest_version.startswith("Unable"):
+            if update_available:
+                # Update available - BOLD BLACK
+                ttk.Label(version_frame, text=f"Latest Version: {latest_version}", 
+                          font=('TkDefaultFont', 11, 'bold')).pack(anchor=tk.W)
+                ttk.Label(version_frame, text="⬆️ Update available!", 
+                          font=('TkDefaultFont', 11, 'bold')).pack(anchor=tk.W, pady=(5, 0))
+            else:
+                # Up to date - GREEN
+                ttk.Label(version_frame, text=f"Latest Version: {latest_version}", 
+                          foreground='green').pack(anchor=tk.W)
+                ttk.Label(version_frame, text="✓ You're up to date!", 
+                          foreground='green', font=('TkDefaultFont', 10, 'bold')).pack(anchor=tk.W, pady=(5, 0))
+        elif latest_version:
+            ttk.Label(version_frame, text=f"Latest Version: {latest_version}", foreground='orange').pack(anchor=tk.W)
+        
+        # Data location info
+        if DATA_DIRECTORY_AVAILABLE:
+            data_info = get_data_directory_info()
+            mode = "Portable" if data_info.get('portable_mode') else "Platform"
+            ttk.Label(main_frame, text=f"Installation Mode: {mode}").pack(anchor=tk.W)
+            ttk.Label(main_frame, text=f"Data Location: {data_info.get('user_data_dir', 'Unknown')}", 
+                      wraplength=500).pack(anchor=tk.W, pady=(0, 10))
+            
+            # Warning for portable mode
+            if data_info.get('portable_mode'):
+                warning_frame = ttk.Frame(main_frame)
+                warning_frame.pack(fill=tk.X, pady=5)
+                ttk.Label(warning_frame, 
+                    text="⚠️ PORTABLE MODE: Backup your data before updating!",
+                    foreground='red', font=('TkDefaultFont', 10, 'bold')).pack()
+        
+        # Download link if update available
+        if update_available and download_url:
+            download_frame = ttk.Frame(main_frame)
+            download_frame.pack(fill=tk.X, pady=(10, 0))
+            ttk.Label(download_frame, text=f"📥 {os_name} Download:", font=('TkDefaultFont', 10, 'bold')).pack(anchor=tk.W)
+            
+            # Create a clickable link-style label
+            link_label = ttk.Label(download_frame, text=download_url.split('/')[-1], 
+                                   foreground='blue', cursor='hand2', font=('TkDefaultFont', 9, 'underline'))
+            link_label.pack(anchor=tk.W)
+            link_label.bind('<Button-1>', lambda e: webbrowser.open(download_url))
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        def open_releases():
+            webbrowser.open("https://github.com/matbanik/Pomera-AI-Commander/releases")
+        
+        def download_now():
+            if download_url:
+                webbrowser.open(download_url)
+        
+        def create_backup():
+            if DATA_DIRECTORY_AVAILABLE:
+                from core.data_directory import check_portable_mode_warning
+                warning_info = check_portable_mode_warning(show_console_warning=False)
+                if warning_info:
+                    # Create backup
+                    from core.mcp.tool_registry import ToolRegistry
+                    registry = ToolRegistry(register_builtins=False)
+                    registry._register_safe_update_tool()
+                    result = registry.execute('pomera_safe_update', {'action': 'backup'})
+                    messagebox.showinfo("Backup", f"Backup created!\n\n{result.content[0]['text'] if result.content else 'Check Documents/pomera-backup folder'}")
+                else:
+                    messagebox.showinfo("Backup", "No backup needed - your data is safely stored in platform directories.")
+        
+        if update_available and download_url:
+            ttk.Button(button_frame, text=f"Download for {os_name}", command=download_now).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Create Backup", command=create_backup).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="All Releases", command=open_releases).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Close", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+        # Center and show dialog (after all widgets created to avoid blink)
+        dialog.update_idletasks()
+        dialog.geometry("550x400")
+        x = self.winfo_x() + (self.winfo_width() - 550) // 2
+        y = self.winfo_y() + (self.winfo_height() - 400) // 2
+        dialog.geometry(f"550x400+{x}+{y}")
+        dialog.deiconify()
+        dialog.grab_set()
+    
+    def _show_about_dialog(self):
+        """Show About dialog."""
+        try:
+            import importlib.metadata
+            version = importlib.metadata.version("pomera-ai-commander")
+        except Exception:
+            version = "1.2.0"
+        
+        messagebox.showinfo(
+            "About Pomera AI Commander",
+            f"Pomera AI Commander v{version}\n\n"
+            "Text processing toolkit with MCP tools for AI assistants.\n\n"
+            "https://github.com/matbanik/Pomera-AI-Commander"
+        )
+
     def _auto_save_settings(self):
         """Auto-save settings periodically (called by Task Scheduler)."""
         try:
@@ -2604,6 +2999,7 @@ class PromeraAIApp(tk.Tk):
         # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Data Location...", command=self._show_data_location_dialog)
         file_menu.add_command(label="Export Location", command=self.browse_export_path)
         file_menu.add_separator()
         
@@ -2694,7 +3090,8 @@ class PromeraAIApp(tk.Tk):
         if NOTES_WIDGET_MODULE_AVAILABLE:
             widgets_menu.add_command(
                 label="Notes",
-                command=self.open_notes_widget
+                command=self.open_notes_widget,
+                accelerator="Ctrl+N"
             )
         
         # Add MCP Manager if available
@@ -2708,9 +3105,13 @@ class PromeraAIApp(tk.Tk):
         # Help Menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="Check for Updates...", command=self._show_update_dialog)
+        help_menu.add_separator()
         help_menu.add_command(label="GitHub", command=lambda: webbrowser.open_new("https://github.com/matbanik/Pomera-AI-Commander"))
         help_menu.add_command(label="Report Issue", command=self.open_report_issue)
         help_menu.add_command(label="Ask AI", command=self.open_ai_tools)
+        help_menu.add_separator()
+        help_menu.add_command(label="About", command=self._show_about_dialog)
 
     def open_report_issue(self):
         """Opens the GitHub issues page in the default browser."""

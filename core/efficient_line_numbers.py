@@ -96,6 +96,14 @@ class EfficientLineNumbers(tk.Frame):
         # Focus events for optimization
         self.text.bind("<FocusIn>", self._on_focus_in)
         self.text.bind("<FocusOut>", self._on_focus_out)
+        
+        # Paste events - insert undo separator after paste to separate from subsequent typing
+        self.text.bind("<<Paste>>", self._on_paste)
+        self.text.bind("<Control-v>", self._on_paste)
+        self.text.bind("<Control-V>", self._on_paste)
+        # Also handle Shift+Insert (alternative paste)
+        self.text.bind("<Shift-Insert>", self._on_paste)
+
     
     def _setup_scrollbar_sync(self):
         """Setup proper scrollbar synchronization."""
@@ -161,6 +169,28 @@ class EfficientLineNumbers(tk.Frame):
         """Handle focus out - can reduce update frequency."""
         pass  # Could implement reduced update frequency when not focused
     
+    def _on_paste(self, event=None):
+        """
+        Handle paste operations - insert undo separator after paste.
+        
+        This ensures that paste operations are separate from subsequent typing
+        in the undo history, so Ctrl+Z undoes them independently.
+        """
+        # Let the paste happen first, then insert a separator
+        def insert_undo_separator():
+            try:
+                # Insert undo separator to mark this as a separate operation
+                self.text.edit_separator()
+            except Exception:
+                pass  # Ignore if undo is not enabled
+        
+        # Schedule the separator insertion after the paste completes
+        self.after(10, insert_undo_separator)
+        # Also schedule line number update
+        self._schedule_line_number_update()
+        # Don't return "break" - let the default paste handling occur
+    
+
     def _on_key_press(self, event=None):
         """Handle key press events - immediate update for Enter key."""
         if event and event.keysym in ['Return', 'BackSpace', 'Delete']:

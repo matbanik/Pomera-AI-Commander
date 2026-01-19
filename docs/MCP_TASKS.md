@@ -6,6 +6,31 @@ Focused task list for remaining features.
 
 ---
 
+## Completed Tasks ✅
+
+### Find & Replace Diff MCP Tool
+
+Token-efficient, recoverable text operations for AI agents.
+
+| Task | Status |
+|------|--------|
+| Create `core/mcp/find_replace_diff.py` | ✅ |
+| Register `pomera_find_replace_diff` tool (#24) | ✅ |
+| Implement 4 operations: validate/preview/execute/recall | ✅ |
+| Integrate with `notes.db` for auto-backup | ✅ |
+| Unit tests (10/10 passed) | ✅ |
+| MCP integration tests (6/6 passed) | ✅ |
+| Notes integration test | ✅ |
+
+**Files Created:**
+- `core/mcp/find_replace_diff.py`
+- `tests/test_find_replace_diff.py`
+- `tests/test_find_replace_diff_mcp.py`
+- `tests/test_notes_integration.py`
+
+---
+
+
 ## 1. MCP Server Transport Layer
 
 Additional transport options for the embedded MCP server.
