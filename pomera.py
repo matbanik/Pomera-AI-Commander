@@ -779,6 +779,9 @@ class PromeraAIApp(tk.Tk):
         
         self.title("Pomera AI Commander")
         self.geometry(AppConfig.DEFAULT_WINDOW_SIZE)
+        
+        # Set window icon (Pomera dog mascot)
+        self._set_window_icon()
 
         self._after_id = None
         self._regex_cache = {}
@@ -1359,6 +1362,42 @@ class PromeraAIApp(tk.Tk):
             "Text processing toolkit with MCP tools for AI assistants.\n\n"
             "https://github.com/matbanik/Pomera-AI-Commander"
         )
+    
+    def _set_window_icon(self):
+        """Set the window icon (Pomera dog mascot)."""
+        try:
+            # Find icon file - check multiple locations
+            script_dir = Path(__file__).parent.resolve()
+            icon_locations = [
+                script_dir / "resources" / "icon.ico",
+                script_dir / "icon.ico",
+                script_dir / "resources" / "icon.png",
+                script_dir / "icon.png",
+            ]
+            
+            icon_path = None
+            for loc in icon_locations:
+                if loc.exists():
+                    icon_path = loc
+                    break
+            
+            if icon_path is None:
+                return  # No icon found, use default
+            
+            if platform.system() == "Windows" and icon_path.suffix == ".ico":
+                # Windows: use iconbitmap for .ico files
+                self.iconbitmap(str(icon_path))
+            else:
+                # Other platforms or PNG: use PhotoImage
+                from PIL import Image, ImageTk
+                img = Image.open(icon_path)
+                # Resize to appropriate icon size - use NEAREST for sharp pixel art
+                img = img.resize((32, 32), Image.Resampling.NEAREST)
+                self._icon_photo = ImageTk.PhotoImage(img)
+                self.iconphoto(True, self._icon_photo)
+                
+        except Exception as e:
+            self.logger.debug(f"Could not set window icon: {e}")
 
     def _auto_save_settings(self):
         """Auto-save settings periodically (called by Task Scheduler)."""

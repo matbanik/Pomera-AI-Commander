@@ -1,4 +1,9 @@
 # Pomera AI Commander (PAC)
+
+<p align="center">
+  <img src="resources/icon.png" alt="Pomera - the fluffy Pomeranian mascot" width="128" height="128">
+</p>
+
 [![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue?style=for-the-badge&logo=github)](https://github.com/matbanik/Pomera-AI-Commander/releases)
 
 A desktop text "workbench" + MCP server: clean, transform, extract, and analyze text fast—manually in a GUI or programmatically from AI assistants (Cursor / Claude Desktop / MCP clients).

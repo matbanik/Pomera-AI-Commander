@@ -6,6 +6,7 @@ Updates version in all relevant files:
 - pyproject.toml
 - package.json
 - pomera_mcp_server.py
+- pomera.py
 
 Usage:
     python bump_version.py              # Interactive - prompts for version
@@ -13,12 +14,18 @@ Usage:
     python bump_version.py --patch      # Increment patch: 1.2.2 -> 1.2.3
     python bump_version.py --minor      # Increment minor: 1.2.2 -> 1.3.0
     python bump_version.py --major      # Increment major: 1.2.2 -> 2.0.0
+    
+    # With --release flag to create GitHub release:
+    python bump_version.py --patch --release
+    python bump_version.py 1.2.4 --release
 """
 
 import os
 import re
 import sys
 import json
+import subprocess
+import shutil
 from pathlib import Path
 
 # Files to update with their version patterns
@@ -31,6 +38,14 @@ VERSION_FILES = {
     ],
     "pomera.py": r'version = "([^"]+)"'  # Fallback version in About dialog
 }
+
+# Versioned files to stage for git
+GIT_FILES = [
+    "pyproject.toml",
+    "package.json",
+    "pomera_mcp_server.py",
+    "pomera.py"
+]
 
 
 def get_current_version() -> str:
@@ -125,15 +140,208 @@ def update_package_lock(new_version: str) -> bool:
         return False
 
 
+def find_gh_cli() -> str:
+    """Find the GitHub CLI executable."""
+    # Check if gh is in PATH
+    gh_path = shutil.which("gh")
+    if gh_path:
+        return gh_path
+    
+    # Check common Windows installation paths
+    common_paths = [
+        r"C:\Program Files\GitHub CLI\gh.exe",
+        r"C:\Program Files (x86)\GitHub CLI\gh.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\GitHub CLI\gh.exe"),
+    ]
+    
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
+
+
+def check_gh_auth(gh_path: str) -> bool:
+    """Check if GitHub CLI is authenticated."""
+    try:
+        result = subprocess.run(
+            [gh_path, "auth", "status"],
+            capture_output=True,
+            text=True
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def get_recent_commits(since_tag: str = None) -> list:
+    """Get recent commit messages for release notes."""
+    try:
+        if since_tag:
+            cmd = ["git", "log", f"{since_tag}..HEAD", "--pretty=format:%s"]
+        else:
+            cmd = ["git", "log", "-10", "--pretty=format:%s"]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            commits = result.stdout.strip().split("\n")
+            return [c for c in commits if c and not c.startswith("Merge")]
+        return []
+    except Exception:
+        return []
+
+
+def get_previous_tag() -> str:
+    """Get the most recent tag."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return None
+    except Exception:
+        return None
+
+
+def create_release_notes(commits: list) -> str:
+    """Generate release notes from commits."""
+    if not commits:
+        return "Release notes not available."
+    
+    # Categorize commits
+    fixes = []
+    features = []
+    other = []
+    
+    for commit in commits:
+        lower = commit.lower()
+        if any(word in lower for word in ["fix", "bug", "error", "issue", "resolve"]):
+            fixes.append(commit)
+        elif any(word in lower for word in ["add", "feat", "new", "implement", "support"]):
+            features.append(commit)
+        else:
+            other.append(commit)
+    
+    notes = []
+    
+    if features:
+        notes.append("## ✨ New Features\n")
+        for f in features:
+            notes.append(f"- {f}")
+        notes.append("")
+    
+    if fixes:
+        notes.append("## 🔧 Bug Fixes\n")
+        for f in fixes:
+            notes.append(f"- {f}")
+        notes.append("")
+    
+    if other:
+        notes.append("## 🛠️ Other Changes\n")
+        for o in other:
+            notes.append(f"- {o}")
+        notes.append("")
+    
+    return "\n".join(notes)
+
+
+def create_github_release(version: str, release_notes: str) -> bool:
+    """Create a GitHub release using gh CLI."""
+    gh_path = find_gh_cli()
+    
+    if not gh_path:
+        print("\n⚠️  GitHub CLI (gh) not found. Install from: https://cli.github.com/")
+        print("   Or install with: winget install GitHub.cli")
+        return False
+    
+    if not check_gh_auth(gh_path):
+        print("\n⚠️  GitHub CLI not authenticated. Run: gh auth login")
+        return False
+    
+    tag = f"v{version}"
+    
+    # Check if release already exists
+    result = subprocess.run(
+        [gh_path, "release", "view", tag],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode == 0:
+        # Release exists, update it
+        print(f"\n📝 Updating existing release {tag}...")
+        cmd = [gh_path, "release", "edit", tag, "--notes", release_notes]
+    else:
+        # Create new release
+        print(f"\n🚀 Creating release {tag}...")
+        cmd = [gh_path, "release", "create", tag, "--title", tag, "--notes", release_notes]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            print(f"✅ Release {tag} created/updated successfully!")
+            print(f"   https://github.com/matbanik/Pomera-AI-Commander/releases/tag/{tag}")
+            return True
+        else:
+            print(f"❌ Failed to create release: {result.stderr}")
+            return False
+    except subprocess.TimeoutExpired:
+        print("❌ Release creation timed out")
+        return False
+    except Exception as e:
+        print(f"❌ Error creating release: {e}")
+        return False
+
+
+def git_commit_and_tag(version: str, commit_message: str = None) -> bool:
+    """Commit changes, create tag, and push."""
+    tag = f"v{version}"
+    
+    if not commit_message:
+        commit_message = f"Bump version to {version}"
+    
+    try:
+        # Stage files
+        subprocess.run(["git", "add"] + GIT_FILES, check=True)
+        print("✓ Staged version files")
+        
+        # Commit
+        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+        print(f"✓ Committed: {commit_message}")
+        
+        # Create tag
+        subprocess.run(["git", "tag", "-a", tag, "-m", f"Release {tag}"], check=True)
+        print(f"✓ Created tag: {tag}")
+        
+        # Push
+        subprocess.run(["git", "push"], check=True)
+        subprocess.run(["git", "push", "--tags"], check=True)
+        print("✓ Pushed to remote")
+        
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Git operation failed: {e}")
+        return False
+
+
 def main():
     current = get_current_version()
     print(f"\nPomera Version Bump")
     print(f"==================")
     print(f"Current version: {current}\n")
     
+    # Parse arguments
+    args = sys.argv[1:]
+    create_release = "--release" in args
+    if create_release:
+        args.remove("--release")
+    
     # Determine new version
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
+    if len(args) > 0:
+        arg = args[0]
         if arg == "--patch":
             new_version = bump_version(current, "patch")
         elif arg == "--minor":
@@ -143,7 +351,7 @@ def main():
         elif arg.replace(".", "").isdigit():
             new_version = arg
         else:
-            print(f"Usage: {sys.argv[0]} [VERSION | --patch | --minor | --major]")
+            print(f"Usage: {sys.argv[0]} [VERSION | --patch | --minor | --major] [--release]")
             sys.exit(1)
     else:
         # Interactive mode
@@ -185,12 +393,47 @@ def main():
     print("-" * 40)
     print(f"\n✅ Updated {updated_count} files to version {new_version}")
     
-    # Offer to stage for git
-    if updated_count > 0:
-        stage = input("\nStage changes for git? (y/N): ").strip().lower()
+    if updated_count == 0:
+        print("No files were updated.")
+        return
+    
+    # Interactive mode: ask about git and release
+    if not create_release and len(sys.argv) == 1:
+        stage = input("\nStage and commit changes? (y/N): ").strip().lower()
         if stage == "y":
-            os.system("git add pyproject.toml package.json package-lock.json pomera_mcp_server.py pomera.py")
-            print("Changes staged for commit")
+            commit_msg = input("Commit message (Enter for default): ").strip()
+            if not commit_msg:
+                commit_msg = f"Bump version to {new_version}"
+            
+            if git_commit_and_tag(new_version, commit_msg):
+                create_rel = input("\nCreate GitHub release? (y/N): ").strip().lower()
+                if create_rel == "y":
+                    create_release = True
+    
+    # Non-interactive with --release flag
+    elif create_release:
+        commit_msg = f"Bump version to {new_version}"
+        if not git_commit_and_tag(new_version, commit_msg):
+            print("⚠️  Git operations failed, skipping release creation")
+            create_release = False
+    
+    # Create GitHub release
+    if create_release:
+        prev_tag = get_previous_tag()
+        commits = get_recent_commits(prev_tag)
+        release_notes = create_release_notes(commits)
+        
+        print("\n--- Release Notes Preview ---")
+        print(release_notes)
+        print("-----------------------------")
+        
+        if len(sys.argv) == 1:  # Interactive mode
+            confirm = input("\nCreate release with these notes? (y/N): ").strip().lower()
+            if confirm != "y":
+                print("Release creation cancelled.")
+                return
+        
+        create_github_release(new_version, release_notes)
 
 
 if __name__ == "__main__":

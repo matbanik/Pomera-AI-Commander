@@ -81,16 +81,17 @@ Changelog = "https://github.com/matbanik/Pomera-AI-Commander/releases"
 [project.scripts]
 pomera-ai-commander = "pomera_mcp_server:main"
 pomera-mcp = "pomera_mcp_server:main"
+pomera-create-shortcut = "create_shortcut:create_shortcut"
 
 [tool.setuptools]
-py-modules = ["pomera_mcp_server", "pomera"]
+py-modules = ["pomera_mcp_server", "pomera", "create_shortcut"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["core*", "tools*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.json", "*.md"]
+"*" = ["*.json", "*.md", "*.ico", "*.png"]
 
 [tool.black]
 line-length = 100
