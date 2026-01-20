@@ -12,6 +12,7 @@
         "mcp": "python pomera_mcp_server.py",
         "list-tools": "python pomera_mcp_server.py --list-tools",
         "test": "python -m pytest",
+        "create-shortcut": "node scripts/postinstall.js",
         "postinstall": "node scripts/postinstall.js"
     },
     "keywords": [

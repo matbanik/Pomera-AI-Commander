@@ -412,6 +412,10 @@ def main():
     
     # Non-interactive with --release flag
     elif create_release:
+        # Get previous tag and commits BEFORE creating new tag
+        prev_tag = get_previous_tag()
+        commits = get_recent_commits(prev_tag)
+        
         commit_msg = f"Bump version to {new_version}"
         if not git_commit_and_tag(new_version, commit_msg):
             print("⚠️  Git operations failed, skipping release creation")
@@ -419,8 +423,23 @@ def main():
     
     # Create GitHub release
     if create_release:
-        prev_tag = get_previous_tag()
-        commits = get_recent_commits(prev_tag)
+        # For interactive mode, get commits now (tag already created)
+        if len(sys.argv) == 1:
+            # In interactive mode, we need to get the second-to-last tag
+            prev_tag = get_previous_tag()  # This returns the new tag
+            # Get the tag before that
+            try:
+                result = subprocess.run(
+                    ["git", "tag", "--sort=-creatordate"],
+                    capture_output=True, text=True
+                )
+                tags = result.stdout.strip().split("\n")
+                if len(tags) >= 2:
+                    prev_tag = tags[1]  # Second tag (the previous one)
+                commits = get_recent_commits(prev_tag)
+            except Exception:
+                commits = []
+        
         release_notes = create_release_notes(commits)
         
         print("\n--- Release Notes Preview ---")

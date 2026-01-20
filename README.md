@@ -71,6 +71,17 @@ npm install -g pomera-ai-commander
 pomera-mcp --help
 ```
 
+### Create Desktop Shortcut
+After installing via pip or npm, create a desktop shortcut for quick access:
+
+```bash
+# For pip install:
+pomera-create-shortcut
+
+# For npm install (from package directory):
+python create_shortcut.py
+```
+
 ---
 
 ## MCP Server for AI Assistants
