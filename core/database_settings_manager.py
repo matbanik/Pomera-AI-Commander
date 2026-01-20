@@ -45,12 +45,17 @@ class NestedSettingsProxy:
     def __getitem__(self, key: str) -> Any:
         """Handle nested access like settings["tool_settings"]["Tool Name"]."""
         if key not in self._data:
-            # For tool_settings, create empty tool settings when accessed
+            # For tool_settings, first try to load existing settings from database
             if self.parent_key == "tool_settings":
-                # Initialize empty tool settings
-                self._data[key] = {}
-                # Also save to database
-                self.settings_manager.set_tool_setting(key, "initialized", True)
+                existing_settings = self.settings_manager.get_tool_settings(key)
+                if existing_settings and not (len(existing_settings) == 1 and 'initialized' in existing_settings):
+                    # Found real settings in database - use them
+                    self._data[key] = existing_settings
+                else:
+                    # No existing settings - create empty tool settings
+                    self._data[key] = {}
+                    # Save initialized marker to database
+                    self.settings_manager.set_tool_setting(key, "initialized", True)
             else:
                 raise KeyError(f"Key '{key}' not found in {self.parent_key}")
         
@@ -91,10 +96,16 @@ class NestedSettingsProxy:
     def get(self, key: str, default: Any = None) -> Any:
         """Handle nested_settings.get("key", default) calls."""
         if key not in self._data and self.parent_key == "tool_settings":
-            # For tool_settings, create empty tool settings when accessed via get()
-            self._data[key] = {}
-            # Also save to database
-            self.settings_manager.set_tool_setting(key, "initialized", True)
+            # For tool_settings, first try to load existing settings from database
+            existing_settings = self.settings_manager.get_tool_settings(key)
+            if existing_settings and not (len(existing_settings) == 1 and 'initialized' in existing_settings):
+                # Found real settings in database - use them
+                self._data[key] = existing_settings
+            else:
+                # No existing settings - create empty tool settings
+                self._data[key] = {}
+                # Save initialized marker to database
+                self.settings_manager.set_tool_setting(key, "initialized", True)
         
         value = self._data.get(key, default)
         

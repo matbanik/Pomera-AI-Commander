@@ -60,6 +60,17 @@ except ImportError:
         CURL_HISTORY_AVAILABLE = False
         print("cURL modules not available")
 
+# Import database-compatible settings manager
+try:
+    from core.database_curl_settings_manager import DatabaseCurlSettingsManager
+    DATABASE_CURL_SETTINGS_AVAILABLE = True
+except ImportError:
+    try:
+        from ..core.database_curl_settings_manager import DatabaseCurlSettingsManager
+        DATABASE_CURL_SETTINGS_AVAILABLE = True
+    except ImportError:
+        DATABASE_CURL_SETTINGS_AVAILABLE = False
+
 
 def get_system_encryption_key():
     """Generate encryption key based on system characteristics (same as AI Tools)"""
@@ -138,7 +149,7 @@ class CurlToolWidget:
     with the application's tool ecosystem.
     """
     
-    def __init__(self, parent, logger=None, send_to_input_callback=None, dialog_manager=None):
+    def __init__(self, parent, logger=None, send_to_input_callback=None, dialog_manager=None, db_settings_manager=None):
         """
         Initialize the cURL Tool widget.
         
@@ -147,21 +158,30 @@ class CurlToolWidget:
             logger: Logger instance for debugging
             send_to_input_callback: Callback function to send content to input tabs
             dialog_manager: DialogManager instance for configurable dialogs
+            db_settings_manager: DatabaseSettingsManager instance for database backend (optional)
         """
         self.parent = parent
         self.logger = logger or logging.getLogger(__name__)
         self.send_to_input_callback = send_to_input_callback
         self.dialog_manager = dialog_manager
+        self.db_settings_manager = db_settings_manager  # Store for database backend
         
-        # Initialize processor and settings manager
+        # Initialize processor
         if CURL_PROCESSOR_AVAILABLE:
             self.processor = CurlProcessor()
         else:
             self.processor = None
             self.logger.error("cURL Processor not available")
         
-        if CURL_SETTINGS_AVAILABLE:
+        # Initialize settings manager - prefer database backend if available
+        if db_settings_manager and DATABASE_CURL_SETTINGS_AVAILABLE:
+            # Use database-backed settings manager
+            self.settings_manager = DatabaseCurlSettingsManager(db_settings_manager, logger=self.logger)
+            self.logger.info("cURL Tool using database backend for settings")
+        elif CURL_SETTINGS_AVAILABLE:
+            # Fallback to JSON-based settings manager
             self.settings_manager = CurlSettingsManager(logger=self.logger)
+            self.logger.info("cURL Tool using JSON backend for settings (database not available)")
         else:
             self.settings_manager = None
             self.logger.error("cURL Settings Manager not available")
@@ -174,7 +194,7 @@ class CurlToolWidget:
         
         # Settings - load from settings manager or use defaults (must be loaded before history manager)
         if self.settings_manager:
-            self.settings = self.settings_manager.get_all_settings()
+            self.settings = self.settings_manager.load_settings()
         else:
             self.settings = {
                 "timeout": 30,
@@ -190,16 +210,26 @@ class CurlToolWidget:
                 "history_retention_days": 30
             }
         
+        # Initialize history manager - use database backend if available
         if CURL_HISTORY_AVAILABLE:
             max_history = self.settings.get("max_history_items", 100)
-            # Use centralized settings.json file
-            history_file = os.path.abspath("settings.json")
-            self.history_manager = CurlHistoryManager(
-                history_file=history_file, 
-                max_items=max_history, 
-                logger=self.logger
-            )
-            self.logger.debug(f"History manager initialized with file: {history_file}")
+            if db_settings_manager and DATABASE_CURL_SETTINGS_AVAILABLE:
+                # Use database backend for history (through DatabaseCurlSettingsManager)
+                self.history_manager = CurlHistoryManager(
+                    max_items=max_history, 
+                    logger=self.logger,
+                    db_settings_manager=db_settings_manager
+                )
+                self.logger.debug("History manager initialized with database backend")
+            else:
+                # Fallback to JSON file
+                history_file = os.path.abspath("settings.json")
+                self.history_manager = CurlHistoryManager(
+                    history_file=history_file, 
+                    max_items=max_history, 
+                    logger=self.logger
+                )
+                self.logger.debug(f"History manager initialized with file: {history_file}")
         else:
             self.history_manager = None
             self.logger.error("cURL History Manager not available")

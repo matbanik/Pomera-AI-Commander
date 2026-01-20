@@ -168,60 +168,144 @@ class BackupRecoveryManager:
             self.logger.error(f"Failed to create JSON backup: {e}")
             return None
     
-    def create_database_backup(self, connection_manager,
-                             backup_type: BackupType = BackupType.MANUAL,
-                             description: Optional[str] = None) -> Optional[BackupInfo]:
+    def _validate_database_for_backup(self, connection_manager) -> tuple[bool, str]:
         """
-        Create a database backup.
+        Validate that database has meaningful content before creating backup.
         
         Args:
             connection_manager: Database connection manager
+            
+        Returns:
+            Tuple of (is_valid, message)
+        """
+        try:
+            conn = connection_manager.get_connection()
+            
+            # Check that key tables exist and have content
+            critical_tables = ['core_settings', 'tool_settings']
+            total_records = 0
+            
+            for table in critical_tables:
+                try:
+                    cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = cursor.fetchone()[0]
+                    total_records += count
+                except sqlite3.Error:
+                    pass  # Table doesn't exist
+            
+            if total_records == 0:
+                return False, "Database appears empty - no records in core settings tables"
+            
+            # Check database file size
+            try:
+                from core.data_directory import get_database_path
+                db_path = get_database_path('settings.db')
+                if os.path.exists(db_path):
+                    file_size = os.path.getsize(db_path)
+                    if file_size < 100:  # Less than 100 bytes is essentially empty
+                        return False, f"Database file too small ({file_size} bytes) - appears corrupted or empty"
+            except (ImportError, OSError):
+                pass  # Can't check file size, continue anyway
+            
+            return True, f"Database validated: {total_records} records in core tables"
+            
+        except Exception as e:
+            self.logger.warning(f"Database validation error: {e}")
+            return False, f"Validation error: {e}"
+    
+    def create_database_backup(self, connection_manager,
+                             backup_type: BackupType = BackupType.MANUAL,
+                             description: Optional[str] = None,
+                             skip_validation: bool = False) -> Optional[BackupInfo]:
+        """
+        Create a database backup including both settings.db and notes.db.
+        
+        Creates a ZIP archive containing both database files for complete backup.
+        
+        Args:
+            connection_manager: Database connection manager for settings.db
             backup_type: Type of backup being created
             description: Optional description for the backup
+            skip_validation: If True, skip database validation (use for emergency backups)
             
         Returns:
             BackupInfo if successful, None otherwise
         """
+        import zipfile
+        
         try:
-            timestamp = datetime.now()
-            filename = self._generate_backup_filename("db", backup_type, timestamp)
-            filepath = self.backup_dir / filename
+            # Validate database content before backup (unless skipped for emergency)
+            if not skip_validation:
+                is_valid, validation_msg = self._validate_database_for_backup(connection_manager)
+                if not is_valid:
+                    self.logger.warning(f"Database validation failed: {validation_msg}")
+                    # For manual backups, refuse to create empty backup
+                    if backup_type == BackupType.MANUAL:
+                        self.logger.error("Refusing to create backup of empty/corrupted database. Use emergency backup if needed.")
+                        return None
+                else:
+                    self.logger.debug(validation_msg)
             
-            # Create database backup
-            success = connection_manager.backup_to_disk(str(filepath))
+            timestamp = datetime.now()
+            # Use .zip extension for the combined database archive
+            filename = self._generate_backup_filename("db", backup_type, timestamp)
+            archive_filename = f"{filename}.zip"
+            archive_path = self.backup_dir / archive_filename
+            
+            # Get database paths
+            try:
+                from core.data_directory import get_database_path
+                settings_db_path = get_database_path('settings.db')
+                notes_db_path = get_database_path('notes.db')
+            except ImportError:
+                settings_db_path = str(self.backup_dir.parent / 'settings.db')
+                notes_db_path = str(self.backup_dir.parent / 'notes.db')
+            
+            # First, create the settings.db backup using connection_manager
+            temp_settings_backup = self.backup_dir / f"temp_settings_{int(time.time())}.db"
+            success = connection_manager.backup_to_disk(str(temp_settings_backup))
             if not success:
-                self.logger.error("Database backup failed")
+                self.logger.error("Settings database backup failed")
                 return None
             
-            # Compress if enabled
-            if self.enable_compression:
-                compressed_path = f"{filepath}.gz"
-                with open(filepath, 'rb') as f_in:
-                    with gzip.open(compressed_path, 'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
+            try:
+                # Create ZIP archive containing both databases
+                compression = zipfile.ZIP_DEFLATED if self.enable_compression else zipfile.ZIP_STORED
+                with zipfile.ZipFile(archive_path, 'w', compression=compression) as zf:
+                    # Add settings.db from the temp backup
+                    zf.write(temp_settings_backup, 'settings.db')
+                    self.logger.debug(f"Added settings.db to backup archive")
+                    
+                    # Add notes.db if it exists
+                    if os.path.exists(notes_db_path):
+                        zf.write(notes_db_path, 'notes.db')
+                        self.logger.debug(f"Added notes.db to backup archive")
+                    else:
+                        self.logger.debug("notes.db not found - skipping")
                 
-                # Remove uncompressed file
-                os.remove(filepath)
-                filepath = compressed_path
-                format_type = BackupFormat.COMPRESSED
-            else:
-                format_type = BackupFormat.SQLITE
+            finally:
+                # Clean up temp file
+                if temp_settings_backup.exists():
+                    os.remove(temp_settings_backup)
+            
+            format_type = BackupFormat.COMPRESSED if self.enable_compression else BackupFormat.SQLITE
             
             # Get file size
-            size_bytes = os.path.getsize(filepath)
+            size_bytes = os.path.getsize(archive_path)
             
             # Calculate checksum
-            checksum = self._calculate_checksum(filepath)
+            checksum = self._calculate_checksum(str(archive_path))
             
-            # Get database info
+            # Get database info (includes both databases)
             db_info = self._get_database_info(connection_manager)
+            db_info['includes_notes_db'] = os.path.exists(notes_db_path)
             
             # Create backup info
             backup_info = BackupInfo(
                 timestamp=timestamp,
                 backup_type=backup_type,
                 format=format_type,
-                filepath=str(filepath),
+                filepath=str(archive_path),
                 size_bytes=size_bytes,
                 checksum=checksum,
                 description=description,
@@ -231,7 +315,7 @@ class BackupRecoveryManager:
             # Record backup
             self._record_backup(backup_info)
             
-            self.logger.info(f"Database backup created: {filepath}")
+            self.logger.info(f"Database backup created: {archive_path}")
             return backup_info
             
         except Exception as e:
@@ -281,6 +365,9 @@ class BackupRecoveryManager:
         """
         Restore database from a backup.
         
+        Handles both new ZIP format (contains settings.db and notes.db) and
+        legacy single-file formats (.db or .db.gz).
+        
         Args:
             backup_info: Information about the backup to restore
             connection_manager: Database connection manager
@@ -288,6 +375,8 @@ class BackupRecoveryManager:
         Returns:
             True if restore successful, False otherwise
         """
+        import zipfile
+        
         try:
             filepath = backup_info.filepath
             
@@ -301,35 +390,82 @@ class BackupRecoveryManager:
                 if current_checksum != backup_info.checksum:
                     self.logger.warning(f"Backup checksum mismatch: {filepath}")
             
-            # Prepare restore file
-            restore_path = filepath
-            if backup_info.format == BackupFormat.COMPRESSED:
-                # Decompress to temporary file
-                temp_path = self.backup_dir / f"temp_restore_{int(time.time())}.db"
-                with gzip.open(filepath, 'rb') as f_in:
-                    with open(temp_path, 'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
-                restore_path = str(temp_path)
+            # Determine backup format
+            is_zip_archive = filepath.endswith('.zip')
+            is_gzip = filepath.endswith('.gz') and not is_zip_archive
+            
+            # Get database paths
+            try:
+                from core.data_directory import get_database_path
+                notes_db_path = get_database_path('notes.db')
+            except ImportError:
+                notes_db_path = str(self.backup_dir.parent / 'notes.db')
+            
+            temp_dir = self.backup_dir / f"temp_restore_{int(time.time())}"
+            temp_dir.mkdir(exist_ok=True)
             
             try:
-                # Restore database
-                success = connection_manager.restore_from_disk(restore_path)
-                
-                if success:
-                    self.logger.info(f"Database restored from backup: {filepath}")
+                if is_zip_archive:
+                    # New format: ZIP archive with both databases
+                    with zipfile.ZipFile(filepath, 'r') as zf:
+                        zf.extractall(temp_dir)
+                    
+                    # Restore settings.db
+                    temp_settings = temp_dir / 'settings.db'
+                    if temp_settings.exists():
+                        success = connection_manager.restore_from_disk(str(temp_settings))
+                        if not success:
+                            self.logger.error(f"Settings database restore failed: {filepath}")
+                            return False
+                        self.logger.info(f"Settings database restored from backup: {filepath}")
+                    else:
+                        self.logger.error(f"settings.db not found in backup archive: {filepath}")
+                        return False
+                    
+                    # Restore notes.db if present in backup
+                    temp_notes = temp_dir / 'notes.db'
+                    if temp_notes.exists():
+                        try:
+                            shutil.copy2(str(temp_notes), notes_db_path)
+                            self.logger.info(f"Notes database restored from backup: {filepath}")
+                        except Exception as e:
+                            self.logger.warning(f"Failed to restore notes.db: {e}")
+                            # Don't fail the whole restore if notes.db restore fails
+                    else:
+                        self.logger.debug("notes.db not present in backup archive")
+                    
+                elif is_gzip:
+                    # Legacy format: gzipped single database file
+                    temp_db = temp_dir / "settings.db"
+                    with gzip.open(filepath, 'rb') as f_in:
+                        with open(temp_db, 'wb') as f_out:
+                            shutil.copyfileobj(f_in, f_out)
+                    
+                    success = connection_manager.restore_from_disk(str(temp_db))
+                    if not success:
+                        self.logger.error(f"Database restore failed: {filepath}")
+                        return False
+                    self.logger.info(f"Database restored from legacy backup: {filepath}")
+                    
                 else:
-                    self.logger.error(f"Database restore failed: {filepath}")
+                    # Legacy format: plain database file
+                    success = connection_manager.restore_from_disk(filepath)
+                    if not success:
+                        self.logger.error(f"Database restore failed: {filepath}")
+                        return False
+                    self.logger.info(f"Database restored from legacy backup: {filepath}")
                 
-                return success
+                return True
                 
             finally:
-                # Clean up temporary file
-                if restore_path != filepath and os.path.exists(restore_path):
-                    os.remove(restore_path)
+                # Clean up temp directory
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir, ignore_errors=True)
             
         except Exception as e:
             self.logger.error(f"Failed to restore from database backup: {e}")
             return False
+
     
     def create_migration_backup(self, json_filepath: str) -> Optional[BackupInfo]:
         """
@@ -375,11 +511,12 @@ class BackupRecoveryManager:
         try:
             self.logger.info("Starting database repair procedure")
             
-            # Create emergency backup first
+            # Create emergency backup first (skip validation - we want to backup even if corrupted)
             emergency_backup = self.create_database_backup(
                 connection_manager,
                 BackupType.EMERGENCY,
-                "Emergency backup before repair"
+                "Emergency backup before repair",
+                skip_validation=True
             )
             
             if not emergency_backup:
@@ -1023,17 +1160,18 @@ class BackupRecoveryManager:
         return hash_md5.hexdigest()
     
     def _get_database_info(self, connection_manager) -> Dict[str, Any]:
-        """Get database information for backup metadata."""
+        """Get database information for backup metadata (includes both settings.db and notes.db)."""
+        import sqlite3
+        
+        table_counts = {}
+        
         try:
+            # Get settings.db table counts
             conn = connection_manager.get_connection()
+            settings_tables = ['core_settings', 'tool_settings', 'tab_content', 
+                     'performance_settings', 'font_settings', 'dialog_settings']
             
-            # Get table counts
-            table_counts = {}
-            tables = ['core_settings', 'tool_settings', 'tab_content', 
-                     'performance_settings', 'font_settings', 'dialog_settings',
-                     'notes', 'notes_fts']
-            
-            for table in tables:
+            for table in settings_tables:
                 try:
                     cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
                     count = cursor.fetchone()[0]
@@ -1041,15 +1179,40 @@ class BackupRecoveryManager:
                 except sqlite3.Error:
                     table_counts[table] = 0
             
-            return {
-                'data_type': 'sqlite_database',
-                'table_counts': table_counts,
-                'total_records': sum(table_counts.values())
-            }
-            
         except Exception as e:
-            self.logger.warning(f"Failed to get database info: {e}")
-            return {'data_type': 'sqlite_database', 'error': str(e)}
+            self.logger.warning(f"Failed to get settings.db info: {e}")
+        
+        # Get notes.db table counts (separate database file)
+        try:
+            from core.data_directory import get_database_path
+            notes_db_path = get_database_path('notes.db')
+            
+            if os.path.exists(notes_db_path):
+                notes_conn = sqlite3.connect(notes_db_path, timeout=5.0)
+                try:
+                    for table in ['notes', 'notes_fts']:
+                        try:
+                            cursor = notes_conn.execute(f"SELECT COUNT(*) FROM {table}")
+                            count = cursor.fetchone()[0]
+                            table_counts[table] = count
+                        except sqlite3.Error:
+                            table_counts[table] = 0
+                finally:
+                    notes_conn.close()
+            else:
+                table_counts['notes'] = 0
+                table_counts['notes_fts'] = 0
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to get notes.db info: {e}")
+            table_counts['notes'] = 0
+            table_counts['notes_fts'] = 0
+        
+        return {
+            'data_type': 'sqlite_database',
+            'table_counts': table_counts,
+            'total_records': sum(table_counts.values())
+        }
     
     def _record_backup(self, backup_info: BackupInfo) -> None:
         """Record backup in history."""

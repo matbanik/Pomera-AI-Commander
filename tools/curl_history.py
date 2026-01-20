@@ -46,26 +46,31 @@ class CurlHistoryManager:
     Manages request history persistence and organization for the cURL Tool.
     
     Handles:
-    - History file storage and loading
+    - History file storage and loading (JSON or database backend)
     - History item management (add, remove, search)
     - History cleanup and organization
     - Collections support
     """
     
     def __init__(self, history_file: str = "settings.json", 
-                 max_items: int = 100, logger=None):
+                 max_items: int = 100, logger=None, db_settings_manager=None):
         """
         Initialize the history manager.
         
         Args:
-            history_file: Path to the main settings file
+            history_file: Path to the main settings file (used if no db_settings_manager)
             max_items: Maximum number of history items to keep
             logger: Logger instance for debugging
+            db_settings_manager: DatabaseSettingsManager instance for database backend (optional)
         """
         self.history_file = history_file
         self.max_items = max_items
         self.logger = logger or logging.getLogger(__name__)
         self.tool_key = "cURL Tool"  # Key in tool_settings section
+        
+        # Database backend support
+        self.db_settings_manager = db_settings_manager
+        self.use_database = db_settings_manager is not None
         
         # History storage
         self.history: List[RequestHistoryItem] = []
@@ -73,6 +78,7 @@ class CurlHistoryManager:
         
         # Load history on initialization
         self.load_history()
+
     
     def add_request(self, method: str, url: str, headers: Dict[str, str] = None,
                    body: str = None, auth_type: str = "None", 
@@ -505,12 +511,34 @@ class CurlHistoryManager:
     
     def load_history(self) -> bool:
         """
-        Load history from centralized settings.json file.
+        Load history from database or settings.json file.
         
         Returns:
             True if successful
         """
         try:
+            if self.use_database and self.db_settings_manager:
+                # Load from database backend
+                curl_settings = self.db_settings_manager.get_tool_settings(self.tool_key)
+                if curl_settings:
+                    # Load history items
+                    self.history = []
+                    for item_data in curl_settings.get("history", []):
+                        try:
+                            item = RequestHistoryItem.from_dict(item_data)
+                            self.history.append(item)
+                        except Exception as e:
+                            self.logger.warning(f"Error loading history item: {e}")
+                    
+                    # Load collections
+                    self.collections = curl_settings.get("collections", {})
+                    
+                    self.logger.info(f"Loaded {len(self.history)} history items from database")
+                else:
+                    self.logger.info("No history found in database, starting with empty history")
+                return True
+            
+            # Fallback to JSON file
             if os.path.exists(self.history_file):
                 with open(self.history_file, 'r', encoding='utf-8') as f:
                     all_settings = json.load(f)
@@ -543,12 +571,24 @@ class CurlHistoryManager:
     
     def save_history(self) -> bool:
         """
-        Save history to centralized settings.json file.
+        Save history to database or settings.json file.
         
         Returns:
             True if successful
         """
         try:
+            if self.use_database and self.db_settings_manager:
+                # Save to database backend
+                history_data = [item.to_dict() for item in self.history]
+                self.db_settings_manager.set_tool_setting(self.tool_key, "history", history_data)
+                self.db_settings_manager.set_tool_setting(self.tool_key, "collections", self.collections)
+                self.db_settings_manager.set_tool_setting(self.tool_key, "history_last_updated", datetime.now().isoformat())
+                self.db_settings_manager.set_tool_setting(self.tool_key, "history_version", "1.0")
+                
+                self.logger.debug("History saved to database")
+                return True
+            
+            # Fallback to JSON file
             # Load existing settings file
             all_settings = {}
             if os.path.exists(self.history_file):

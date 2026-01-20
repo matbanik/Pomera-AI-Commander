@@ -458,7 +458,8 @@ class DiffViewerWidget:
 
     def show(self):
         """Show the diff viewer."""
-        self.diff_frame.grid(row=0, column=0, sticky="nsew", pady=5)
+        # Use row=1 (same as central_frame) to not cover search bar in row=0
+        self.diff_frame.grid(row=1, column=0, sticky="nsew", pady=5)
 
     def hide(self):
         """Hide the diff viewer."""
@@ -1658,14 +1659,6 @@ class DiffViewerSettingsWidget:
             variable=self.syntax_var,
             command=self._on_syntax_change
         ).pack(side=tk.LEFT, padx=(0, 8))
-        
-        ttk.Label(row2, text="|").pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(
-            row2, 
-            text="List Comparator", 
-            command=self._launch_list_comparator
-        ).pack(side=tk.LEFT, padx=5)
     
     def _on_option_change(self):
         """Handle option change."""

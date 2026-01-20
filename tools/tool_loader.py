@@ -9,9 +9,19 @@ Author: Pomera AI Commander Team
 
 import importlib
 import logging
+import threading
 from typing import Dict, Any, Optional, Callable, Type, List, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+
+# Optional rapidfuzz for fuzzy search
+try:
+    from rapidfuzz import fuzz, process
+    RAPIDFUZZ_AVAILABLE = True
+except ImportError:
+    fuzz = None
+    process = None
+    RAPIDFUZZ_AVAILABLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -68,12 +78,11 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
         description="Transform text case (uppercase, lowercase, title case, etc.)",
         available_flag="CASE_TOOL_MODULE_AVAILABLE"
     ),
-    "Find & Replace": ToolSpec(
-        name="Find & Replace",
+    "Find & Replace Text": ToolSpec(
+        name="Find & Replace Text",
         module_path="tools.find_replace",
         class_name="FindReplaceWidget",
         category=ToolCategory.CORE,
-        is_widget=True,
         description="Find and replace text with regex support",
         available_flag="FIND_REPLACE_MODULE_AVAILABLE"
     ),
@@ -83,7 +92,6 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
         class_name="DiffViewerWidget",
         widget_class="DiffViewerSettingsWidget",
         category=ToolCategory.CORE,
-        is_widget=True,
         description="Compare and view differences between texts",
         available_flag="DIFF_VIEWER_MODULE_AVAILABLE"
     ),
@@ -94,7 +102,6 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
         module_path="tools.ai_tools",
         class_name="AIToolsWidget",
         category=ToolCategory.AI,
-        is_widget=True,
         description="AI-powered text processing with multiple providers",
         available_flag="AI_TOOLS_AVAILABLE"
     ),
@@ -158,8 +165,8 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
     ),
     
     # Conversion Tools
-    "Base64 Tools": ToolSpec(
-        name="Base64 Tools",
+    "Base64 Encoder/Decoder": ToolSpec(
+        name="Base64 Encoder/Decoder",
         module_path="tools.base64_tools",
         class_name="Base64Tools",
         widget_class="Base64ToolsWidget",
@@ -334,6 +341,7 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
         module_path="tools.list_comparator",
         class_name="DiffApp",
         category=ToolCategory.UTILITY,
+        is_widget=True,  # Exclude from search - standalone widget
         description="Compare two lists and find differences",
         available_flag="LIST_COMPARATOR_MODULE_AVAILABLE"
     ),
@@ -367,6 +375,89 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
     ),
 }
 
+# These sub-tools appear as tabs within their parent tool
+PARENT_TOOLS = {
+    "AI Tools": [
+        # Tab order from UI screenshot
+        "Google AI",
+        "Vertex AI",
+        "Azure AI",
+        "Anthropic AI",
+        "OpenAI",
+        "Cohere AI",
+        "HuggingFace AI",
+        "Groq AI",
+        "OpenRouterAI",
+        "LM Studio",
+        "AWS Bedrock",
+    ],
+    "Extraction Tools": [
+        "Email Extraction",
+        "HTML Tool", 
+        "Regex Extractor",
+        "URL Link Extractor",
+    ],
+    "Generator Tools": [
+        # Tab order: Strong Password | Repeating Text | Lorem Ipsum | UUID/GUID | Random Email | ASCII Art | Hash | Slug
+        "Strong Password Generator",
+        "Repeating Text Generator",
+        "Lorem Ipsum Generator",
+        "UUID/GUID Generator",
+        "Random Email Generator",
+        "ASCII Art Generator",
+        "Hash Generator",
+        "Slug Generator",
+    ],
+    "Line Tools": [
+        # Tab order from line_tools.py
+        "Remove Duplicates",
+        "Remove Empty Lines",
+        "Add Line Numbers",
+        "Remove Line Numbers",
+        "Reverse Lines",
+        "Shuffle Lines",
+    ],
+    "Markdown Tools": [
+        # Tab order from markdown_tools.py
+        "Strip Markdown",
+        "Extract Links",
+        "Extract Headers",
+        "Table to CSV",
+        "Format Table",
+    ],
+    "Sorter Tools": [
+        # Tab order from sorter_tools.py
+        "Number Sorter",
+        "Alphabetical Sorter",
+    ],
+    "Text Wrapper": [
+        # Tab order from text_wrapper.py
+        "Word Wrap",
+        "Justify Text",
+        "Prefix/Suffix",
+        "Indent Text",
+        "Quote Text",
+    ],
+    "Translator Tools": [
+        # Tab order from translator_tools.py
+        "Morse Code Translator",
+        "Binary Code Translator",
+    ],
+    "Whitespace Tools": [
+        # Tab order from whitespace_tools.py
+        "Trim Lines",
+        "Remove Extra Spaces",
+        "Tabs/Spaces Converter",
+        "Normalize Line Endings",
+    ],
+}
+
+# Reverse lookup: sub-tool -> parent
+SUB_TOOL_PARENTS = {
+    sub: parent
+    for parent, subs in PARENT_TOOLS.items()
+    for sub in subs
+}
 
 class ToolLoader:
     """
@@ -588,6 +679,75 @@ class ToolLoader:
             if spec.category == category and self.is_available(name)
         ]
     
+    def get_processing_tools(self) -> List[str]:
+        """
+        Get list of available text processing tools (excludes standalone widgets).
+        
+        This filters out tools like Notes Widget, MCP Manager that are 
+        standalone windows rather than text processing tools.
+        
+        Returns:
+            List of processing tool names
+        """
+        return [
+            name for name, spec in self._specs.items()
+            if self.is_available(name) and not spec.is_widget
+        ]
+    
+    def get_processing_tools_by_category(self, category: ToolCategory) -> List[str]:
+        """
+        Get processing tools in a specific category (excludes standalone widgets).
+        
+        Args:
+            category: Tool category
+            
+        Returns:
+            List of processing tool names in that category
+        """
+        return [
+            name for name, spec in self._specs.items()
+            if spec.category == category and self.is_available(name) and not spec.is_widget
+        ]
+    
+    def get_grouped_tools(self) -> List[Tuple[str, bool]]:
+        """
+        Get processing tools grouped with parent-child relationships.
+        
+        Returns tools sorted alphabetically, with sub-tools appearing
+        immediately after their parent tool.
+        
+        Returns:
+            List of tuples: (tool_name, is_sub_tool)
+            is_sub_tool is True for tools that belong under a parent
+        """
+        # Get all processing tools (excludes widgets)
+        all_tools = set(self.get_processing_tools())
+        
+        # Build result with grouping
+        result: List[Tuple[str, bool]] = []
+        processed = set()
+        
+        # Sort main tools alphabetically
+        main_tools = sorted([t for t in all_tools if t not in SUB_TOOL_PARENTS])
+        
+        for tool in main_tools:
+            if tool in processed:
+                continue
+            
+            # Add the main tool
+            result.append((tool, False))
+            processed.add(tool)
+            
+            # If this is a parent, add all its children (they're virtual sub-tools for tabs)
+            if tool in PARENT_TOOLS:
+                children = PARENT_TOOLS[tool]
+                for child in children:
+                    if child not in processed:
+                        result.append((child, True))
+                        processed.add(child)
+        
+        return result
+    
     def get_tool_spec(self, tool_name: str) -> Optional[ToolSpec]:
         """
         Get the specification for a tool.
@@ -657,6 +817,86 @@ class ToolLoader:
         self._widget_classes.clear()
         logger.debug("Tool loader cache cleared")
     
+    def search_tools(
+        self,
+        query: str,
+        limit: int = 10,
+        include_unavailable: bool = False
+    ) -> List[Tuple[str, int, 'ToolCategory']]:
+        """
+        Fuzzy search tools by name and description.
+        
+        Uses rapidfuzz for fuzzy matching if available, otherwise falls back
+        to simple substring matching.
+        
+        Args:
+            query: Search query string
+            limit: Maximum number of results to return
+            include_unavailable: Whether to include unavailable tools
+            
+        Returns:
+            List of tuples: (tool_name, match_score, category)
+            Score is 0-100, higher is better match
+        """
+        if not query:
+            # Return all tools sorted alphabetically
+            tools = self.get_available_tools() if not include_unavailable else list(self._specs.keys())
+            return [(name, 100, self._specs[name].category) for name in sorted(tools)[:limit]]
+        
+        # Build search data: name -> searchable text
+        search_data = {}
+        for name, spec in self._specs.items():
+            if not include_unavailable and not self.is_available(name):
+                continue
+            # Combine name and description for searching
+            search_text = f"{name} {spec.description}"
+            search_data[name] = search_text
+        
+        if not search_data:
+            return []
+        
+        results: List[Tuple[str, int, ToolCategory]] = []
+        
+        if RAPIDFUZZ_AVAILABLE and process is not None:
+            # Use rapidfuzz for proper fuzzy matching
+            matches = process.extract(
+                query,
+                search_data,
+                scorer=fuzz.WRatio,
+                limit=limit
+            )
+            
+            for match in matches:
+                tool_name = match[2]  # Key from dict
+                score = int(match[1])  # Score 0-100
+                if score >= 30:  # Minimum relevance threshold
+                    category = self._specs[tool_name].category
+                    results.append((tool_name, score, category))
+        else:
+            # Fallback to simple substring matching
+            query_lower = query.lower()
+            for name, search_text in search_data.items():
+                text_lower = search_text.lower()
+                if query_lower in text_lower:
+                    # Score based on position and exact match
+                    if name.lower() == query_lower:
+                        score = 100
+                    elif name.lower().startswith(query_lower):
+                        score = 90
+                    elif query_lower in name.lower():
+                        score = 80
+                    else:
+                        score = 60  # Match in description only
+                    
+                    category = self._specs[name].category
+                    results.append((name, score, category))
+            
+            # Sort by score descending, then name ascending
+            results.sort(key=lambda x: (-x[1], x[0]))
+            results = results[:limit]
+        
+        return results
+
     def get_legacy_flags(self) -> Dict[str, bool]:
         """
         Get legacy availability flags for backwards compatibility.
@@ -671,26 +911,33 @@ class ToolLoader:
         return flags
 
 
-# Global instance
+# Global instance with thread-safe initialization
 _tool_loader: Optional[ToolLoader] = None
+_tool_loader_lock = threading.Lock()
 
 
 def get_tool_loader() -> ToolLoader:
     """
-    Get the global tool loader instance.
+    Get the global tool loader instance (thread-safe).
+    
+    Uses double-checked locking pattern to ensure thread safety
+    while minimizing lock contention after initialization.
     
     Returns:
         Global ToolLoader instance
     """
     global _tool_loader
     if _tool_loader is None:
-        _tool_loader = ToolLoader()
+        with _tool_loader_lock:
+            # Double-check after acquiring lock
+            if _tool_loader is None:
+                _tool_loader = ToolLoader()
     return _tool_loader
 
 
 def init_tool_loader(tool_specs: Optional[Dict[str, ToolSpec]] = None) -> ToolLoader:
     """
-    Initialize the global tool loader.
+    Initialize the global tool loader (thread-safe).
     
     Args:
         tool_specs: Optional custom tool specifications
@@ -699,12 +946,13 @@ def init_tool_loader(tool_specs: Optional[Dict[str, ToolSpec]] = None) -> ToolLo
         Initialized ToolLoader
     """
     global _tool_loader
-    _tool_loader = ToolLoader(tool_specs)
+    with _tool_loader_lock:
+        _tool_loader = ToolLoader(tool_specs)
     return _tool_loader
 
 
 def reset_tool_loader() -> None:
-    """Reset the global tool loader."""
+    """Reset the global tool loader (thread-safe)."""
     global _tool_loader
-    _tool_loader = None
-
+    with _tool_loader_lock:
+        _tool_loader = None

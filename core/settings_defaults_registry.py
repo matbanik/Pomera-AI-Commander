@@ -833,6 +833,14 @@ class SettingsDefaultsRegistry:
                     "description": "Error messages for critical issues (cannot be disabled)",
                     "examples": ["File not found", "Network error", "Invalid configuration"]
                 }
+            },
+            # UI Layout Settings for tool search and collapsible panels
+            "ui_layout": {
+                "options_panel_collapsed": False,
+                "search_bar_collapsed": False,
+                "favorite_tools": [],
+                "recent_tools": [],
+                "recent_tools_max": 10
             }
         }
     

@@ -324,8 +324,9 @@ class MigrationManager:
         """
         try:
             with self.connection_manager.transaction() as conn:
-                # Clear existing data
-                self._clear_all_tables(conn)
+                # NOTE: Do NOT clear tables - use INSERT OR REPLACE for upsert semantics
+                # The _clear_all_tables() call was removed because it caused data loss
+                # when save_settings() was called with incomplete/empty data
                 
                 # Migrate core settings
                 self._migrate_core_settings(conn, json_data)
@@ -432,7 +433,7 @@ class MigrationManager:
                 serialized_value = self.converter.serialize_value(value)
                 
                 conn.execute(
-                    "INSERT INTO core_settings (key, value, data_type) VALUES (?, ?, ?)",
+                    "INSERT OR REPLACE INTO core_settings (key, value, data_type) VALUES (?, ?, ?)",
                     (key, serialized_value, data_type)
                 )
     
@@ -454,7 +455,7 @@ class MigrationManager:
                     serialized_value = self.converter.serialize_value(value)
                     
                     conn.execute(
-                        "INSERT INTO tool_settings (tool_name, setting_path, setting_value, data_type) VALUES (?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO tool_settings (tool_name, setting_path, setting_value, data_type) VALUES (?, ?, ?, ?)",
                         (tool_name, setting_path, serialized_value, data_type)
                     )
             else:
@@ -463,7 +464,7 @@ class MigrationManager:
                 serialized_value = self.converter.serialize_value(tool_config)
                 
                 conn.execute(
-                    "INSERT INTO tool_settings (tool_name, setting_path, setting_value, data_type) VALUES (?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO tool_settings (tool_name, setting_path, setting_value, data_type) VALUES (?, ?, ?, ?)",
                     (tool_name, 'value', serialized_value, data_type)
                 )
     
@@ -480,7 +481,7 @@ class MigrationManager:
             input_tabs = json_data['input_tabs']
             for i, content in enumerate(input_tabs):
                 conn.execute(
-                    "INSERT INTO tab_content (tab_type, tab_index, content) VALUES (?, ?, ?)",
+                    "INSERT OR REPLACE INTO tab_content (tab_type, tab_index, content) VALUES (?, ?, ?)",
                     ('input', i, content or '')
                 )
         
@@ -489,7 +490,7 @@ class MigrationManager:
             output_tabs = json_data['output_tabs']
             for i, content in enumerate(output_tabs):
                 conn.execute(
-                    "INSERT INTO tab_content (tab_type, tab_index, content) VALUES (?, ?, ?)",
+                    "INSERT OR REPLACE INTO tab_content (tab_type, tab_index, content) VALUES (?, ?, ?)",
                     ('output', i, content or '')
                 )
     
@@ -511,7 +512,7 @@ class MigrationManager:
                     serialized_value = self.converter.serialize_value(value)
                     
                     conn.execute(
-                        "INSERT INTO performance_settings (category, setting_key, setting_value, data_type) VALUES (?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO performance_settings (category, setting_key, setting_value, data_type) VALUES (?, ?, ?, ?)",
                         (category, setting_key, serialized_value, data_type)
                     )
             else:
@@ -520,7 +521,7 @@ class MigrationManager:
                 serialized_value = self.converter.serialize_value(settings)
                 
                 conn.execute(
-                    "INSERT INTO performance_settings (category, setting_key, setting_value, data_type) VALUES (?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO performance_settings (category, setting_key, setting_value, data_type) VALUES (?, ?, ?, ?)",
                     (category, 'value', serialized_value, data_type)
                 )
     
@@ -539,7 +540,7 @@ class MigrationManager:
                     serialized_value = self.converter.serialize_value(value)
                     
                     conn.execute(
-                        "INSERT INTO font_settings (font_type, property, value, data_type) VALUES (?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO font_settings (font_type, property, value, data_type) VALUES (?, ?, ?, ?)",
                         (font_type, property_name, serialized_value, data_type)
                     )
     
@@ -560,7 +561,7 @@ class MigrationManager:
                     self.logger.debug(f"Inserting dialog setting: {category}.{property_name} = {value} (type: {data_type})")
                     
                     conn.execute(
-                        "INSERT INTO dialog_settings (category, property, value, data_type) VALUES (?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO dialog_settings (category, property, value, data_type) VALUES (?, ?, ?, ?)",
                         (category, property_name, serialized_value, data_type)
                     )
     

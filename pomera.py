@@ -494,6 +494,22 @@ except ImportError as e:
     WIDGET_CACHE_AVAILABLE = False
     print(f"Widget Cache not available: {e}")
 
+# Collapsible Panel import (UI redesign)
+try:
+    from core.collapsible_panel import CollapsiblePanel
+    COLLAPSIBLE_PANEL_AVAILABLE = True
+except ImportError as e:
+    COLLAPSIBLE_PANEL_AVAILABLE = False
+    print(f"Collapsible Panel not available: {e}")
+
+# Tool Search Widget import (UI redesign)
+try:
+    from core.tool_search_widget import ToolSearchPalette
+    TOOL_SEARCH_WIDGET_AVAILABLE = True
+except ImportError as e:
+    TOOL_SEARCH_WIDGET_AVAILABLE = False
+    print(f"Tool Search Widget not available: {e}")
+
 class AppConfig:
     """Configuration constants for the application."""
     DEFAULT_WINDOW_SIZE = "1200x900"
@@ -938,7 +954,8 @@ class PromeraAIApp(tk.Tk):
                 self.logger.info("Existing content found - skipping apply_tool to preserve loaded content")
         elif self.tool_var.get() == "Diff Viewer":
             self.central_frame.grid_remove()
-            self.diff_frame.grid(row=0, column=0, sticky="nsew", pady=5)
+            # Use row=1 (same as central_frame) to not cover search bar in row=0
+            self.diff_frame.grid(row=1, column=0, sticky="nsew", pady=5)
             self.update_tool_settings_ui()
             self.load_diff_viewer_content()
             self.run_diff_viewer()
@@ -960,6 +977,15 @@ class PromeraAIApp(tk.Tk):
         # Set up MCP Manager keyboard shortcut (Ctrl+M)
         if MCP_MANAGER_MODULE_AVAILABLE:
             self.bind_all("<Control-m>", lambda e: self.open_mcp_manager())
+        
+        # Set up Tool Search keyboard shortcut (Ctrl+K)
+        if TOOL_SEARCH_WIDGET_AVAILABLE:
+            self.bind_all("<Control-k>", self.focus_tool_search)
+        
+        # Set up Options Panel toggle shortcut (Ctrl+Shift+H)
+        if COLLAPSIBLE_PANEL_AVAILABLE:
+            self.bind_all("<Control-Shift-h>", self.toggle_options_panel)
+            self.bind_all("<Control-Shift-H>", self.toggle_options_panel)  # Windows needs uppercase
         
         # Set up window focus and minimize event handlers for visibility-aware updates
         if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
@@ -2193,11 +2219,17 @@ class PromeraAIApp(tk.Tk):
         
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
-        main_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)  # Central frame gets the weight
         main_frame.columnconfigure(0, weight=1)
+        
+        # Row 0: Search bar (below menu, above Input/Output)
+        self.top_search_frame = ttk.Frame(main_frame)
+        self.top_search_frame.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        self._create_top_search_bar(self.top_search_frame)
 
+        # Row 1: Central frame with Input/Output panels
         self.central_frame = ttk.Frame(main_frame, padding="10")
-        self.central_frame.grid(row=0, column=0, sticky="nsew", pady=5)
+        self.central_frame.grid(row=1, column=0, sticky="nsew", pady=5)
         self.central_frame.grid_columnconfigure(0, weight=1)
         self.central_frame.grid_columnconfigure(1, weight=1)
         self.central_frame.grid_rowconfigure(1, weight=1)
@@ -2210,12 +2242,13 @@ class PromeraAIApp(tk.Tk):
 
         self.create_diff_viewer(main_frame)
 
-        # Add separator
+        # Row 2: Separator
         separator = ttk.Separator(main_frame, orient='horizontal')
-        separator.grid(row=1, column=0, sticky="ew", pady=10)
+        separator.grid(row=2, column=0, sticky="ew", pady=10)
 
+        # Row 3: Tool options frame (collapsible)
         tool_frame = ttk.Frame(main_frame, padding="10")
-        tool_frame.grid(row=2, column=0, sticky="ew", pady=5)
+        tool_frame.grid(row=3, column=0, sticky="ew", pady=5)
         self.create_tool_widgets(tool_frame)
         
         # Setup context menus for all text widgets
@@ -3688,35 +3721,78 @@ class PromeraAIApp(tk.Tk):
             print(f"Filter text: {repr(self.output_filter_var.get())}")
         except Exception as e:
             print(f"Debug error: {e}")
-
-    def create_tool_widgets(self, parent):
-        """Creates widgets for the tool selection and settings section."""
+    
+    def _create_top_search_bar(self, parent):
+        """Create the top search bar (below menu, above Input/Output panels)."""
         self.tool_var = tk.StringVar(value=self.settings.get("selected_tool", "Case Tool"))
         
-        self.tool_options = [
-            "AI Tools", "Base64 Encoder/Decoder", "Case Tool", "Column Tools",
-            "Cron Tool", "Diff Viewer", "Email Header Analyzer", "Extraction Tools",
-            "Find & Replace Text", "Folder File Reporter", "Generator Tools",
-            "JSON/XML Tool", "Line Tools", "Markdown Tools",
-            "Number Base Converter", "Sorter Tools",
-            "String Escape Tool", "Text Statistics", "Text Wrapper", "Timestamp Converter",
-            "Translator Tools", "URL Parser", "Whitespace Tools"
-        ]
-        self.filtered_tool_options = self.tool_options.copy()
-        
-        # Create custom dropdown that opens upwards
-        self.tool_menu = ttk.Menubutton(parent, textvariable=self.tool_var, direction="above", width=25)
-        self.tool_menu.pack(side=tk.LEFT, padx=5)
-        
-        # Create the dropdown menu
-        self.tool_dropdown_menu = tk.Menu(self.tool_menu, tearoff=0)
-        self.tool_menu.config(menu=self.tool_dropdown_menu)
-        
-        # Populate the dropdown menu with all tools
-        self.update_tool_dropdown_menu()
+        # Use ToolSearchPalette if available
+        if TOOL_SEARCH_WIDGET_AVAILABLE and TOOL_LOADER_AVAILABLE and self.tool_loader:
+            self.tool_search_palette = ToolSearchPalette(
+                parent,
+                tool_loader=self.tool_loader,
+                on_tool_selected=self._on_palette_tool_selected,
+                settings=self.settings,
+                on_settings_change=self._on_ui_settings_change
+            )
+            self.tool_search_palette.pack(fill=tk.X, expand=True, padx=5)
+            self.tool_menu = self.tool_search_palette
+            self.tool_dropdown_menu = None
+            self.logger.info("Top search bar created with ToolSearchPalette")
+        else:
+            # Fallback: simple label
+            self.tool_search_palette = None
+            self.tool_menu = None
+            self.tool_dropdown_menu = None
+            ttk.Label(parent, text="Tool search not available").pack()
 
-        self.tool_settings_frame = ttk.Frame(parent)
-        self.tool_settings_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+
+    def create_tool_widgets(self, parent):
+        """Creates widgets for the tool options/settings section (bottom panel).
+        
+        Note: The search bar is now created separately by _create_top_search_bar()
+        at the top of the main layout.
+        """
+        # Get tool list for fallback
+        if TOOL_LOADER_AVAILABLE and self.tool_loader:
+            self.tool_options = self.tool_loader.get_available_tools()
+        else:
+            self.tool_options = [
+                "AI Tools", "Base64 Encoder/Decoder", "Case Tool", "Column Tools",
+                "Cron Tool", "Diff Viewer", "Email Header Analyzer", "Extraction Tools",
+                "Find & Replace Text", "Folder File Reporter", "Generator Tools",
+                "JSON/XML Tool", "Line Tools", "Markdown Tools",
+                "Number Base Converter", "Sorter Tools",
+                "String Escape Tool", "Text Statistics", "Text Wrapper", "Timestamp Converter",
+                "Translator Tools", "URL Parser", "Whitespace Tools"
+            ]
+        self.filtered_tool_options = list(self.tool_options)
+
+        # Tool settings panel (with collapsible wrapper if available)
+        if COLLAPSIBLE_PANEL_AVAILABLE:
+            # Get collapsed state from settings
+            ui_layout = self.settings.get("ui_layout", {})
+            initial_collapsed = ui_layout.get("options_panel_collapsed", False)
+            
+            # Create CollapsiblePanel to wrap tool settings
+            self.options_collapsible = CollapsiblePanel(
+                parent,
+                title="Tool Options",
+                collapsed=initial_collapsed,
+                on_state_change=self._on_options_panel_toggle
+            )
+            self.options_collapsible.pack(fill=tk.BOTH, expand=True, padx=5)
+            
+            # Tool settings go inside the collapsible panel's content
+            self.tool_settings_frame = ttk.Frame(self.options_collapsible.content_frame)
+            self.tool_settings_frame.pack(fill=tk.BOTH, expand=True)
+            
+            self.logger.info(f"Options panel wrapped in CollapsiblePanel (collapsed={initial_collapsed})")
+        else:
+            # Fallback: Tool settings frame without collapsible wrapper
+            self.tool_settings_frame = ttk.Frame(parent)
+            self.tool_settings_frame.pack(fill=tk.BOTH, expand=True, padx=5)
+            self.options_collapsible = None
         
         # Initialize Widget Cache for tool settings UI
         if WIDGET_CACHE_AVAILABLE:
@@ -3731,9 +3807,262 @@ class PromeraAIApp(tk.Tk):
             self.widget_cache = None
         
         self.update_tool_settings_ui()
+    
+    def _create_tool_search_palette(self, parent):
+        """Create the new ToolSearchPalette for tool selection."""
+        # Get UI layout settings
+        ui_layout = self.settings.get("ui_layout", {})
+        
+        self.tool_search_palette = ToolSearchPalette(
+            parent,
+            tool_loader=self.tool_loader,
+            on_tool_selected=self._on_palette_tool_selected,
+            settings=self.settings,
+            on_settings_change=self._on_ui_settings_change
+        )
+        # Pack to fill horizontally (top-center layout)
+        self.tool_search_palette.pack(fill=tk.BOTH, expand=True, padx=5)
+        
+        # For backwards compatibility, also keep a reference as tool_menu
+        self.tool_menu = self.tool_search_palette
+        self.tool_dropdown_menu = None  # Not used with palette
+        
+        self.logger.info("Tool Search Palette initialized with fuzzy search")
+    
+    def _create_legacy_tool_dropdown(self, parent):
+        """Create the legacy dropdown menu for tool selection (fallback)."""
+        # Create custom dropdown that opens upwards
+        self.tool_menu = ttk.Menubutton(parent, textvariable=self.tool_var, direction="above", width=25)
+        self.tool_menu.pack(side=tk.LEFT, padx=5)
+        
+        # Create the dropdown menu
+        self.tool_dropdown_menu = tk.Menu(self.tool_menu, tearoff=0)
+        self.tool_menu.config(menu=self.tool_dropdown_menu)
+        
+        # Populate the dropdown menu with all tools
+        self.update_tool_dropdown_menu()
+        
+        self.tool_search_palette = None  # Not available in legacy mode
+        self.logger.info("Using legacy tool dropdown (ToolSearchPalette not available)")
+    
+    # Sub-tools that should redirect to their parent category
+    SUB_TOOL_TO_PARENT = {
+        # AI Tools (11 sub-tools)
+        "Google AI": "AI Tools",
+        "Vertex AI": "AI Tools",
+        "Azure AI": "AI Tools",
+        "Anthropic AI": "AI Tools",
+        "OpenAI": "AI Tools",
+        "Cohere AI": "AI Tools",
+        "HuggingFace AI": "AI Tools",
+        "Groq AI": "AI Tools",
+        "OpenRouterAI": "AI Tools",
+        "LM Studio": "AI Tools",
+        "AWS Bedrock": "AI Tools",
+        # Generator Tools (8 sub-tools)
+        "Strong Password Generator": "Generator Tools",
+        "Repeating Text Generator": "Generator Tools",
+        "Lorem Ipsum Generator": "Generator Tools",
+        "UUID/GUID Generator": "Generator Tools",
+        "Random Email Generator": "Generator Tools",
+        "ASCII Art Generator": "Generator Tools",
+        "Hash Generator": "Generator Tools",
+        "Slug Generator": "Generator Tools",
+        # Extraction Tools (4 sub-tools)
+        "Email Extraction": "Extraction Tools",
+        "HTML Tool": "Extraction Tools",
+        "Regex Extractor": "Extraction Tools",
+        "URL Link Extractor": "Extraction Tools",
+        # Line Tools (6 sub-tools)
+        "Remove Duplicates": "Line Tools",
+        "Remove Empty Lines": "Line Tools",
+        "Add Line Numbers": "Line Tools",
+        "Remove Line Numbers": "Line Tools",
+        "Reverse Lines": "Line Tools",
+        "Shuffle Lines": "Line Tools",
+        # Markdown Tools (5 sub-tools)
+        "Strip Markdown": "Markdown Tools",
+        "Extract Links": "Markdown Tools",
+        "Extract Headers": "Markdown Tools",
+        "Table to CSV": "Markdown Tools",
+        "Format Table": "Markdown Tools",
+        # Sorter Tools (2 sub-tools)
+        "Number Sorter": "Sorter Tools",
+        "Alphabetical Sorter": "Sorter Tools",
+        # Text Wrapper (5 sub-tools)
+        "Word Wrap": "Text Wrapper",
+        "Justify Text": "Text Wrapper",
+        "Prefix/Suffix": "Text Wrapper",
+        "Indent Text": "Text Wrapper",
+        "Quote Text": "Text Wrapper",
+        # Translator Tools (2 sub-tools)
+        "Morse Code Translator": "Translator Tools",
+        "Binary Code Translator": "Translator Tools",
+        # Whitespace Tools (4 sub-tools)
+        "Trim Lines": "Whitespace Tools",
+        "Remove Extra Spaces": "Whitespace Tools",
+        "Tabs/Spaces Converter": "Whitespace Tools",
+        "Normalize Line Endings": "Whitespace Tools",
+        # Other sub-tools
+        "Word Frequency Counter": "Text Statistics",
+    }
+    
+    # Tab index within parent category for sub-tools (0-indexed)
+    # Based on actual tab order in UI from screenshot
+    SUB_TOOL_TAB_INDEX = {
+        # AI Tools tabs (11 tabs):
+        "Google AI": 0,
+        "Vertex AI": 1,
+        "Azure AI": 2,
+        "Anthropic AI": 3,
+        "OpenAI": 4,
+        "Cohere AI": 5,
+        "HuggingFace AI": 6,
+        "Groq AI": 7,
+        "OpenRouterAI": 8,
+        "LM Studio": 9,
+        "AWS Bedrock": 10,
+        # Generator Tools tabs (8 tabs):
+        "Strong Password Generator": 0,
+        "Repeating Text Generator": 1,
+        "Lorem Ipsum Generator": 2,
+        "UUID/GUID Generator": 3,
+        "Random Email Generator": 4,
+        "ASCII Art Generator": 5,
+        "Hash Generator": 6,
+        "Slug Generator": 7,
+        # Extraction Tools tabs (4 tabs):
+        "Email Extraction": 0,
+        "HTML Tool": 1,
+        "Regex Extractor": 2,
+        "URL Link Extractor": 3,
+        # Line Tools tabs (6 tabs):
+        "Remove Duplicates": 0,
+        "Remove Empty Lines": 1,
+        "Add Line Numbers": 2,
+        "Remove Line Numbers": 3,
+        "Reverse Lines": 4,
+        "Shuffle Lines": 5,
+        # Markdown Tools tabs (5 tabs):
+        "Strip Markdown": 0,
+        "Extract Links": 1,
+        "Extract Headers": 2,
+        "Table to CSV": 3,
+        "Format Table": 4,
+        # Sorter Tools tabs (2 tabs):
+        "Number Sorter": 0,
+        "Alphabetical Sorter": 1,
+        # Text Wrapper tabs (5 tabs):
+        "Word Wrap": 0,
+        "Justify Text": 1,
+        "Prefix/Suffix": 2,
+        "Indent Text": 3,
+        "Quote Text": 4,
+        # Translator Tools tabs (2 tabs):
+        "Morse Code Translator": 0,
+        "Binary Code Translator": 1,
+        # Whitespace Tools tabs (4 tabs):
+        "Trim Lines": 0,
+        "Remove Extra Spaces": 1,
+        "Tabs/Spaces Converter": 2,
+        "Normalize Line Endings": 3,
+    }
+    
+    def _on_palette_tool_selected(self, tool_name):
+        """Handle tool selection from the ToolSearchPalette."""
+        # Map sub-tools to their parent category
+        actual_tool = self.SUB_TOOL_TO_PARENT.get(tool_name, tool_name)
+        sub_tool_tab = self.SUB_TOOL_TAB_INDEX.get(tool_name)
+        
+        if actual_tool != tool_name:
+            self.logger.debug(f"Mapped sub-tool '{tool_name}' to parent '{actual_tool}' (tab {sub_tool_tab})")
+        
+        self.tool_var.set(actual_tool)
+        
+        # Auto-expand options panel if collapsed
+        if hasattr(self, 'options_collapsible') and self.options_collapsible:
+            if self.options_collapsible.collapsed:
+                self.options_collapsible.expand()
+                self.logger.debug("Auto-expanded options panel on tool select")
+        
+        self.on_tool_selected()
+        
+        # Schedule tab selection after UI updates (if sub-tool with tab index)
+        if sub_tool_tab is not None:
+            self.after(100, lambda: self._select_tool_tab(actual_tool, sub_tool_tab))
+    
+    def _select_tool_tab(self, tool_name: str, tab_index: int):
+        """Select a specific tab within a tool's tabbed interface."""
+        try:
+            # Recursively find notebooks in tool_settings_frame
+            def find_notebook(widget):
+                if isinstance(widget, ttk.Notebook):
+                    return widget
+                for child in widget.winfo_children():
+                    result = find_notebook(child)
+                    if result:
+                        return result
+                return None
+            
+            notebook = find_notebook(self.tool_settings_frame)
+            if notebook:
+                if 0 <= tab_index < notebook.index('end'):
+                    notebook.select(tab_index)
+                    self.logger.debug(f"Selected tab {tab_index} for {tool_name}")
+                else:
+                    self.logger.warning(f"Tab index {tab_index} out of range for {tool_name}")
+        except Exception as e:
+            self.logger.warning(f"Could not select tab {tab_index} for {tool_name}: {e}")
+    
+    def _on_ui_settings_change(self, settings_update):
+        """Handle UI settings change from ToolSearchPalette."""
+        try:
+            # Merge with existing settings
+            if "ui_layout" in settings_update:
+                current_layout = self.settings.get("ui_layout", {})
+                current_layout.update(settings_update["ui_layout"])
+                self.settings["ui_layout"] = current_layout
+                
+                # Save settings
+                if hasattr(self, 'db_settings_manager'):
+                    self.db_settings_manager.save_settings(self.settings)
+        except Exception as e:
+            self.logger.warning(f"Error saving UI settings: {e}")
+    
+    def _on_options_panel_toggle(self, collapsed: bool):
+        """Handle options panel toggle (save collapsed state to settings)."""
+        try:
+            current_layout = self.settings.get("ui_layout", {})
+            current_layout["options_panel_collapsed"] = collapsed
+            self.settings["ui_layout"] = current_layout
+            
+            # Save settings
+            if hasattr(self, 'db_settings_manager'):
+                self.db_settings_manager.save_settings(self.settings)
+            
+            self.logger.debug(f"Options panel collapsed: {collapsed}")
+        except Exception as e:
+            self.logger.warning(f"Error saving options panel state: {e}")
+    
+    def toggle_options_panel(self, event=None):
+        """Toggle the options panel visibility (Ctrl+Shift+H shortcut)."""
+        if hasattr(self, 'options_collapsible') and self.options_collapsible:
+            self.options_collapsible.toggle()
+            return "break"
+        return None
+    
+    def focus_tool_search(self, event=None):
+        """Focus the tool search entry (Ctrl+K shortcut)."""
+        if self.tool_search_palette:
+            self.tool_search_palette.focus_search()
+            return "break"
+        return None
 
     def update_tool_dropdown_menu(self):
         """Updates the tool dropdown menu with all available tools."""
+        if self.tool_dropdown_menu is None:
+            return  # Using ToolSearchPalette instead
+            
         # Clear existing menu items
         self.tool_dropdown_menu.delete(0, tk.END)
         
@@ -3827,7 +4156,8 @@ class PromeraAIApp(tk.Tk):
                 self.curl_tool_window, 
                 logger=self.logger,
                 send_to_input_callback=self.send_content_to_input_tab,
-                dialog_manager=self.dialog_manager
+                dialog_manager=self.dialog_manager,
+                db_settings_manager=getattr(self, 'db_settings_manager', None)
             )
             
             # Add context menus to cURL tool widgets
@@ -4455,8 +4785,8 @@ class PromeraAIApp(tk.Tk):
                 self.after(10, self.diff_viewer_widget.update_tab_labels)
                 self.diff_viewer_widget.run_comparison()
             else:
-                # Show placeholder when module not available
-                self.diff_frame.grid(row=0, column=0, sticky="nsew", pady=5)
+                # Show placeholder when module not available (row=1 same as central_frame)
+                self.diff_frame.grid(row=1, column=0, sticky="nsew", pady=5)
             self.update_tool_settings_ui()
         else:
             # Sync diff viewer content before switching away
@@ -4732,33 +5062,37 @@ class PromeraAIApp(tk.Tk):
         
         self._current_tool_ui = tool_name
         tool_settings = self.settings["tool_settings"].get(tool_name, {})
-
+        
+        # Use tool_settings_frame directly as parent
+        # Note: Centering was causing layout issues (e.g. Folder File Reporter cut off)
+        parent_frame = self.tool_settings_frame
+        
         if tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI", "HuggingFace AI", "Groq AI", "OpenRouterAI"]:
-            self.create_ai_provider_widgets(self.tool_settings_frame, tool_name)
+            self.create_ai_provider_widgets(parent_frame, tool_name)
         elif tool_name == "AI Tools":
-            self.create_ai_tools_widget(self.tool_settings_frame)
+            self.create_ai_tools_widget(parent_frame)
         elif tool_name == "Case Tool":
             if CASE_TOOL_MODULE_AVAILABLE and self.case_tool:
                 self.case_tool_ui = self.case_tool.create_ui(
-                    self.tool_settings_frame, 
+                    parent_frame, 
                     tool_settings,
                     on_setting_change_callback=self.on_tool_setting_change,
                     apply_tool_callback=self.apply_tool
                 )
             else:
-                ttk.Label(self.tool_settings_frame, text="Case Tool module not available").pack()
+                ttk.Label(parent_frame, text="Case Tool module not available").pack()
         elif tool_name == "Translator Tools":
-            self.create_translator_tools_widget(self.tool_settings_frame)
+            self.create_translator_tools_widget(parent_frame)
         elif tool_name == "Base64 Encoder/Decoder":
-            self.create_base64_tools_widget(self.tool_settings_frame)
+            self.create_base64_tools_widget(parent_frame)
         elif tool_name == "JSON/XML Tool":
-            self.create_jsonxml_tool_widget(self.tool_settings_frame)
+            self.create_jsonxml_tool_widget(parent_frame)
         elif tool_name == "Cron Tool":
-            self.create_cron_tool_widget(self.tool_settings_frame)
+            self.create_cron_tool_widget(parent_frame)
         elif tool_name == "Extraction Tools":
-            self.create_extraction_tools_widget(self.tool_settings_frame)
+            self.create_extraction_tools_widget(parent_frame)
         elif tool_name == "Sorter Tools":
-            self.create_sorter_tools_widget(self.tool_settings_frame)
+            self.create_sorter_tools_widget(parent_frame)
         elif tool_name == "Find & Replace Text":
             if FIND_REPLACE_MODULE_AVAILABLE and self.find_replace_widget:
                 # Set up callback for settings changes
@@ -4771,36 +5105,36 @@ class PromeraAIApp(tk.Tk):
                     self.input_notebook, self.output_notebook
                 )
                 # Create the widgets
-                self.find_replace_widget.create_widgets(self.tool_settings_frame, tool_settings)
+                self.find_replace_widget.create_widgets(parent_frame, tool_settings)
             else:
                 # Find & Replace module not available
-                ttk.Label(self.tool_settings_frame, text="Find & Replace module not available").pack()
+                ttk.Label(parent_frame, text="Find & Replace module not available").pack()
         elif tool_name == "Generator Tools":
-            self.create_generator_tools_widget(self.tool_settings_frame)
+            self.create_generator_tools_widget(parent_frame)
         elif tool_name == "URL Parser":
             if URL_PARSER_MODULE_AVAILABLE and self.url_parser:
                 tool_settings = self.settings["tool_settings"].get("URL Parser", {
                     "ascii_decode": True
                 })
                 self.url_parser_ui = self.url_parser.create_ui(
-                    self.tool_settings_frame, 
+                    parent_frame, 
                     tool_settings,
                     on_setting_change_callback=self.on_tool_setting_change,
                     apply_tool_callback=self.apply_tool
                 )
             else:
-                ttk.Label(self.tool_settings_frame, text="URL Parser module not available").pack()
+                ttk.Label(parent_frame, text="URL Parser module not available").pack()
         elif tool_name == "Diff Viewer":
             if DIFF_VIEWER_MODULE_AVAILABLE:
                 # Use the new modular settings widget
                 self.diff_settings_widget = DiffViewerSettingsWidget(
-                    self.tool_settings_frame, 
+                    parent_frame, 
                     self.diff_viewer_widget, 
                     self.on_tool_setting_change
                 )
             else:
                 # Module not available - show message
-                ttk.Label(self.tool_settings_frame, text="Diff Viewer module not available").pack(side=tk.LEFT, padx=10)
+                ttk.Label(parent_frame, text="Diff Viewer module not available").pack(side=tk.LEFT, padx=10)
         elif tool_name == "Email Extraction Tool":
             if EMAIL_EXTRACTION_MODULE_AVAILABLE and self.email_extraction_tool:
                 tool_settings = self.settings["tool_settings"].get("Email Extraction Tool", {
@@ -4810,13 +5144,13 @@ class PromeraAIApp(tk.Tk):
                     "only_domain": False
                 })
                 self.email_extraction_ui = self.email_extraction_tool.create_ui(
-                    self.tool_settings_frame, 
+                    parent_frame, 
                     tool_settings,
                     on_setting_change_callback=self.on_tool_setting_change,
                     apply_tool_callback=self.apply_tool
                 )
             else:
-                ttk.Label(self.tool_settings_frame, text="Email Extraction Tool module not available").pack()
+                ttk.Label(parent_frame, text="Email Extraction Tool module not available").pack()
         elif tool_name == "Email Header Analyzer":
             if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and self.email_header_analyzer:
                 tool_settings = self.settings["tool_settings"].get("Email Header Analyzer", {
@@ -4826,13 +5160,13 @@ class PromeraAIApp(tk.Tk):
                     "show_spam_score": True
                 })
                 self.email_header_analyzer_ui = self.email_header_analyzer.create_ui(
-                    self.tool_settings_frame, 
+                    parent_frame, 
                     tool_settings,
                     on_setting_change_callback=self.on_tool_setting_change,
                     apply_tool_callback=self.apply_tool
                 )
             else:
-                ttk.Label(self.tool_settings_frame, text="Email Header Analyzer module not available").pack()
+                ttk.Label(parent_frame, text="Email Header Analyzer module not available").pack()
         elif tool_name == "Folder File Reporter":
             if FOLDER_FILE_REPORTER_MODULE_AVAILABLE and self.folder_file_reporter:
                 tool_settings = self.settings["tool_settings"].get("Folder File Reporter", {
@@ -4840,29 +5174,29 @@ class PromeraAIApp(tk.Tk):
                     "last_output_folder": ""
                 })
                 self.folder_file_reporter.load_settings(tool_settings)
-                self.folder_file_reporter_ui = self.folder_file_reporter.create_ui(self.tool_settings_frame)
+                self.folder_file_reporter_ui = self.folder_file_reporter.create_ui(parent_frame)
             else:
-                ttk.Label(self.tool_settings_frame, text="Folder File Reporter module not available").pack()
+                ttk.Label(parent_frame, text="Folder File Reporter module not available").pack()
         elif tool_name == "Line Tools":
-            self.create_line_tools_widget(self.tool_settings_frame)
+            self.create_line_tools_widget(parent_frame)
         elif tool_name == "Whitespace Tools":
-            self.create_whitespace_tools_widget(self.tool_settings_frame)
+            self.create_whitespace_tools_widget(parent_frame)
         elif tool_name == "Text Statistics":
-            self.create_text_statistics_widget(self.tool_settings_frame)
+            self.create_text_statistics_widget(parent_frame)
         elif tool_name == "Markdown Tools":
-            self.create_markdown_tools_widget(self.tool_settings_frame)
+            self.create_markdown_tools_widget(parent_frame)
         elif tool_name == "String Escape Tool":
-            self.create_string_escape_tool_widget(self.tool_settings_frame)
+            self.create_string_escape_tool_widget(parent_frame)
         elif tool_name == "Number Base Converter":
-            self.create_number_base_converter_widget(self.tool_settings_frame)
+            self.create_number_base_converter_widget(parent_frame)
         elif tool_name == "Text Wrapper":
-            self.create_text_wrapper_widget(self.tool_settings_frame)
+            self.create_text_wrapper_widget(parent_frame)
         elif tool_name == "Slug Generator":
-            self.create_slug_generator_widget(self.tool_settings_frame)
+            self.create_slug_generator_widget(parent_frame)
         elif tool_name == "Column Tools":
-            self.create_column_tools_widget(self.tool_settings_frame)
+            self.create_column_tools_widget(parent_frame)
         elif tool_name == "Timestamp Converter":
-            self.create_timestamp_converter_widget(self.tool_settings_frame)
+            self.create_timestamp_converter_widget(parent_frame)
 
 
 
