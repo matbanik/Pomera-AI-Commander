@@ -5,7 +5,9 @@
     "main": "pomera_mcp_server.py",
     "bin": {
         "pomera-ai-commander": "./bin/pomera-ai-commander.js",
-        "pomera-mcp": "./bin/pomera-ai-commander.js"
+        "pomera-mcp": "./bin/pomera-ai-commander.js",
+        "pomera": "./bin/pomera.js",
+        "pomera-create-shortcut": "./bin/pomera-create-shortcut.js"
     },
     "scripts": {
         "start": "python pomera_mcp_server.py",

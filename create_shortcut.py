@@ -19,12 +19,15 @@ from pathlib import Path
 
 def get_package_dir() -> Path:
     """Get the pomera-ai-commander package directory."""
-    # First check if we're running from the package itself
+    # Get the directory where this script is located
     script_dir = Path(__file__).parent.resolve()
-    if (script_dir / "pomera.py").exists():
+    
+    # Check if we're already running from an npm installation
+    # (script_dir will be inside node_modules/pomera-ai-commander)
+    if "node_modules" in str(script_dir) and (script_dir / "pomera.py").exists():
         return script_dir
     
-    # Check npm global installation
+    # Check npm global installation paths
     npm_global = os.environ.get("APPDATA", "") or os.path.expanduser("~")
     if platform.system() == "Windows":
         npm_path = Path(npm_global) / "npm" / "node_modules" / "pomera-ai-commander"
@@ -35,8 +38,13 @@ def get_package_dir() -> Path:
         if not npm_path.exists():
             npm_path = Path.home() / ".npm-packages" / "lib" / "node_modules" / "pomera-ai-commander"
     
-    if npm_path.exists():
+    # Prefer npm installation if it exists
+    if npm_path.exists() and (npm_path / "pomera.py").exists():
         return npm_path
+    
+    # Fallback to script's directory (for pip install or direct run)
+    if (script_dir / "pomera.py").exists():
+        return script_dir
     
     return script_dir
 
