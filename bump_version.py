@@ -421,23 +421,46 @@ def main():
     prev_tag = get_previous_tag()
     commits = get_recent_commits(prev_tag) if prev_tag else get_recent_commits()
     
-    # Step 1: Create Git tag
+    # Step 1: Update package.json FIRST (before tag)
+    print("\n1. Updating npm package files...")
+    update_package_json(new_version)
+    update_package_lock(new_version)
+    
+    # Step 2: Commit package.json changes (so tag will include them)
+    print("\n2. Committing version changes...")
+    try:
+        subprocess.run(["git", "add", "package.json", "package-lock.json"], check=True)
+        result = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
+        if result.returncode != 0:  # There are staged changes
+            subprocess.run(
+                ["git", "commit", "-m", f"Bump version to {new_version}"],
+                check=True
+            )
+            print(f"  ✓ Committed package.json changes")
+        else:
+            print("  - No changes to commit")
+    except subprocess.CalledProcessError as e:
+        print(f"  ✗ Failed to commit: {e}")
+    
+    # Step 3: Create Git tag (now includes package.json update)
     if not create_git_tag(new_version):
         sys.exit(1)
     
-    # Step 2: Regenerate _version.py
+    # Step 4: Regenerate _version.py from the new tag
     if not regenerate_version_file():
         print("⚠️  Warning: Could not regenerate _version.py")
         print("   Run manually: pip install -e .")
     
-    # Step 3: Update package.json
-    print("\n3. Updating npm package files...")
-    update_package_json(new_version)
-    update_package_lock(new_version)
-    
-    # Step 4: Commit and push
-    if not git_commit_and_push(new_version):
-        print("⚠️  Warning: Git push failed, you may need to push manually")
+    # Step 5: Push commits and tags
+    print("\n5. Pushing to remote...")
+    try:
+        subprocess.run(["git", "push"], check=True)
+        print("  ✓ Pushed commits")
+        subprocess.run(["git", "push", "--tags"], check=True)
+        print("  ✓ Pushed tags")
+    except subprocess.CalledProcessError as e:
+        print(f"  ✗ Git push failed: {e}")
+        print("⚠️  Warning: You may need to push manually")
     
     print("-" * 40)
     print(f"\n✅ Version bumped to {new_version}")
