@@ -110,6 +110,16 @@ Pomera exposes 22 text processing tools via MCP. Configure your AI assistant:
 }
 ```
 
+> **💡 Tip:** If the simple command doesn't work, use the full path. Find it with:
+> ```bash
+> # For npm install:
+> npm root -g
+> # Then use: <result>/pomera-ai-commander/pomera_mcp_server.py
+>
+> # For pip install:
+> pip show pomera-ai-commander | grep Location
+> ```
+
 See the full [MCP Server Guide](docs/MCP_SERVER_GUIDE.md) for Antigravity, executable configs, and troubleshooting.
 
 ---
