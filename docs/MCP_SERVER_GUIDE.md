@@ -17,8 +17,8 @@ Configure AI assistants (Antigravity, Cursor, Claude Desktop) to use Pomera AI C
 ### Verify Installation
 
 ```bash
-# Python installation
-pomera-ai-commander --mcp-server --list-tools
+# Python/pip installation
+pomera-ai-commander --list-tools
 
 # Or if using npm
 pomera-mcp --list-tools
@@ -32,7 +32,7 @@ pomera-mcp --list-tools
 
 Antigravity uses a `mcp.json` file in your project root or home directory.
 
-**Option 1: Project-level configuration**
+**Option 1: Using pip-installed package (recommended)**
 
 Create `.antigravity/mcp.json` in your project root:
 
@@ -40,22 +40,20 @@ Create `.antigravity/mcp.json` in your project root:
 {
   "mcpServers": {
     "pomera": {
-      "command": "python",
-      "args": ["-m", "pomera_mcp_server"],
-      "env": {}
+      "command": "pomera-ai-commander"
     }
   }
 }
 ```
 
-**Option 2: Using the executable**
+**Option 2: Using Python module**
 
 ```json
 {
   "mcpServers": {
     "pomera": {
-      "command": "C:/path/to/pomera.exe",
-      "args": ["--mcp-server"]
+      "command": "python",
+      "args": ["-m", "pomera_mcp_server"]
     }
   }
 }
@@ -67,8 +65,7 @@ Create `.antigravity/mcp.json` in your project root:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-mcp",
-      "args": []
+      "command": "pomera-mcp"
     }
   }
 }
@@ -80,40 +77,38 @@ Create `.antigravity/mcp.json` in your project root:
 
 Cursor stores MCP configuration in `.cursor/mcp.json` in your project root.
 
-**Create `.cursor/mcp.json`:**
+**Using pip-installed package (recommended):**
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "pomera-ai-commander"
+    }
+  }
+}
+```
+
+**Using npm-installed package:**
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "pomera-mcp"
+    }
+  }
+}
+```
+
+**Using Python directly:**
 
 ```json
 {
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["C:/path/to/Pomera-AI-Commander/pomera.py", "--mcp-server"]
-    }
-  }
-}
-```
-
-**Using pip-installed package:**
-
-```json
-{
-  "mcpServers": {
-    "pomera": {
-      "command": "pomera-ai-commander",
-      "args": ["--mcp-server"]
-    }
-  }
-}
-```
-
-**Using the executable:**
-
-```json
-{
-  "mcpServers": {
-    "pomera": {
-      "command": "C:/path/to/pomera.exe",
-      "args": ["--mcp-server"]
+      "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"]
     }
   }
 }
@@ -131,27 +126,38 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Linux**: `~/.config/Claude/claude_desktop_config.json`
 
-**Configuration:**
+**Using pip-installed package (recommended):**
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "pomera-ai-commander"
+    }
+  }
+}
+```
+
+**Using npm-installed package:**
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "pomera-mcp"
+    }
+  }
+}
+```
+
+**Using Python directly:**
 
 ```json
 {
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["C:/path/to/Pomera-AI-Commander/pomera.py", "--mcp-server"]
-    }
-  }
-}
-```
-
-**Using the executable:**
-
-```json
-{
-  "mcpServers": {
-    "pomera": {
-      "command": "C:/path/to/pomera.exe",
-      "args": ["--mcp-server"]
+      "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"]
     }
   }
 }
@@ -286,7 +292,7 @@ Result: "550e8400-e29b-41d4-a716-446655440000"
    - Cursor: View → Output → MCP
    - Claude Desktop: Check console/developer tools
 2. **Verify JSON syntax**: Use a JSON validator
-3. **Test standalone**: Run `python pomera.py --mcp-server --list-tools`
+3. **Test standalone**: Run `pomera-ai-commander --list-tools`
 
 ### Permission errors (Windows)
 

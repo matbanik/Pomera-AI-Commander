@@ -271,13 +271,15 @@ Text manipulation tools and Notes exposed via MCP (excluding AI providers and cU
 
 ### Usage
 
-The MCP server can be started in two ways:
+The MCP server can be started in multiple ways:
 
-1. **Via `--mcp-server` flag** (recommended for production):
-   - For Python: `python pomera.py --mcp-server`
-   - For compiled exe: `pomera.exe --mcp-server`
+1. **Via pip-installed package (recommended)**:
+   - `pomera-ai-commander`
 
-2. **Via standalone script** (for development/testing):
+2. **Via npm-installed package**:
+   - `pomera-mcp`
+
+3. **Via standalone script** (for development/testing):
    - `python pomera_mcp_server.py`
 
 **Claude Desktop** (`claude_desktop_config.json`):
@@ -285,20 +287,30 @@ The MCP server can be started in two ways:
 {
   "mcpServers": {
     "pomera": {
-      "command": "python",
-      "args": ["C:/path/to/Pomera-AI-Commander/pomera.py", "--mcp-server"]
+      "command": "pomera-ai-commander"
     }
   }
 }
 ```
 
-For compiled executable:
+Using npm:
 ```json
 {
   "mcpServers": {
     "pomera": {
-      "command": "C:/path/to/pomera.exe",
-      "args": ["--mcp-server"]
+      "command": "pomera-mcp"
+    }
+  }
+}
+```
+
+Using Python directly:
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "python",
+      "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"]
     }
   }
 }
@@ -309,8 +321,7 @@ For compiled executable:
 {
   "mcpServers": {
     "pomera": {
-      "command": "python",
-      "args": ["C:/path/to/Pomera-AI-Commander/pomera.py", "--mcp-server"]
+      "command": "pomera-ai-commander"
     }
   }
 }
@@ -318,7 +329,7 @@ For compiled executable:
 
 **List available tools:**
 ```bash
-python pomera.py --mcp-server --list-tools
+pomera-ai-commander --list-tools
 ```
 
 **Server Persistence:**
@@ -332,3 +343,4 @@ python pomera.py --mcp-server --list-tools
 ## Next Steps
 
 See `MCP_TASKS.md` for the detailed implementation plan.
+
