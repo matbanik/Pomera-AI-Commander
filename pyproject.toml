@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pomera-ai-commander"
-version = "1.2.3"
+version = "1.2.4"
 description = "Text processing toolkit with 22 MCP tools for AI assistants - case transformation, encoding, hashing, text analysis, and notes management"
 readme = "README.md"
 license = {text = "MIT"}
@@ -102,7 +102,7 @@ profile = "black"
 line_length = 100
 
 [tool.mypy]
-python_version = "1.2.3"
+python_version = "1.2.4"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
