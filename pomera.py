@@ -1196,26 +1196,12 @@ class PromeraAIApp(tk.Tk):
         
         ttk.Label(main_frame, text="Pomera AI Commander", font=('TkDefaultFont', 14, 'bold')).pack(pady=(0, 10))
         
-        # Get current version - try pyproject.toml first (for local dev), then importlib.metadata
-        current_version = None
+        # Get current version from unified version module
         try:
-            # Try reading from pyproject.toml (when running from source)
-            import re
-            pyproject_path = Path(__file__).parent / "pyproject.toml"
-            if pyproject_path.exists():
-                content = pyproject_path.read_text()
-                match = re.search(r'version = "1.2.4"]+)"', content)
-                if match:
-                    current_version = match.group(1)
-        except Exception:
-            pass
-        
-        if not current_version:
-            try:
-                import importlib.metadata
-                current_version = importlib.metadata.version("pomera-ai-commander")
-            except Exception:
-                current_version = "1.2.4"
+            from pomera.version import __version__
+            current_version = __version__
+        except ImportError:
+            current_version = "unknown"
         
         # Detect OS for download link
         system = platform.system()
@@ -1353,8 +1339,12 @@ class PromeraAIApp(tk.Tk):
     
     def _show_about_dialog(self):
         """Show About dialog."""
-        # Version managed by bump_version.py script
-        version = "1.2.4"
+        # Version from unified version module (managed by setuptools_scm)
+        try:
+            from pomera.version import __version__
+            version = __version__
+        except ImportError:
+            version = "unknown"
         
         messagebox.showinfo(
             "About Pomera AI Commander",

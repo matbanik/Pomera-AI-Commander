@@ -1,118 +1,96 @@
 #!/usr/bin/env python3
 """
-Version Bump Script for Pomera AI Commander
+Version Bump Script for Pomera AI Commander (setuptools_scm version)
 
-Updates version in all relevant files:
-- pyproject.toml
-- package.json
-- pomera_mcp_server.py
-- pomera.py
+This script uses Git tags as the single source of truth for versioning.
+setuptools_scm reads the Git tag and generates pomera/_version.py during build.
+
+Workflow:
+1. Creates a Git tag (the source of truth)
+2. Regenerates _version.py via pip install -e .
+3. Updates package.json for npm compatibility
+4. Commits and pushes
 
 Usage:
-    python bump_version.py              # Interactive - prompts for version
-    python bump_version.py 1.2.3        # Direct - sets version to 1.2.3
-    python bump_version.py --patch      # Increment patch: 1.2.2 -> 1.2.3
-    python bump_version.py --minor      # Increment minor: 1.2.2 -> 1.3.0
-    python bump_version.py --major      # Increment major: 1.2.2 -> 2.0.0
+    python bump_version.py --patch      # 1.2.4 -> 1.2.5
+    python bump_version.py --minor      # 1.2.4 -> 1.3.0
+    python bump_version.py --major      # 1.2.4 -> 2.0.0
+    python bump_version.py 1.3.0        # Direct version
     
     # With --release flag to create GitHub release:
     python bump_version.py --patch --release
-    python bump_version.py 1.2.4 --release
+
+Previous version of this script updated multiple files with regex.
+This version uses Git tags + setuptools_scm for automatic version management.
 """
 
-import os
-import re
-import sys
-import json
 import subprocess
-import shutil
+import json
+import sys
+import os
 from pathlib import Path
-
-# Files to update with their version patterns
-VERSION_FILES = {
-    "pyproject.toml": r'version = "([^"]+)"',
-    "package.json": r'"version": "([^"]+)"',
-    "pomera_mcp_server.py": [
-        r'version="pomera-mcp-server ([^"]+)"',
-        r'server_version="([^"]+)"'
-    ],
-    "pomera.py": r'version = "([^"]+)"'  # Fallback version in About dialog
-}
-
-# Versioned files to stage for git
-GIT_FILES = [
-    "pyproject.toml",
-    "package.json",
-    "pomera_mcp_server.py",
-    "pomera.py"
-]
 
 
 def get_current_version() -> str:
-    """Get current version from pyproject.toml."""
-    pyproject = Path("pyproject.toml")
-    if not pyproject.exists():
-        print("Error: pyproject.toml not found. Run from project root.")
-        sys.exit(1)
+    """Get current version from latest Git tag."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip().lstrip('v')
+    except Exception:
+        pass
     
-    content = pyproject.read_text()
-    match = re.search(r'version = "([^"]+)"', content)
-    if match:
-        return match.group(1)
+    # Fallback: try reading from _version.py
+    try:
+        from pomera._version import __version__
+        return __version__
+    except ImportError:
+        pass
+    
     return "0.0.0"
 
 
 def bump_version(current: str, bump_type: str) -> str:
     """Bump version based on type (major, minor, patch)."""
-    parts = [int(x) for x in current.split(".")]
+    parts = [int(x) for x in current.split(".")[:3]]
     while len(parts) < 3:
         parts.append(0)
     
     if bump_type == "major":
-        parts[0] += 1
-        parts[1] = 0
-        parts[2] = 0
+        parts = [parts[0] + 1, 0, 0]
     elif bump_type == "minor":
-        parts[1] += 1
-        parts[2] = 0
+        parts = [parts[0], parts[1] + 1, 0]
     elif bump_type == "patch":
-        parts[2] += 1
+        parts = [parts[0], parts[1], parts[2] + 1]
     
     return ".".join(str(x) for x in parts)
 
 
-def update_file(filepath: str, patterns: list, new_version: str) -> bool:
-    """Update version in a file."""
-    path = Path(filepath)
-    if not path.exists():
-        print(f"  Warning: {filepath} not found, skipping")
+def update_package_json(version: str) -> bool:
+    """Update package.json version (for npm compatibility)."""
+    pkg_path = Path("package.json")
+    if not pkg_path.exists():
+        print(f"  Warning: package.json not found")
         return False
     
-    content = path.read_text(encoding='utf-8')
-    original = content
-    
-    if isinstance(patterns, str):
-        patterns = [patterns]
-    
-    for pattern in patterns:
-        # Create replacement with the new version
-        def replace_version(match):
-            full_match = match.group(0)
-            old_version = match.group(1)
-            return full_match.replace(old_version, new_version)
-        
-        content = re.sub(pattern, replace_version, content)
-    
-    if content != original:
-        path.write_text(content, encoding='utf-8')
-        print(f"  ✓ Updated {filepath}")
+    try:
+        with open(pkg_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        data["version"] = version
+        with open(pkg_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+            f.write('\n')  # Trailing newline
+        print(f"  ✓ Updated package.json to {version}")
         return True
-    else:
-        print(f"  - No changes in {filepath}")
+    except Exception as e:
+        print(f"  ✗ Failed to update package.json: {e}")
         return False
 
 
-def update_package_lock(new_version: str) -> bool:
+def update_package_lock(version: str) -> bool:
     """Update version in package-lock.json (first occurrence only)."""
     path = Path("package-lock.json")
     if not path.exists():
@@ -124,14 +102,14 @@ def update_package_lock(new_version: str) -> bool:
         
         # Update top-level version
         if data.get("version"):
-            data["version"] = new_version
+            data["version"] = version
         
         # Update packages[""].version (root package)
         if "packages" in data and "" in data["packages"]:
-            data["packages"][""]["version"] = new_version
+            data["packages"][""]["version"] = version
         
         with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, ensure_ascii=False)
         
         print(f"  ✓ Updated package-lock.json")
         return True
@@ -140,8 +118,92 @@ def update_package_lock(new_version: str) -> bool:
         return False
 
 
+def regenerate_version_file() -> bool:
+    """Regenerate pomera/_version.py via pip install -e ."""
+    print("\n2. Regenerating pomera/_version.py...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", ".", "--quiet"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print("  ✓ Regenerated pomera/_version.py from Git tag")
+            return True
+        else:
+            print(f"  ✗ pip install failed: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"  ✗ Failed to regenerate: {e}")
+        return False
+
+
+def create_git_tag(version: str) -> bool:
+    """Create an annotated Git tag."""
+    tag = f"v{version}"
+    print(f"\n1. Creating Git tag {tag}...")
+    
+    # Check if tag already exists
+    result = subprocess.run(
+        ["git", "tag", "-l", tag],
+        capture_output=True, text=True
+    )
+    if result.stdout.strip() == tag:
+        print(f"  ✗ Tag {tag} already exists. Delete it first with: git tag -d {tag}")
+        return False
+    
+    try:
+        subprocess.run(
+            ["git", "tag", "-a", tag, "-m", f"Release {tag}"],
+            check=True
+        )
+        print(f"  ✓ Created tag: {tag}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"  ✗ Failed to create tag: {e}")
+        return False
+
+
+def git_commit_and_push(version: str) -> bool:
+    """Commit package.json changes and push with tags."""
+    print("\n4. Committing and pushing...")
+    
+    try:
+        # Stage package files
+        subprocess.run(["git", "add", "package.json", "package-lock.json"], check=True)
+        
+        # Check if there are changes to commit
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            capture_output=True
+        )
+        
+        if result.returncode != 0:  # There are staged changes
+            subprocess.run(
+                ["git", "commit", "-m", f"Bump version to {version}"],
+                check=True
+            )
+            print(f"  ✓ Committed package.json changes")
+        else:
+            print("  - No changes to commit")
+        
+        # Push commits
+        subprocess.run(["git", "push"], check=True)
+        print("  ✓ Pushed commits")
+        
+        # Push tags
+        subprocess.run(["git", "push", "--tags"], check=True)
+        print("  ✓ Pushed tags")
+        
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"  ✗ Git operation failed: {e}")
+        return False
+
+
 def find_gh_cli() -> str:
     """Find the GitHub CLI executable."""
+    import shutil
+    
     # Check if gh is in PATH
     gh_path = shutil.which("gh")
     if gh_path:
@@ -192,15 +254,21 @@ def get_recent_commits(since_tag: str = None) -> list:
 
 
 def get_previous_tag() -> str:
-    """Get the most recent tag."""
+    """Get the most recent tag before HEAD."""
     try:
+        # Get all tags sorted by version
         result = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0"],
+            ["git", "tag", "--sort=-version:refname"],
             capture_output=True,
             text=True
         )
         if result.returncode == 0:
-            return result.stdout.strip()
+            tags = result.stdout.strip().split("\n")
+            # Return second tag (first is the one we just created)
+            if len(tags) >= 2:
+                return tags[1]
+            elif len(tags) == 1:
+                return tags[0]
         return None
     except Exception:
         return None
@@ -296,41 +364,10 @@ def create_github_release(version: str, release_notes: str) -> bool:
         return False
 
 
-def git_commit_and_tag(version: str, commit_message: str = None) -> bool:
-    """Commit changes, create tag, and push."""
-    tag = f"v{version}"
-    
-    if not commit_message:
-        commit_message = f"Bump version to {version}"
-    
-    try:
-        # Stage files
-        subprocess.run(["git", "add"] + GIT_FILES, check=True)
-        print("✓ Staged version files")
-        
-        # Commit
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
-        print(f"✓ Committed: {commit_message}")
-        
-        # Create tag
-        subprocess.run(["git", "tag", "-a", tag, "-m", f"Release {tag}"], check=True)
-        print(f"✓ Created tag: {tag}")
-        
-        # Push
-        subprocess.run(["git", "push"], check=True)
-        subprocess.run(["git", "push", "--tags"], check=True)
-        print("✓ Pushed to remote")
-        
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Git operation failed: {e}")
-        return False
-
-
 def main():
     current = get_current_version()
-    print(f"\nPomera Version Bump")
-    print(f"==================")
+    print(f"\nPomera Version Bump (setuptools_scm)")
+    print(f"====================================")
     print(f"Current version: {current}\n")
     
     # Parse arguments
@@ -371,75 +408,48 @@ def main():
             new_version = bump_version(current, "major")
         elif choice == "4":
             new_version = input("Enter new version: ").strip()
-        elif re.match(r"^\d+\.\d+\.\d+$", choice):
+        elif choice.replace(".", "").isdigit():
             new_version = choice
         else:
             print("Invalid choice")
             sys.exit(1)
     
-    print(f"\nUpdating to version: {new_version}")
+    print(f"Bumping to version: {new_version}")
     print("-" * 40)
     
-    # Update all files
-    updated_count = 0
-    for filepath, patterns in VERSION_FILES.items():
-        if update_file(filepath, patterns, new_version):
-            updated_count += 1
+    # Get previous tag for release notes BEFORE creating new tag
+    prev_tag = get_previous_tag()
+    commits = get_recent_commits(prev_tag) if prev_tag else get_recent_commits()
     
-    # Update package-lock.json
-    if update_package_lock(new_version):
-        updated_count += 1
+    # Step 1: Create Git tag
+    if not create_git_tag(new_version):
+        sys.exit(1)
+    
+    # Step 2: Regenerate _version.py
+    if not regenerate_version_file():
+        print("⚠️  Warning: Could not regenerate _version.py")
+        print("   Run manually: pip install -e .")
+    
+    # Step 3: Update package.json
+    print("\n3. Updating npm package files...")
+    update_package_json(new_version)
+    update_package_lock(new_version)
+    
+    # Step 4: Commit and push
+    if not git_commit_and_push(new_version):
+        print("⚠️  Warning: Git push failed, you may need to push manually")
     
     print("-" * 40)
-    print(f"\n✅ Updated {updated_count} files to version {new_version}")
+    print(f"\n✅ Version bumped to {new_version}")
     
-    if updated_count == 0:
-        print("No files were updated.")
-        return
-    
-    # Interactive mode: ask about git and release
+    # Interactive mode: ask about release
     if not create_release and len(sys.argv) == 1:
-        stage = input("\nStage and commit changes? (y/N): ").strip().lower()
-        if stage == "y":
-            commit_msg = input("Commit message (Enter for default): ").strip()
-            if not commit_msg:
-                commit_msg = f"Bump version to {new_version}"
-            
-            if git_commit_and_tag(new_version, commit_msg):
-                create_rel = input("\nCreate GitHub release? (y/N): ").strip().lower()
-                if create_rel == "y":
-                    create_release = True
-    
-    # Non-interactive with --release flag
-    elif create_release:
-        # Get previous tag and commits BEFORE creating new tag
-        prev_tag = get_previous_tag()
-        commits = get_recent_commits(prev_tag)
-        
-        commit_msg = f"Bump version to {new_version}"
-        if not git_commit_and_tag(new_version, commit_msg):
-            print("⚠️  Git operations failed, skipping release creation")
-            create_release = False
+        create_rel = input("\nCreate GitHub release? (y/N): ").strip().lower()
+        if create_rel == "y":
+            create_release = True
     
     # Create GitHub release
     if create_release:
-        # For interactive mode, get commits now (tag already created)
-        if len(sys.argv) == 1:
-            # In interactive mode, we need to get the second-to-last tag
-            prev_tag = get_previous_tag()  # This returns the new tag
-            # Get the tag before that
-            try:
-                result = subprocess.run(
-                    ["git", "tag", "--sort=-creatordate"],
-                    capture_output=True, text=True
-                )
-                tags = result.stdout.strip().split("\n")
-                if len(tags) >= 2:
-                    prev_tag = tags[1]  # Second tag (the previous one)
-                commits = get_recent_commits(prev_tag)
-            except Exception:
-                commits = []
-        
         release_notes = create_release_notes(commits)
         
         print("\n--- Release Notes Preview ---")

@@ -56,6 +56,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Import version from unified version module
+try:
+    from pomera.version import __version__
+except ImportError:
+    __version__ = "unknown"
+
 
 def main():
     """Main entry point for the Pomera MCP server."""
@@ -70,7 +76,7 @@ def main():
     parser.add_argument(
         "--version",
         action="version",
-        version="pomera-mcp-server 1.2.4"
+        version=f"pomera-mcp-server {__version__}"
     )
     parser.add_argument(
         "--list-tools",
@@ -160,7 +166,7 @@ def main():
     server = StdioMCPServer(
         tool_registry=registry,
         server_name="pomera-mcp-server",
-        server_version="1.2.4"
+        server_version=__version__
     )
     
     logger.info("Starting Pomera MCP Server...")
