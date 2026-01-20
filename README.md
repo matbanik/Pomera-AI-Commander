@@ -93,8 +93,7 @@ Pomera exposes 22 text processing tools via MCP. Configure your AI assistant:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-ai-commander",
-      "args": ["--mcp-server"]
+      "command": "pomera-ai-commander"
     }
   }
 }
@@ -105,8 +104,7 @@ Pomera exposes 22 text processing tools via MCP. Configure your AI assistant:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-ai-commander",
-      "args": ["--mcp-server"]
+      "command": "pomera-ai-commander"
     }
   }
 }
