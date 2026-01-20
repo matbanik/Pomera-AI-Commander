@@ -71,6 +71,23 @@ Create `.antigravity/mcp.json` in your project root:
 }
 ```
 
+**Option 4: Using full path (most reliable)**
+
+If the above options don't work, use the full path to the Python script:
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "python",
+      "args": ["C:/Users/YOUR_USER/AppData/Roaming/npm/node_modules/pomera-ai-commander/pomera_mcp_server.py"]
+    }
+  }
+}
+```
+
+> **Note:** Replace `YOUR_USER` with your Windows username. For pip installs, check `pip show pomera-ai-commander` for the location.
+
 ---
 
 ### Cursor
@@ -101,18 +118,20 @@ Cursor stores MCP configuration in `.cursor/mcp.json` in your project root.
 }
 ```
 
-**Using Python directly:**
+**Using full path (most reliable):**
 
 ```json
 {
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"]
+      "args": ["C:/Users/YOUR_USER/AppData/Roaming/npm/node_modules/pomera-ai-commander/pomera_mcp_server.py"]
     }
   }
 }
 ```
+
+> **Note:** Replace `YOUR_USER` with your Windows username.
 
 **Restart Cursor** after adding the configuration.
 
