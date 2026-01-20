@@ -1201,7 +1201,7 @@ class PromeraAIApp(tk.Tk):
             pyproject_path = Path(__file__).parent / "pyproject.toml"
             if pyproject_path.exists():
                 content = pyproject_path.read_text()
-                match = re.search(r'version = "([^"]+)"', content)
+                match = re.search(r'version = "1.2.3"]+)"', content)
                 if match:
                     current_version = match.group(1)
         except Exception:
@@ -1212,7 +1212,7 @@ class PromeraAIApp(tk.Tk):
                 import importlib.metadata
                 current_version = importlib.metadata.version("pomera-ai-commander")
             except Exception:
-                current_version = "Unknown"
+                current_version = "1.2.3"
         
         # Detect OS for download link
         system = platform.system()
@@ -1350,11 +1350,8 @@ class PromeraAIApp(tk.Tk):
     
     def _show_about_dialog(self):
         """Show About dialog."""
-        try:
-            import importlib.metadata
-            version = importlib.metadata.version("pomera-ai-commander")
-        except Exception:
-            version = "1.2.0"
+        # Version managed by bump_version.py script
+        version = "1.2.3"
         
         messagebox.showinfo(
             "About Pomera AI Commander",

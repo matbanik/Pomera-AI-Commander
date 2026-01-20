@@ -28,7 +28,8 @@ VERSION_FILES = {
     "pomera_mcp_server.py": [
         r'version="pomera-mcp-server ([^"]+)"',
         r'server_version="([^"]+)"'
-    ]
+    ],
+    "pomera.py": r'version = "([^"]+)"'  # Fallback version in About dialog
 }
 
 
@@ -188,7 +189,7 @@ def main():
     if updated_count > 0:
         stage = input("\nStage changes for git? (y/N): ").strip().lower()
         if stage == "y":
-            os.system("git add pyproject.toml package.json package-lock.json pomera_mcp_server.py")
+            os.system("git add pyproject.toml package.json package-lock.json pomera_mcp_server.py pomera.py")
             print("Changes staged for commit")
 
 

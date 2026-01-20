@@ -99,6 +99,33 @@ class NotesWidget:
             if conn:
                 conn.close()
     
+    def _sanitize_text(self, text: str) -> str:
+        """
+        Sanitize text by removing invalid UTF-8 surrogate characters.
+        
+        Lone surrogates (U+D800 to U+DFFF) are invalid in UTF-8 and cause
+        encoding errors when saving to the database. This can happen when
+        pasting content from the clipboard that contains malformed data.
+        
+        Args:
+            text: Input text that may contain invalid surrogates
+            
+        Returns:
+            Sanitized text safe for UTF-8 encoding and database storage
+        """
+        if not text:
+            return text
+        
+        try:
+            # This two-step process handles lone surrogates:
+            # 1. surrogatepass allows encoding surrogates (normally forbidden in UTF-8)
+            # 2. errors='replace' replaces invalid sequences with replacement char
+            sanitized = text.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+            return sanitized
+        except Exception:
+            # Fallback: manually filter out surrogate characters
+            return ''.join(c for c in text if not (0xD800 <= ord(c) <= 0xDFFF))
+    
     def init_database(self) -> None:
         """Initialize the SQLite database and Full-Text Search (FTS5) table."""
         try:
@@ -707,10 +734,12 @@ class NotesWidget:
                     row = conn.execute('SELECT * FROM notes WHERE id = ?', (self.current_item,)).fetchone()
                     if row:
                         now = datetime.now().isoformat()
+                        # Sanitize text to prevent UTF-8 surrogate errors
                         conn.execute('''
                             INSERT INTO notes (Created, Modified, Title, Input, Output)
                             VALUES (?, ?, ?, ?, ?)
-                        ''', (now, now, row['Title'], row['Input'], row['Output']))
+                        ''', (now, now, self._sanitize_text(row['Title']), 
+                              self._sanitize_text(row['Input']), self._sanitize_text(row['Output'])))
                         conn.commit()
                         self.perform_search(select_first=True)
                         self.logger.info(f"Duplicated note {self.current_item}")
@@ -788,9 +817,10 @@ class NotesWidget:
             return
         
         try:
-            title = self.title_entry.get() if hasattr(self, 'title_entry') else ""
-            input_content = self.input_display.get(1.0, tk.END).strip()
-            output_content = self.output_display.get(1.0, tk.END).strip()
+            # Sanitize text to prevent UTF-8 surrogate errors from clipboard paste
+            title = self._sanitize_text(self.title_entry.get() if hasattr(self, 'title_entry') else "")
+            input_content = self._sanitize_text(self.input_display.get(1.0, tk.END).strip())
+            output_content = self._sanitize_text(self.output_display.get(1.0, tk.END).strip())
             
             now = datetime.now().isoformat()
             
@@ -962,12 +992,17 @@ class NotesWidget:
             The ID of the created note, or None on error
         """
         try:
+            # Sanitize text to prevent UTF-8 surrogate errors
+            sanitized_title = self._sanitize_text(title)
+            sanitized_input = self._sanitize_text(input_content)
+            sanitized_output = self._sanitize_text(output_content)
+            
             now = datetime.now().isoformat()
             with self.get_db_connection() as conn:
                 cursor = conn.execute('''
                     INSERT INTO notes (Created, Modified, Title, Input, Output)
                     VALUES (?, ?, ?, ?, ?)
-                ''', (now, now, title, input_content, output_content))
+                ''', (now, now, sanitized_title, sanitized_input, sanitized_output))
                 note_id = cursor.lastrowid
                 conn.commit()
             

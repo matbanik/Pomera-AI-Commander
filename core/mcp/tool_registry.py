@@ -1868,13 +1868,41 @@ class ToolRegistry:
         conn.row_factory = sqlite3.Row
         return conn
     
+    def _sanitize_text(self, text: str) -> str:
+        """
+        Sanitize text by removing invalid UTF-8 surrogate characters.
+        
+        Lone surrogates (U+D800 to U+DFFF) are invalid in UTF-8 and cause
+        encoding errors. This function removes them while preserving valid content.
+        
+        Args:
+            text: Input text that may contain invalid surrogates
+            
+        Returns:
+            Sanitized text safe for UTF-8 encoding and database storage
+        """
+        if not text:
+            return text
+        
+        # Encode to UTF-8 with 'surrogatepass' to handle surrogates,
+        # then decode with 'replace' to replace invalid sequences
+        try:
+            # This two-step process handles lone surrogates:
+            # 1. surrogatepass allows encoding surrogates (normally forbidden in UTF-8)
+            # 2. errors='replace' replaces invalid sequences with replacement char
+            sanitized = text.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+            return sanitized
+        except Exception:
+            # Fallback: manually filter out surrogate characters
+            return ''.join(c for c in text if not (0xD800 <= ord(c) <= 0xDFFF))
+    
     def _handle_notes_save(self, args: Dict[str, Any]) -> str:
         """Handle saving a new note."""
         from datetime import datetime
         
-        title = args.get("title", "")
-        input_content = args.get("input_content", "")
-        output_content = args.get("output_content", "")
+        title = self._sanitize_text(args.get("title", ""))
+        input_content = self._sanitize_text(args.get("input_content", ""))
+        output_content = self._sanitize_text(args.get("output_content", ""))
         
         if not title:
             return "Error: Title is required"
@@ -2042,15 +2070,15 @@ class ToolRegistry:
             
             if "title" in args:
                 updates.append("Title = ?")
-                values.append(args["title"])
+                values.append(self._sanitize_text(args["title"]))
             
             if "input_content" in args:
                 updates.append("Input = ?")
-                values.append(args["input_content"])
+                values.append(self._sanitize_text(args["input_content"]))
             
             if "output_content" in args:
                 updates.append("Output = ?")
-                values.append(args["output_content"])
+                values.append(self._sanitize_text(args["output_content"]))
             
             if not updates:
                 conn.close()
@@ -2639,12 +2667,17 @@ class ToolRegistry:
             """Save operation to notes and return note_id."""
             try:
                 from datetime import datetime
+                # Sanitize text to prevent UTF-8 surrogate errors
+                sanitized_title = registry._sanitize_text(title)
+                sanitized_input = registry._sanitize_text(input_content)
+                sanitized_output = registry._sanitize_text(output_content)
+                
                 conn = registry._get_notes_connection()
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 cursor = conn.execute('''
                     INSERT INTO notes (Created, Modified, Title, Input, Output)
                     VALUES (?, ?, ?, ?, ?)
-                ''', (now, now, title, input_content, output_content))
+                ''', (now, now, sanitized_title, sanitized_input, sanitized_output))
                 note_id = cursor.lastrowid
                 conn.commit()
                 conn.close()
