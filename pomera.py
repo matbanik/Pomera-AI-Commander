@@ -626,14 +626,16 @@ class PromeraAISettingsManager:
     
     def get_pattern_library(self) -> List[Dict[str, str]]:
         """Get the regex pattern library."""
-        # Initialize pattern library if it doesn't exist
-        if "pattern_library" not in self.app.settings:
+        # Initialize pattern library if it doesn't exist OR is empty
+        existing = self.app.settings.get("pattern_library", None)
+        if not existing or len(existing) == 0:
             # Try to import and use the comprehensive pattern library
             try:
                 from core.regex_pattern_library import RegexPatternLibrary
                 library = RegexPatternLibrary()
                 self.app.settings["pattern_library"] = library._convert_to_settings_format()
-                self.app.logger.info(f"Loaded comprehensive pattern library with {len(self.app.settings['pattern_library'])} patterns")
+                pattern_count = len(self.app.settings.get("pattern_library", []))
+                self.app.logger.info(f"Loaded comprehensive pattern library with {pattern_count} patterns")
             except ImportError:
                 # Fallback to basic patterns if comprehensive library is not available
                 self.app.settings["pattern_library"] = [

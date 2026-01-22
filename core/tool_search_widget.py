@@ -73,6 +73,7 @@ class ToolSearchPalette(ttk.Frame):
         self._selected_index: int = 0
         self._popup: Optional[tk.Toplevel] = None
         self._popup_listbox: Optional[tk.Listbox] = None
+        self._closing: bool = False  # Flag to prevent re-opening during close
         
         self._create_widgets()
     
@@ -116,6 +117,9 @@ class ToolSearchPalette(ttk.Frame):
     
     def _on_search_change(self, *args) -> None:
         """Handle text changes in search entry (via StringVar trace)."""
+        # Don't show popup during close operation
+        if self._closing:
+            return
         # Show popup if not visible
         if not (self._popup and self._popup.winfo_exists()):
             self._show_popup()
@@ -164,6 +168,16 @@ class ToolSearchPalette(ttk.Frame):
         popup_frame = ttk.Frame(self._popup, relief="solid", borderwidth=1)
         popup_frame.pack(fill=tk.BOTH, expand=True)
         
+        # Header frame with title only
+        header_frame = ttk.Frame(popup_frame)
+        header_frame.pack(fill=tk.X, padx=2, pady=(2, 0))
+        
+        # Header label
+        ttk.Label(header_frame, text="Select Tool", font=("TkDefaultFont", 9, "bold")).pack(side=tk.LEFT, padx=5)
+        
+        # Separator under header
+        ttk.Separator(popup_frame, orient="horizontal").pack(fill=tk.X, padx=2, pady=2)
+        
         # Results listbox
         self._popup_listbox = tk.Listbox(
             popup_frame,
@@ -175,8 +189,16 @@ class ToolSearchPalette(ttk.Frame):
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(popup_frame, command=self._popup_listbox.yview)
-        scrollbar.place(relx=1.0, rely=0, relheight=1.0, anchor="ne")
+        scrollbar.place(relx=1.0, rely=0, relheight=0.85, anchor="ne")
         self._popup_listbox.configure(yscrollcommand=scrollbar.set)
+        
+        # Footer frame with close button at bottom right
+        footer_frame = ttk.Frame(popup_frame)
+        footer_frame.pack(fill=tk.X, padx=2, pady=(0, 2))
+        
+        # Close button (X) - positioned at bottom right
+        close_btn = ttk.Button(footer_frame, text="Close", width=8, command=self._close_and_select_default)
+        close_btn.pack(side=tk.RIGHT, padx=2)
         
         # Bind events
         self._popup_listbox.bind("<Double-Button-1>", self._on_listbox_select)
@@ -193,7 +215,7 @@ class ToolSearchPalette(ttk.Frame):
     SUB_TOOLS = {
         "Slug Generator", "Hash Generator", "ASCII Art Generator",
         "URL Link Extractor", "Regex Extractor", "Email Extraction",
-        "Word Frequency Counter", "HTML Tool",
+        "HTML Tool",
     }
     
     def _update_popup_list(self) -> None:
@@ -255,6 +277,16 @@ class ToolSearchPalette(ttk.Frame):
         if not query:
             return tools
         
+        query_lower = query.lower()
+        
+        # For very short queries (1-2 chars), use prefix matching only to avoid noise
+        if len(query) <= 2:
+            matches = [t for t in tools if t.lower().startswith(query_lower)]
+            if matches:
+                return matches
+            # Fallback to contains if no prefix matches
+            return [t for t in tools if query_lower in t.lower()]
+        
         if RAPIDFUZZ_AVAILABLE:
             search_data = {}
             for tool in tools:
@@ -267,11 +299,23 @@ class ToolSearchPalette(ttk.Frame):
                 search_data[tool] = search_text.lower()
             
             # Convert query to lowercase for case-insensitive search
-            results = process.extract(query.lower(), search_data, scorer=fuzz.WRatio, limit=15)
-            return [match[2] for match in results if match[1] >= 40]
+            # Threshold set to 50 to allow substring matches
+            results = process.extract(query_lower, search_data, scorer=fuzz.WRatio, limit=15)
+            fuzzy_matches = [match[2] for match in results if match[1] >= 50]
+            
+            # Also include any tools that contain the query as substring (ensures "URL" finds "URL Parser")
+            substring_matches = [t for t in tools if query_lower in t.lower()]
+            for tool in substring_matches:
+                if tool not in fuzzy_matches:
+                    fuzzy_matches.append(tool)
+            
+            # Prioritize exact prefix matches at the top
+            prefix_matches = [t for t in fuzzy_matches if t.lower().startswith(query_lower)]
+            other_matches = [t for t in fuzzy_matches if not t.lower().startswith(query_lower)]
+            
+            return prefix_matches + other_matches
         else:
             # Fallback substring matching
-            query_lower = query.lower()
             matches = [(t, t.lower().find(query_lower)) for t in tools if query_lower in t.lower()]
             matches.sort(key=lambda x: x[1])
             return [m[0] for m in matches]
@@ -360,6 +404,39 @@ class ToolSearchPalette(ttk.Frame):
         
         return "break"
     
+    def _close_and_select_default(self) -> None:
+        """Close popup and select default tool if no tool selected."""
+        # Set closing flag to prevent focus events from re-opening
+        self._closing = True
+        
+        # Destroy popup FIRST to prevent any refresh loops
+        if self._popup and self._popup.winfo_exists():
+            self._popup.destroy()
+        self._popup = None
+        self._popup_listbox = None
+        
+        # If no current tool, default to AI Tools
+        if not self._current_tool or self._current_tool == "":
+            self._current_tool = "AI Tools"
+            if self._on_tool_selected:
+                try:
+                    self._on_tool_selected(self._current_tool)
+                except Exception as e:
+                    logger.error(f"Error in on_tool_selected callback: {e}")
+        
+        # Set the search var to current tool (popup already destroyed, won't trigger refresh)
+        self._search_var.set(self._current_tool)
+        
+        # Remove focus from entry
+        self.winfo_toplevel().focus_set()
+        
+        # Reset closing flag after a delay
+        self.after(200, self._reset_closing_flag)
+    
+    def _reset_closing_flag(self) -> None:
+        """Reset the closing flag."""
+        self._closing = False
+    
     def _on_popup_focus_out(self, event=None) -> None:
         """Handle focus leaving popup."""
         # Delay to check if focus went to entry
@@ -372,6 +449,9 @@ class ToolSearchPalette(ttk.Frame):
     
     def _check_focus(self) -> None:
         """Check if focus is on entry or popup, hide if not."""
+        # Don't interfere during close operation
+        if self._closing:
+            return
         try:
             focused = self.focus_get()
             if focused not in (self.tool_entry, self._popup_listbox):

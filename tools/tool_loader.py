@@ -301,20 +301,13 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
     ),
     
     # Analysis Tools
-    "Word Frequency Counter": ToolSpec(
-        name="Word Frequency Counter",
-        module_path="tools.word_frequency_counter",
-        class_name="WordFrequencyCounter",
-        category=ToolCategory.ANALYSIS,
-        description="Count word frequencies in text",
-        available_flag="WORD_FREQUENCY_COUNTER_MODULE_AVAILABLE"
-    ),
+    # NOTE: Word Frequency Counter merged into Text Statistics (has "Word Frequency Counter" button)
     "Text Statistics": ToolSpec(
         name="Text Statistics",
         module_path="tools.text_statistics_tool",
         class_name="TextStatistics",
         category=ToolCategory.ANALYSIS,
-        description="Calculate text statistics (chars, words, lines)",
+        description="Text stats, character/word/line counts, word frequency",
         available_flag="TEXT_STATISTICS_MODULE_AVAILABLE"
     ),
     "Cron Tool": ToolSpec(

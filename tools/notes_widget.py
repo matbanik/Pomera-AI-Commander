@@ -716,9 +716,16 @@ class NotesWidget:
 • Search specific columns: Title:refactor OR Input:code.
 • Leave empty to show all records."""
         if self.dialog_manager:
-            self.dialog_manager.show_info("Search Help", help_text)
+            self.dialog_manager.show_info("Search Help", help_text, parent=self.parent)
         else:
             messagebox.showinfo("Search Help", help_text, parent=self.parent)
+        
+        # Return focus to Notes window after dialog closes
+        try:
+            self.parent.focus_force()
+            self.search_entry.focus_set()
+        except Exception:
+            pass  # Widget may not exist
     
     def new_note(self) -> None:
         """Create a new note."""

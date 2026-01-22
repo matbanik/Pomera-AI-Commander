@@ -53,9 +53,10 @@ class Base64Tools:
 class Base64ToolsWidget:
     """Widget for the Base64 Tools interface."""
     
-    def __init__(self, base64_tools):
+    def __init__(self, base64_tools=None):
         """Initialize the Base64ToolsWidget."""
-        self.base64_tools = base64_tools
+        # Create Base64Tools instance if not provided
+        self.base64_tools = base64_tools if base64_tools else Base64Tools()
         self.main_app = None
         
         # Variables for Base64 mode
@@ -102,8 +103,7 @@ class Base64ToolsWidget:
     def on_mode_change(self):
         """Handle mode change and save settings."""
         self.save_settings()
-        # Auto-process if there's input text
-        self.process_base64()
+        # Don't auto-process - wait for Process button click
     
     def process_base64(self):
         """Process the input text with Base64 encoding/decoding."""
