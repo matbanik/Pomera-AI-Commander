@@ -267,6 +267,26 @@ jobs:
       - name: Authenticate to MCP Registry
         run: ./mcp-publisher login github-oidc
         
+      - name: Wait for PyPI package availability
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "Waiting for PyPI to propagate version $VERSION..."
+          
+          # Retry up to 10 times with 30 second delays (5 minutes total)
+          for i in {1..10}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/pomera-ai-commander/$VERSION/json")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ PyPI package $VERSION is available!"
+              exit 0
+            fi
+            echo "Attempt $i/10: PyPI returned $HTTP_CODE, waiting 30 seconds..."
+            sleep 30
+          done
+          
+          echo "✗ PyPI package not available after 5 minutes"
+          exit 1
+        
       - name: Publish server to MCP Registry
         run: ./mcp-publisher publish
 
