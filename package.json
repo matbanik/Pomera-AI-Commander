@@ -1,5 +1,6 @@
 {
     "name": "pomera-ai-commander",
+    "mcpName": "io.github.matbanik/pomera",
     "version": "1.2.9",
     "description": "Text processing toolkit with 22 MCP tools for AI assistants - case transformation, encoding, hashing, text analysis, and notes management",
     "main": "pomera_mcp_server.py",
