@@ -308,8 +308,10 @@ class DatabaseSchemaManager:
             for index_sql in table_indexes:
                 # Extract index name from CREATE INDEX statement
                 parts = index_sql.split()
-                if len(parts) >= 5 and parts[0].upper() == "CREATE" and parts[1].upper() == "INDEX":
-                    index_name = parts[4]  # "CREATE INDEX IF NOT EXISTS index_name"
+                # "CREATE INDEX IF NOT EXISTS idx_name ON table(...)"
+                # parts: [0]=CREATE [1]=INDEX [2]=IF [3]=NOT [4]=EXISTS [5]=idx_name
+                if len(parts) >= 6 and parts[0].upper() == "CREATE" and parts[1].upper() == "INDEX":
+                    index_name = parts[5]  # After "CREATE INDEX IF NOT EXISTS"
                     expected_indexes.add(index_name)
         
         # Get existing indexes

@@ -91,7 +91,18 @@ class CurlSettingsManager:
             # Version and metadata
             "settings_version": "1.0",
             "last_updated": None,
-            "created_date": None
+            "created_date": None,
+            
+            # UI State Persistence (NEW - persist between restarts)
+            "last_url": "",
+            "last_method": "GET",
+            "last_headers": "",
+            "last_body": "",
+            "last_body_type": "None",
+            "last_auth_type": "None",
+            "last_auth_data": {},  # Encrypted auth tokens stored here
+            "last_complex_options": "",
+            "persist_ui_state": True  # User preference to persist UI state
         }
         
         # Current settings (loaded from file or defaults)

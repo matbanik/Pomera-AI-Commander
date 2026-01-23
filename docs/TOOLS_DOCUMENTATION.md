@@ -468,6 +468,25 @@ General-purpose utility tools:
   - **Options**: Input/output format selection, UTC/local time, custom formats, relative time
   - **Availability**: Always available
 
+### Web Tools (2 tools)
+
+Web-based content retrieval and search capabilities:
+
+- **Web Search**: Multi-engine web search with tabbed interface
+  - **Implementation**: Inline in `pomera.py` with database-backed API key storage
+  - **Engines**: DuckDuckGo (free, no key), Tavily (AI-optimized), Google Custom Search, Brave, SerpApi, Serper
+  - **Features**: Configurable results count, encrypted API key storage, per-engine settings
+  - **API Key Management**: Keys stored encrypted in database, configured via Tool Options panel
+  - **Usage**: Enter query in Input panel, select engine tab, click Search
+  - **Availability**: Always available (some engines require API keys)
+
+- **URL Content Reader**: Fetch and convert web pages to markdown
+  - **Implementation**: `tools/url_content_reader.py`
+  - **Features**: HTML to markdown conversion, main content extraction, configurable timeout
+  - **Options**: Extract main content only, custom timeout (5-120 seconds)
+  - **Output**: Clean markdown with links and images preserved
+  - **Availability**: Always available
+
 ## Tool Availability Summary
 
 ### Always Available (30+ tools)

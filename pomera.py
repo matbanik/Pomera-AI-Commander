@@ -510,6 +510,81 @@ except ImportError as e:
     TOOL_SEARCH_WIDGET_AVAILABLE = False
     print(f"Tool Search Widget not available: {e}")
 
+
+class StartupProfiler:
+    """
+    Startup profiling utility to diagnose slow initialization.
+    
+    Usage:
+        profiler = StartupProfiler()
+        profiler.start("Stage Name")
+        # ... do work ...
+        profiler.end("Stage Name")
+        profiler.summary()  # Prints timing report to console
+    """
+    
+    def __init__(self, enabled: bool = True):
+        self.enabled = enabled
+        self.stages: Dict[str, Dict[str, float]] = {}
+        self.order: List[str] = []
+        self._total_start = time.perf_counter()
+    
+    def start(self, stage_name: str) -> None:
+        """Start timing a stage."""
+        if not self.enabled:
+            return
+        self.stages[stage_name] = {"start": time.perf_counter(), "end": None}
+        if stage_name not in self.order:
+            self.order.append(stage_name)
+    
+    def end(self, stage_name: str) -> None:
+        """End timing a stage."""
+        if not self.enabled or stage_name not in self.stages:
+            return
+        self.stages[stage_name]["end"] = time.perf_counter()
+    
+    def duration(self, stage_name: str) -> float:
+        """Get duration of a completed stage in milliseconds."""
+        if stage_name not in self.stages:
+            return 0.0
+        stage = self.stages[stage_name]
+        if stage["end"] is None:
+            return 0.0
+        return (stage["end"] - stage["start"]) * 1000
+    
+    def summary(self) -> str:
+        """Print formatted timing summary to console and return as string."""
+        if not self.enabled:
+            return ""
+        
+        total_elapsed = (time.perf_counter() - self._total_start) * 1000
+        
+        lines = [
+            "\n" + "=" * 60,
+            "STARTUP PROFILING REPORT",
+            "=" * 60,
+        ]
+        
+        for stage_name in self.order:
+            duration_ms = self.duration(stage_name)
+            bar_length = min(int(duration_ms / 50), 30)  # 50ms per char, max 30
+            bar = "█" * bar_length
+            status = "SLOW" if duration_ms > 500 else ""
+            lines.append(f"  {stage_name:40} {duration_ms:7.1f}ms {bar} {status}")
+        
+        lines.append("-" * 60)
+        lines.append(f"  {'TOTAL':40} {total_elapsed:7.1f}ms")
+        lines.append("=" * 60 + "\n")
+        
+        report = "\n".join(lines)
+        print(report)
+        return report
+
+
+# Global startup profiler instance (enabled by default for diagnostics)
+_startup_profiler = StartupProfiler(enabled=True)
+
+
 class AppConfig:
     """Configuration constants for the application."""
     DEFAULT_WINDOW_SIZE = "1200x900"
@@ -789,6 +864,9 @@ class PromeraAIApp(tk.Tk):
         global DATABASE_SETTINGS_AVAILABLE
         super().__init__()
         
+        # Start profiling from here
+        _startup_profiler.start("Database/Settings Init")
+        
         # Record startup time for performance monitoring
         self.startup_time = time.time()
         
@@ -821,7 +899,8 @@ class PromeraAIApp(tk.Tk):
             "Base64 Encoder/Decoder", "Translator Tools", "Diff Viewer",
             "Line Tools", "Whitespace Tools", "Text Statistics", "Markdown Tools",
             "String Escape Tool", "Number Base Converter", "Text Wrapper",
-            "Column Tools", "Timestamp Converter"
+            "Column Tools", "Timestamp Converter",
+            "Web Search", "URL Reader"  # Manual search/fetch only on button click
         ]
 
         # CORRECTED ORDER: Load settings BEFORE setting up logging
@@ -866,9 +945,14 @@ class PromeraAIApp(tk.Tk):
                 self.settings = self.load_settings()
         else:
             self.settings = self.load_settings()
+        _startup_profiler.end("Database/Settings Init")
+        
+        _startup_profiler.start("Logging/Audio Setup")
         self.setup_logging()
         self.setup_audio()
+        _startup_profiler.end("Logging/Audio Setup")
         
+        _startup_profiler.start("DialogManager Init")
         # Initialize DialogManager BEFORE optimized components
         if DIALOG_MANAGER_AVAILABLE:
             self.dialog_settings_adapter = DialogSettingsAdapter(self)
@@ -927,10 +1011,19 @@ class PromeraAIApp(tk.Tk):
             self.logger.warning("Tool Loader not available")
 
         # Setup optimized components AFTER DialogManager is available
-        self.setup_optimized_components()
+        _startup_profiler.end("DialogManager Init")
         
+        _startup_profiler.start("Optimized Components")
+        self.setup_optimized_components()
+        _startup_profiler.end("Optimized Components")
+        
+        _startup_profiler.start("Create Widgets")
         self.create_widgets()
+        _startup_profiler.end("Create Widgets")
+        
+        _startup_profiler.start("Load Last State")
         self.load_last_state()
+        _startup_profiler.end("Load Last State")
         
         # Initialization complete - allow automatic processing
         self._initializing = False
@@ -989,6 +1082,11 @@ class PromeraAIApp(tk.Tk):
             self.bind_all("<Control-Shift-h>", self.toggle_options_panel)
             self.bind_all("<Control-Shift-H>", self.toggle_options_panel)  # Windows needs uppercase
         
+        # Set up Load Presets shortcut (Ctrl+Shift+P) - Reset tool settings to defaults
+        if SETTINGS_DEFAULTS_REGISTRY_AVAILABLE:
+            self.bind_all("<Control-Shift-p>", lambda e: self.show_load_presets_dialog())
+            self.bind_all("<Control-Shift-P>", lambda e: self.show_load_presets_dialog())
+        
         # Set up window focus and minimize event handlers for visibility-aware updates
         if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
             self.bind("<FocusIn>", self._on_window_focus_in)
@@ -1008,6 +1106,9 @@ class PromeraAIApp(tk.Tk):
         
         # Schedule background maintenance tasks
         self._schedule_maintenance_tasks()
+        
+        # Print startup profiling report
+        _startup_profiler.summary()
 
     def _schedule_maintenance_tasks(self):
         """Schedule periodic background maintenance tasks using Task Scheduler."""
@@ -1051,6 +1152,50 @@ class PromeraAIApp(tk.Tk):
         )
         
         self.logger.info("Background maintenance tasks scheduled (including auto-backup)")
+    
+    def show_load_presets_dialog(self):
+        """
+        Open the Load Presets dialog to reset tool settings to defaults.
+        
+        Accessible via Ctrl+Shift+P keyboard shortcut.
+        """
+        try:
+            from core.load_presets_dialog import LoadPresetsDialog
+            
+            # Get settings manager - prefer database settings manager
+            settings_manager = getattr(self, 'db_settings_manager', None)
+            if not settings_manager:
+                # Fallback to PromeraAISettingsManager
+                settings_manager = PromeraAISettingsManager(self)
+            
+            dialog = LoadPresetsDialog(
+                self, 
+                settings_manager, 
+                logger=self.logger,
+                dialog_manager=self.dialog_manager
+            )
+            dialog.show()
+            self.logger.info("Load Presets dialog opened")
+            
+        except ImportError as e:
+            self.logger.error(f"Could not load Load Presets dialog: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error(
+                    "Module Not Available",
+                    "Load Presets dialog is not available.\n"
+                    "Please ensure core/load_presets_dialog.py exists."
+                )
+            else:
+                messagebox.showerror(
+                    "Module Not Available",
+                    "Load Presets dialog is not available."
+                )
+        except Exception as e:
+            self.logger.error(f"Error opening Load Presets dialog: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Error", f"Failed to open dialog: {e}")
+            else:
+                messagebox.showerror("Error", f"Failed to open dialog: {e}")
     
     def _show_data_location_dialog(self):
         """Show the Data Location settings dialog."""
@@ -1869,6 +2014,9 @@ class PromeraAIApp(tk.Tk):
         self.settings["active_input_tab"] = self.input_notebook.index(self.input_notebook.select())
         self.settings["active_output_tab"] = self.output_notebook.index(self.output_notebook.select())
         
+        # Save current tool selection (including Diff Viewer)
+        self.settings["selected_tool"] = self.tool_var.get()
+        
         # Debug logging to track what's being saved
         non_empty_inputs = sum(1 for content in input_contents if content)
         non_empty_outputs = sum(1 for content in output_contents if content)
@@ -1878,9 +2026,19 @@ class PromeraAIApp(tk.Tk):
         if hasattr(self, 'db_settings_manager') and self.db_settings_manager:
             try:
                 # Database manager handles saving automatically through the proxy
-                # Force a backup to disk
-                self.db_settings_manager.connection_manager.backup_to_disk()
-                self.logger.info("Settings saved to database")
+                # Only backup to disk periodically (every 5 seconds max) to avoid performance issues
+                import time
+                current_time = time.time()
+                if not hasattr(self, '_last_disk_backup_time'):
+                    self._last_disk_backup_time = 0
+                
+                # Only force disk backup every 5 seconds to prevent freezing during typing
+                if current_time - self._last_disk_backup_time > 5.0:
+                    self.db_settings_manager.connection_manager.backup_to_disk()
+                    self._last_disk_backup_time = current_time
+                    self.logger.info("Settings saved to database")
+                else:
+                    self.logger.debug("Settings updated (disk backup deferred)")
             except Exception as e:
                 self._handle_error(e, "Saving to database", "Settings", 
                                    user_message="Failed to save settings to database, trying JSON fallback",
@@ -3082,6 +3240,10 @@ class PromeraAIApp(tk.Tk):
         
         file_menu.add_separator()
         
+        # Load Presets (reset tool settings to defaults)
+        if SETTINGS_DEFAULTS_REGISTRY_AVAILABLE:
+            file_menu.add_command(label="Load Presets...", command=self.show_load_presets_dialog, accelerator="Ctrl+Shift+P")
+        
         # Settings Backup and Recovery submenu
         if DATABASE_SETTINGS_AVAILABLE and hasattr(self, 'db_settings_manager'):
             backup_menu = tk.Menu(file_menu, tearoff=0)
@@ -3808,7 +3970,32 @@ class PromeraAIApp(tk.Tk):
         else:
             self.widget_cache = None
         
+        # Defer tool settings UI creation until after window is visible
+        # This makes startup feel faster by moving ~300ms of UI creation to after mainloop starts
+        self._tool_ui_initialized = False
+        self._show_tool_loading_placeholder()
+        self.after_idle(self._deferred_tool_settings_init)
+    
+    def _show_tool_loading_placeholder(self):
+        """Show lightweight placeholder while tool UI is loading."""
+        self._loading_label = ttk.Label(
+            self.tool_settings_frame, 
+            text="Loading tool options...",
+            font=("TkDefaultFont", 10, "italic"),
+            foreground="gray"
+        )
+        self._loading_label.pack(pady=20)
+    
+    def _deferred_tool_settings_init(self):
+        """Initialize tool settings UI after window is visible (faster perceived startup)."""
+        # Remove placeholder
+        if hasattr(self, '_loading_label') and self._loading_label.winfo_exists():
+            self._loading_label.destroy()
+        
+        # Now create the actual tool settings UI
+        self._tool_ui_initialized = True
         self.update_tool_settings_ui()
+        self.logger.info("Deferred tool settings UI initialization complete")
     
     def _create_tool_search_palette(self, parent):
         """Create the new ToolSearchPalette for tool selection."""
@@ -4489,17 +4676,9 @@ class PromeraAIApp(tk.Tk):
         ttk.Checkbutton(memory_frame, text="Enable advanced memory management", 
                        variable=self.memory_enabled_var).pack(anchor=tk.W)
         
-        memory_options = [
-            ("GC optimization", "gc_optimization", True),
-            ("Memory pool", "memory_pool", True),
-            ("Memory leak detection", "leak_detection", True)
-        ]
-        
-        self.memory_option_vars = {}
-        for text, key, default in memory_options:
-            var = tk.BooleanVar(value=memory_settings.get(key, default))
-            self.memory_option_vars[key] = var
-            ttk.Checkbutton(memory_frame, text=text, variable=var).pack(anchor=tk.W, padx=(20, 0))
+        # Note: GC optimization, memory pool, and leak detection options were removed
+        # as they are not currently implemented. Memory threshold is functional.
+        self.memory_option_vars = {}  # Keep for backwards compatibility
         
         # Memory threshold
         mem_threshold_frame = ttk.Frame(memory_frame)
@@ -4592,9 +4771,6 @@ class PromeraAIApp(tk.Tk):
                 },
                 "memory_management": {
                     "enabled": self.memory_enabled_var.get(),
-                    "gc_optimization": self.memory_option_vars["gc_optimization"].get(),
-                    "memory_pool": self.memory_option_vars["memory_pool"].get(),
-                    "leak_detection": self.memory_option_vars["leak_detection"].get(),
                     "memory_threshold_mb": int(self.memory_threshold_var.get())
                 },
                 "ui_optimizations": {
@@ -5199,8 +5375,10 @@ class PromeraAIApp(tk.Tk):
             self.create_column_tools_widget(parent_frame)
         elif tool_name == "Timestamp Converter":
             self.create_timestamp_converter_widget(parent_frame)
-
-
+        elif tool_name == "Web Search":
+            self.create_web_search_options(parent_frame)
+        elif tool_name == "URL Reader":
+            self.create_url_reader_options(parent_frame)
 
 
 
@@ -5319,6 +5497,510 @@ class PromeraAIApp(tk.Tk):
             self.cron_tool.apply_font_to_widgets((text_font_family, text_font_size))
         except:
             pass  # Continue if font application fails
+
+    def create_web_search_options(self, parent):
+        """Creates the Web Search tool options panel with tabbed interface like AI Tools."""
+        # Engine configuration: (display_name, engine_key, api_key_url, needs_api_key, needs_cse_id)
+        self.web_search_engines = [
+            ("DuckDuckGo", "duckduckgo", None, False, False),  # Free, no API key
+            ("Tavily", "tavily", "https://tavily.com/", True, False),
+            ("Google", "google", "https://programmablesearchengine.google.com/", True, True),  # Needs CSE ID
+            ("Brave", "brave", "https://brave.com/search/api/", True, False),
+            ("SerpApi", "serpapi", "https://serpapi.com/", True, False),
+            ("Serper", "serper", "https://serper.dev/", True, False),
+        ]
+        
+        # Create notebook for tabs
+        self.web_search_notebook = ttk.Notebook(parent)
+        self.web_search_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Track API key and settings vars per engine
+        self.web_search_api_vars = {}
+        self.web_search_cse_vars = {}  # For Google CSE ID
+        self.web_search_count_vars = {}
+        
+        for display_name, engine_key, api_url, needs_api_key, needs_cse_id in self.web_search_engines:
+            tab = ttk.Frame(self.web_search_notebook)
+            self.web_search_notebook.add(tab, text=display_name)
+            
+            # API Configuration row
+            api_frame = ttk.LabelFrame(tab, text="API Configuration", padding=5)
+            api_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            if needs_api_key:
+                # API Key field
+                ttk.Label(api_frame, text="API Key:").pack(side=tk.LEFT, padx=(5, 5))
+                api_var = tk.StringVar()
+                api_entry = ttk.Entry(api_frame, textvariable=api_var, width=30, show="*")
+                api_entry.pack(side=tk.LEFT, padx=5)
+                
+                # Load existing key
+                saved_key = self._load_web_search_api_key(engine_key)
+                if saved_key:
+                    api_var.set(saved_key)
+                
+                # Auto-save on focus out
+                api_entry.bind("<FocusOut>", lambda e, k=engine_key, v=api_var: self._save_web_search_api_key(k, v.get()))
+                self.web_search_api_vars[engine_key] = api_var
+                
+                # Get API Key button
+                get_key_btn = ttk.Button(
+                    api_frame, 
+                    text="Get API Key",
+                    command=lambda url=api_url: webbrowser.open_new(url)
+                )
+                get_key_btn.pack(side=tk.LEFT, padx=5)
+                
+                # Google needs CSE ID
+                if needs_cse_id:
+                    ttk.Label(api_frame, text="CSE ID:").pack(side=tk.LEFT, padx=(15, 5))
+                    cse_var = tk.StringVar()
+                    cse_entry = ttk.Entry(api_frame, textvariable=cse_var, width=20)
+                    cse_entry.pack(side=tk.LEFT, padx=5)
+                    
+                    # Load saved CSE ID
+                    saved_cse = self._get_web_search_setting(engine_key, "cse_id", "")
+                    if saved_cse:
+                        cse_var.set(saved_cse)
+                    
+                    cse_entry.bind("<FocusOut>", lambda e, k=engine_key, v=cse_var: self._save_web_search_setting(k, "cse_id", v.get()))
+                    self.web_search_cse_vars[engine_key] = cse_var
+                    
+                    # Get CSE ID button
+                    get_cse_btn = ttk.Button(
+                        api_frame,
+                        text="Get CSE ID",
+                        command=lambda: webbrowser.open_new("https://programmablesearchengine.google.com/controlpanel/all")
+                    )
+                    get_cse_btn.pack(side=tk.LEFT, padx=5)
+            else:
+                ttk.Label(api_frame, text="No API key required (free)", foreground="green").pack(side=tk.LEFT, padx=10)
+            
+            # Search Configuration row
+            config_frame = ttk.LabelFrame(tab, text="Search Configuration", padding=5)
+            config_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            # Result count
+            ttk.Label(config_frame, text="Results:").pack(side=tk.LEFT, padx=(5, 5))
+            saved_count = self._get_web_search_setting(engine_key, "count", 5)
+            count_var = tk.StringVar(value=str(saved_count))
+            count_spinbox = ttk.Spinbox(config_frame, from_=1, to=20, width=5, textvariable=count_var)
+            count_spinbox.pack(side=tk.LEFT, padx=5)
+            count_spinbox.bind("<FocusOut>", lambda e, k=engine_key, v=count_var: self._save_web_search_setting(k, "count", int(v.get())))
+            self.web_search_count_vars[engine_key] = count_var
+            
+            # Search button
+            search_btn = ttk.Button(
+                config_frame,
+                text="Search",
+                command=lambda k=engine_key: self._do_web_search(k)
+            )
+            search_btn.pack(side=tk.LEFT, padx=20)
+        
+        # Bind tab change to save current engine
+        self.web_search_notebook.bind("<<NotebookTabChanged>>", self._on_web_search_tab_changed)
+        
+        # Select previously active tab
+        active_engine = self.settings["tool_settings"].get("Web Search", {}).get("active_engine", "duckduckgo")
+        for i, (_, key, _, _, _) in enumerate(self.web_search_engines):
+            if key == active_engine:
+                self.web_search_notebook.select(i)
+                break
+    
+    def _load_web_search_api_key(self, engine_key):
+        """Load encrypted API key for a search engine."""
+        try:
+            from tools.ai_tools import decrypt_api_key
+            encrypted = self.settings["tool_settings"].get("Web Search", {}).get(f"{engine_key}_api_key", "")
+            if encrypted:
+                return decrypt_api_key(encrypted)
+        except Exception:
+            pass
+        return ""
+    
+    def _save_web_search_api_key(self, engine_key, api_key):
+        """Save encrypted API key for a search engine."""
+        try:
+            from tools.ai_tools import encrypt_api_key
+            if "Web Search" not in self.settings["tool_settings"]:
+                self.settings["tool_settings"]["Web Search"] = {}
+            if api_key:
+                self.settings["tool_settings"]["Web Search"][f"{engine_key}_api_key"] = encrypt_api_key(api_key)
+            else:
+                self.settings["tool_settings"]["Web Search"].pop(f"{engine_key}_api_key", None)
+            self.save_settings()
+        except Exception as e:
+            self.logger.error(f"Failed to save API key: {e}")
+    
+    def _get_web_search_setting(self, engine_key, setting, default):
+        """Get a search engine setting."""
+        return self.settings["tool_settings"].get("Web Search", {}).get(f"{engine_key}_{setting}", default)
+    
+    def _save_web_search_setting(self, engine_key, setting, value):
+        """Save a search engine setting."""
+        if "Web Search" not in self.settings["tool_settings"]:
+            self.settings["tool_settings"]["Web Search"] = {}
+        self.settings["tool_settings"]["Web Search"][f"{engine_key}_{setting}"] = value
+        self.save_settings()
+    
+    def _on_web_search_tab_changed(self, event=None):
+        """Save the currently active search engine tab."""
+        if hasattr(self, 'web_search_notebook'):
+            idx = self.web_search_notebook.index(self.web_search_notebook.select())
+            if idx < len(self.web_search_engines):
+                engine_key = self.web_search_engines[idx][1]
+                if "Web Search" not in self.settings["tool_settings"]:
+                    self.settings["tool_settings"]["Web Search"] = {}
+                self.settings["tool_settings"]["Web Search"]["active_engine"] = engine_key
+                self.save_settings()
+    
+    def _do_web_search(self, engine_key):
+        """Perform web search using the selected engine with inline implementations."""
+        # Get input text
+        current_tab_index = self.input_notebook.index(self.input_notebook.select())
+        active_input_tab = self.input_tabs[current_tab_index]
+        query = active_input_tab.text.get("1.0", tk.END).strip()
+        
+        if not query:
+            self.update_output_text("Please enter a search query in the Input panel.")
+            return
+        
+        # Get settings
+        count = int(self.web_search_count_vars.get(engine_key, tk.StringVar(value="5")).get())
+        
+        try:
+            # Inline search based on engine - uses API keys from settings
+            if engine_key == "duckduckgo":
+                results = self._search_duckduckgo(query, count)
+            elif engine_key == "tavily":
+                results = self._search_tavily(query, count)
+            elif engine_key == "google":
+                results = self._search_google(query, count)
+            elif engine_key == "brave":
+                results = self._search_brave(query, count)
+            elif engine_key == "serpapi":
+                results = self._search_serpapi(query, count)
+            elif engine_key == "serper":
+                results = self._search_serper(query, count)
+            else:
+                self.update_output_text(f"Unknown search engine: {engine_key}")
+                return
+            
+            if not results:
+                self.update_output_text(f"No results found for '{query}'")
+                return
+            
+            # Format results
+            lines = [f"Search Results ({engine_key.upper()}):", "=" * 50, ""]
+            for i, r in enumerate(results, 1):
+                lines.append(f"{i}. {r.get('title', 'No title')}")
+                snippet = r.get('snippet', '')[:200]
+                if len(r.get('snippet', '')) > 200:
+                    snippet += "..."
+                lines.append(f"   {snippet}")
+                lines.append(f"   URL: {r.get('url', 'N/A')}")
+                lines.append("")
+            
+            self.update_output_text("\n".join(lines))
+        except Exception as e:
+            self.update_output_text(f"Search error: {str(e)}")
+    
+    def _search_duckduckgo(self, query: str, count: int) -> list:
+        """Search DuckDuckGo using ddgs package (free, no API key)."""
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            return [{"title": "Error", "snippet": "DuckDuckGo requires: pip install ddgs", "url": ""}]
+        
+        try:
+            with DDGS() as ddgs:
+                results = []
+                for r in ddgs.text(query, max_results=count):
+                    results.append({
+                        "title": r.get("title", ""),
+                        "snippet": r.get("body", ""),
+                        "url": r.get("href", ""),
+                    })
+                return results
+        except Exception as e:
+            self.logger.error(f"DuckDuckGo search failed: {e}")
+            return []
+    
+    def _search_tavily(self, query: str, count: int) -> list:
+        """Search using Tavily API (AI-optimized search)."""
+        api_key = self._load_web_search_api_key("tavily")
+        if not api_key:
+            return [{"title": "Error", "snippet": "Tavily API key required. Enter in API Configuration.", "url": ""}]
+        
+        try:
+            import urllib.request
+            import json
+            
+            url = "https://api.tavily.com/search"
+            data = json.dumps({
+                "api_key": api_key,
+                "query": query,
+                "search_depth": "basic",
+                "max_results": count
+            }).encode()
+            
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode())
+            
+            results = []
+            for item in result.get("results", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("content", ""),
+                    "url": item.get("url", ""),
+                })
+            return results
+        except Exception as e:
+            self.logger.error(f"Tavily search failed: {e}")
+            return [{"title": "Error", "snippet": str(e), "url": ""}]
+    
+    def _search_google(self, query: str, count: int) -> list:
+        """Search using Google Custom Search API."""
+        api_key = self._load_web_search_api_key("google")
+        cse_id = self._get_web_search_setting("google", "cse_id", "")
+        
+        if not api_key:
+            return [{"title": "Error", "snippet": "Google API key required. Enter in API Configuration.", "url": ""}]
+        if not cse_id:
+            return [{"title": "Error", "snippet": "Google CSE ID required. Enter in API Configuration.", "url": ""}]
+        
+        try:
+            import urllib.request
+            import urllib.parse
+            import json
+            
+            url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cse_id}&q={urllib.parse.quote(query)}&num={min(count, 10)}"
+            
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = json.loads(response.read().decode())
+            
+            if "error" in data:
+                return [{"title": "Error", "snippet": data["error"]["message"], "url": ""}]
+            
+            results = []
+            for item in data.get("items", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", ""),
+                    "url": item.get("link", ""),
+                })
+            return results
+        except Exception as e:
+            self.logger.error(f"Google search failed: {e}")
+            return [{"title": "Error", "snippet": str(e), "url": ""}]
+    
+    def _search_brave(self, query: str, count: int) -> list:
+        """Search using Brave Search API."""
+        api_key = self._load_web_search_api_key("brave")
+        if not api_key:
+            return [{"title": "Error", "snippet": "Brave API key required. Enter in API Configuration.", "url": ""}]
+        
+        try:
+            import urllib.request
+            import urllib.parse
+            import json
+            
+            url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}&count={min(count, 20)}"
+            
+            req = urllib.request.Request(url, headers={
+                "Accept": "application/json",
+                "X-Subscription-Token": api_key
+            })
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = json.loads(response.read().decode())
+            
+            results = []
+            for item in data.get("web", {}).get("results", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("description", ""),
+                    "url": item.get("url", ""),
+                })
+            return results
+        except Exception as e:
+            self.logger.error(f"Brave search failed: {e}")
+            return [{"title": "Error", "snippet": str(e), "url": ""}]
+    
+    def _search_serpapi(self, query: str, count: int) -> list:
+        """Search using SerpApi (Google SERP)."""
+        api_key = self._load_web_search_api_key("serpapi")
+        if not api_key:
+            return [{"title": "Error", "snippet": "SerpApi key required. Enter in API Configuration.", "url": ""}]
+        
+        try:
+            import urllib.request
+            import urllib.parse
+            import json
+            
+            url = f"https://serpapi.com/search?q={urllib.parse.quote(query)}&api_key={api_key}&num={min(count, 10)}"
+            
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = json.loads(response.read().decode())
+            
+            results = []
+            for item in data.get("organic_results", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", ""),
+                    "url": item.get("link", ""),
+                })
+            return results[:count]
+        except Exception as e:
+            self.logger.error(f"SerpApi search failed: {e}")
+            return [{"title": "Error", "snippet": str(e), "url": ""}]
+    
+    def _search_serper(self, query: str, count: int) -> list:
+        """Search using Serper.dev (Google SERP)."""
+        api_key = self._load_web_search_api_key("serper")
+        if not api_key:
+            return [{"title": "Error", "snippet": "Serper API key required. Enter in API Configuration.", "url": ""}]
+        
+        try:
+            import urllib.request
+            import json
+            
+            url = "https://google.serper.dev/search"
+            data = json.dumps({"q": query, "num": min(count, 10)}).encode()
+            
+            req = urllib.request.Request(url, data=data, headers={
+                "X-API-KEY": api_key,
+                "Content-Type": "application/json"
+            })
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode())
+            
+            results = []
+            for item in result.get("organic", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", ""),
+                    "url": item.get("link", ""),
+                })
+            return results
+        except Exception as e:
+            self.logger.error(f"Serper search failed: {e}")
+            return [{"title": "Error", "snippet": str(e), "url": ""}]
+    
+    def create_url_reader_options(self, parent):
+        """Creates the URL Reader tool options panel with format options."""
+        main_frame = ttk.Frame(parent)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Options row
+        options_frame = ttk.LabelFrame(main_frame, text="Output Format", padding=5)
+        options_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Format selection
+        self.url_reader_format_var = tk.StringVar(value=self.settings["tool_settings"].get("URL Reader", {}).get("format", "markdown"))
+        
+        formats = [("Raw HTML", "html"), ("JSON", "json"), ("Markdown", "markdown")]
+        for text, value in formats:
+            rb = ttk.Radiobutton(options_frame, text=text, variable=self.url_reader_format_var, value=value)
+            rb.pack(side=tk.LEFT, padx=10)
+        
+        # Auto-save on change
+        self.url_reader_format_var.trace_add("write", lambda *_: self._save_url_reader_settings())
+        
+        # Action row
+        action_frame = ttk.Frame(main_frame)
+        action_frame.pack(fill=tk.X, padx=5, pady=10)
+        
+        # Fetch button (becomes Cancel while fetching)
+        self.url_fetch_btn = ttk.Button(action_frame, text="Fetch Content", command=self._toggle_url_fetch)
+        self.url_fetch_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Status label
+        self.url_fetch_status = ttk.Label(action_frame, text="Enter URLs in Input panel (one per line)")
+        self.url_fetch_status.pack(side=tk.LEFT, padx=10)
+        
+        # Track fetch state
+        self.url_fetch_in_progress = False
+        self.url_fetch_thread = None
+    
+    def _save_url_reader_settings(self):
+        """Save URL Reader settings."""
+        if "URL Reader" not in self.settings["tool_settings"]:
+            self.settings["tool_settings"]["URL Reader"] = {}
+        self.settings["tool_settings"]["URL Reader"]["format"] = self.url_reader_format_var.get()
+        self.save_settings()
+    
+    def _toggle_url_fetch(self):
+        """Toggle between Fetch Content and Cancel."""
+        if self.url_fetch_in_progress:
+            # Cancel the fetch
+            self.url_fetch_in_progress = False
+            self.url_fetch_btn.configure(text="Fetch Content")
+            self.url_fetch_status.configure(text="Cancelled")
+        else:
+            # Start fetch
+            self._start_url_fetch()
+    
+    def _start_url_fetch(self):
+        """Start fetching URL content in background."""
+        import threading
+        
+        # Get URLs from input
+        current_tab_index = self.input_notebook.index(self.input_notebook.select())
+        active_input_tab = self.input_tabs[current_tab_index]
+        text = active_input_tab.text.get("1.0", tk.END).strip()
+        urls = [u.strip() for u in text.splitlines() if u.strip()]
+        
+        if not urls:
+            self.url_fetch_status.configure(text="No URLs found in Input panel")
+            return
+        
+        self.url_fetch_in_progress = True
+        self.url_fetch_btn.configure(text="Cancel")
+        self.url_fetch_status.configure(text=f"Fetching {len(urls)} URL(s)...")
+        
+        output_format = self.url_reader_format_var.get()
+        
+        def fetch_worker():
+            from tools.url_content_reader import URLContentReader
+            reader = URLContentReader()
+            results = []
+            
+            for i, url in enumerate(urls):
+                if not self.url_fetch_in_progress:
+                    results.append(f"# Cancelled\n\nFetch cancelled by user.")
+                    break
+                
+                self.after(0, lambda i=i, t=len(urls): self.url_fetch_status.configure(text=f"Fetching {i+1}/{t}..."))
+                
+                try:
+                    if output_format == "html":
+                        content = reader.fetch_url(url, timeout=30)
+                        results.append(f"<!-- URL: {url} -->\n{content}")
+                    elif output_format == "json":
+                        import json
+                        content = reader.fetch_url(url, timeout=30)
+                        results.append(json.dumps({"url": url, "html": content[:5000]}, indent=2))
+                    else:  # markdown
+                        content = reader.fetch_and_convert(url, timeout=30)
+                        results.append(f"# Content from: {url}\n\n{content}")
+                except Exception as e:
+                    results.append(f"# Error: {url}\n\nError: {str(e)}")
+            
+            final_output = "\n\n---\n\n".join(results)
+            
+            def update_ui():
+                self.url_fetch_in_progress = False
+                self.url_fetch_btn.configure(text="Fetch Content")
+                self.url_fetch_status.configure(text="Complete")
+                self.update_output_text(final_output)
+            
+            self.after(0, update_ui)
+        
+        self.url_fetch_thread = threading.Thread(target=fetch_worker, daemon=True)
+        self.url_fetch_thread.start()
 
     def create_html_extraction_tool_widget(self, parent):
         """Create and configure the HTML Extraction Tool widget."""
@@ -6689,6 +7371,51 @@ class PromeraAIApp(tk.Tk):
                 return self.base64_tools.process_text(input_text, settings)
             else:
                 return "Base64 Tools module not available"
+        elif tool_name == "Web Search":
+            try:
+                from tools.web_search import search
+                settings = self.settings["tool_settings"].get("Web Search", {})
+                engine = settings.get("engine", "duckduckgo")
+                count = settings.get("count", 5)
+                query = input_text.strip()
+                if not query:
+                    return "Please enter a search query in the input panel."
+                results = search(query, engine, count)
+                if not results:
+                    return f"No results found for '{query}'"
+                lines = [f"Search Results ({engine}):", "=" * 50, ""]
+                for i, r in enumerate(results, 1):
+                    lines.append(f"{i}. {r.get('title', 'No title')}")
+                    snippet = r.get('snippet', '')[:200]
+                    if len(r.get('snippet', '')) > 200:
+                        snippet += "..."
+                    lines.append(f"   {snippet}")
+                    lines.append(f"   URL: {r.get('url', 'N/A')}")
+                    lines.append("")
+                return "\n".join(lines)
+            except ImportError:
+                return "Web Search module not available"
+            except Exception as e:
+                return f"Search error: {str(e)}"
+        elif tool_name == "URL Reader":
+            try:
+                from tools.url_content_reader import URLContentReader
+                reader = URLContentReader()
+                urls = [u.strip() for u in input_text.strip().splitlines() if u.strip()]
+                if not urls:
+                    return "Please enter one or more URLs in the input panel (one per line)."
+                all_output = []
+                for url in urls:
+                    try:
+                        markdown = reader.fetch_and_convert(url, timeout=30)
+                        all_output.append(f"# Content from: {url}\n\n{markdown}\n\n---\n")
+                    except Exception as e:
+                        all_output.append(f"# Error fetching: {url}\n\nError: {str(e)}\n\n---\n")
+                return "\n".join(all_output)
+            except ImportError:
+                return "URL Content Reader module not available"
+            except Exception as e:
+                return f"URL Reader error: {str(e)}"
         else: 
             return f"Unknown tool: {tool_name}"
 
@@ -7351,7 +8078,7 @@ class PromeraAIApp(tk.Tk):
                     return
                 
                 try:
-                    with open(filename, 'r') as f:
+                    with open(filename, 'r', encoding='utf-8') as f:
                         import_data = json.load(f)
                     
                     file_size = os.path.getsize(filename)
@@ -7405,7 +8132,13 @@ class PromeraAIApp(tk.Tk):
                             current_settings = self.db_settings_manager.load_settings()
                             current_tools = len(current_settings.get("tool_settings", {}))
                             
-                            success_msg = f"Settings imported successfully!\n\nFrom: {os.path.basename(filename)}\nTool configurations: {current_tools}\n\nPlease restart the application for all changes to take effect."
+                            # Reload settings into UI to apply imported tab content
+                            self.settings = current_settings
+                            self.load_last_state()
+                            self.update_tab_labels()
+                            self.logger.info("Imported settings loaded into UI")
+                            
+                            success_msg = f"Settings imported successfully!\n\nFrom: {os.path.basename(filename)}\nTool configurations: {current_tools}\n\nTab content has been refreshed."
                             self.show_success(success_msg)
                             self.logger.info(f"Import successful - {current_tools} tools now in database")
                         except Exception as verify_error:

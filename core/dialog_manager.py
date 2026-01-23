@@ -283,8 +283,8 @@ class DialogManager:
             try:
                 dialog_settings = self.settings_manager.get_setting("dialog_settings", {})
                 
-                # Validate settings structure
-                if not isinstance(dialog_settings, dict):
+                # Validate settings structure - accept dict or dict-like objects (NestedSettingsProxy)
+                if not isinstance(dialog_settings, dict) and not hasattr(dialog_settings, 'get'):
                     self.logger.warning(f"Invalid dialog_settings structure: {type(dialog_settings)}, using defaults")
                     return True
                 
@@ -663,8 +663,8 @@ class DialogManager:
             # Force a fresh read of dialog settings
             dialog_settings = self.settings_manager.get_setting("dialog_settings", {})
             
-            # Validate settings structure
-            if not isinstance(dialog_settings, dict):
+            # Validate settings structure - accept dict or dict-like objects (NestedSettingsProxy)
+            if not isinstance(dialog_settings, dict) and not hasattr(dialog_settings, 'get'):
                 self.logger.error(f"Invalid dialog_settings structure: {type(dialog_settings)}, skipping refresh")
                 return
                 

@@ -188,7 +188,8 @@ class CaseTool:
         """Get default settings for the Case Tool.
         
         Uses the centralized Settings Defaults Registry if available,
-        otherwise falls back to hardcoded defaults.
+        otherwise falls back to minimal defaults. Full exclusions list
+        is maintained only in the registry.
         """
         try:
             from core.settings_defaults_registry import get_registry
@@ -199,11 +200,10 @@ class CaseTool:
         except Exception:
             pass
         
-        # Fallback to hardcoded defaults with updated exclusions
-        # Exclusions: a, an, the, and, but, or, for, nor, on, at, to, from, by, with, in, of
+        # Minimal fallback - registry has the full exclusions list
         return {
             "mode": "Sentence",
-            "exclusions": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"
+            "exclusions": ""
         }
 
 

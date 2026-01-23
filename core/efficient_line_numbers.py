@@ -9,6 +9,7 @@ from tkinter import scrolledtext
 import platform
 import time
 import threading
+import hashlib
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 
@@ -31,7 +32,7 @@ class EfficientLineNumbers(tk.Frame):
         
         # Configuration
         self.line_number_width = 50  # Adjustable width
-        self.debounce_delay = 5  # ms - very responsive updates
+        self.debounce_delay = 50  # ms - balanced responsiveness vs. efficiency
         self.cache_size_limit = 1000  # Maximum cached line positions
         
         # Create widgets
@@ -280,12 +281,12 @@ class EfficientLineNumbers(tk.Frame):
             return None
     
     def _get_content_hash(self) -> str:
-        """Get a hash of the current content for change detection."""
+        """Get a hash of the current content for change detection using MD5."""
         try:
             content = self.text.get("1.0", "end-1c")
-            # Simple hash based on content length and first/last chars
             if content:
-                return f"{len(content)}_{content[:10]}_{content[-10:]}"
+                # Use MD5 for reliable change detection (truncated for efficiency)
+                return hashlib.md5(content.encode('utf-8', errors='replace')).hexdigest()[:16]
             return "empty"
         except Exception:
             return "error"

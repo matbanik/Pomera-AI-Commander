@@ -366,6 +366,24 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
         description="Model Context Protocol server management",
         available_flag="MCP_WIDGET_MODULE_AVAILABLE"
     ),
+    
+    # Web Tools - handled inline in pomera.py (tabbed interface like AI Tools)
+    "Web Search": ToolSpec(
+        name="Web Search",
+        module_path="tools.web_search",  # Core module, UI created inline
+        class_name="search",  # Function, not class
+        category=ToolCategory.UTILITY,
+        description="Search the web using DuckDuckGo, Tavily, Google, Brave, SerpApi, Serper",
+        available_flag=""  # Always available
+    ),
+    "URL Reader": ToolSpec(
+        name="URL Reader",
+        module_path="tools.url_content_reader",
+        class_name="URLContentReader",
+        category=ToolCategory.UTILITY,
+        description="Fetch URL content and convert to HTML, JSON, or Markdown",
+        available_flag=""  # Always available
+    ),
 }
 
 # These sub-tools appear as tabs within their parent tool

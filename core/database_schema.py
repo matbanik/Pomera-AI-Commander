@@ -398,6 +398,21 @@ class DataTypeConverter:
         """
         import json
         
+        # Handle None or empty string for all types
+        if value_str is None or value_str == '':
+            if data_type in ('json', 'array'):
+                return [] if data_type == 'array' else {}
+            elif data_type == 'str':
+                return ''
+            elif data_type == 'int':
+                return 0
+            elif data_type == 'float':
+                return 0.0
+            elif data_type == 'bool':
+                return False
+            else:
+                return ''
+        
         if data_type == 'str':
             return value_str
         elif data_type == 'int':
@@ -407,6 +422,14 @@ class DataTypeConverter:
         elif data_type == 'bool':
             return value_str == '1'
         elif data_type in ('json', 'array'):
-            return json.loads(value_str)
+            # Handle whitespace-only strings as empty
+            if not value_str.strip():
+                return [] if data_type == 'array' else {}
+            try:
+                return json.loads(value_str)
+            except json.JSONDecodeError as e:
+                # Debug: print what value caused the error
+                print(f"DEBUG: JSON parse failed for data_type='{data_type}': value_str='{value_str[:100]}...' error={e}")
+                return [] if data_type == 'array' else {}
         else:
             return value_str  # Fallback to string

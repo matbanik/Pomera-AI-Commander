@@ -202,6 +202,10 @@ class ToolRegistry:
         # Find & Replace Diff Tool (Phase 6) - regex find/replace with diff preview and Notes backup
         self._register_find_replace_diff_tool()
         
+        # Web Search and URL Reader Tools (Phase 7)
+        self._register_web_search_tool()
+        self._register_read_url_tool()
+        
         self._logger.info(f"Registered {len(self._tools)} built-in MCP tools")
 
     
@@ -2711,6 +2715,329 @@ class ToolRegistry:
                 registry._logger.warning(f"Failed to get note: {e}")
                 return None
         return get_note
+    
+    def _register_web_search_tool(self) -> None:
+        """Register the Web Search Tool."""
+        self.register(MCPToolAdapter(
+            name="pomera_web_search",
+            description="Search the web using multiple engines. Engines: tavily (AI-optimized, recommended), "
+                       "google (100/day free), brave (2000/month free), duckduckgo (free, no key), "
+                       "serpapi (100 total free), serper (2500 total free).",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query"
+                    },
+                    "engine": {
+                        "type": "string",
+                        "enum": ["tavily", "google", "brave", "duckduckgo", "serpapi", "serper"],
+                        "description": "Search engine to use",
+                        "default": "tavily"
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of results (1-20)",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 20
+                    }
+                },
+                "required": ["query"]
+            },
+            handler=self._handle_web_search
+        ))
+    
+    def _handle_web_search(self, args: Dict[str, Any]) -> str:
+        """Handle web search tool execution using encrypted API keys from database settings."""
+        import json
+        import urllib.request
+        import urllib.parse
+        
+        query = args.get("query", "").strip()
+        engine = args.get("engine", "duckduckgo").lower()
+        count = args.get("count", 5)
+        
+        # Validate inputs
+        if not query:
+            return json.dumps({"success": False, "error": "Query is required"})
+        
+        valid_engines = ["duckduckgo", "tavily", "google", "brave", "serpapi", "serper"]
+        if engine not in valid_engines:
+            return json.dumps({
+                "success": False, 
+                "error": f"Invalid engine: '{engine}'. Valid engines: {', '.join(valid_engines)}"
+            })
+        
+        try:
+            # Get API key from encrypted database settings
+            api_key = self._get_encrypted_web_search_api_key(engine)
+            cse_id = self._get_web_search_setting(engine, "cse_id", "")
+            
+            # Execute search based on engine
+            if engine == "duckduckgo":
+                results = self._mcp_search_duckduckgo(query, count)
+            elif engine == "tavily":
+                if not api_key:
+                    return json.dumps({"success": False, "error": "Tavily API key required. Configure in Web Search settings."})
+                results = self._mcp_search_tavily(query, count, api_key)
+            elif engine == "google":
+                if not api_key or not cse_id:
+                    return json.dumps({"success": False, "error": "Google API key and CSE ID required. Configure in Web Search settings."})
+                results = self._mcp_search_google(query, count, api_key, cse_id)
+            elif engine == "brave":
+                if not api_key:
+                    return json.dumps({"success": False, "error": "Brave API key required. Configure in Web Search settings."})
+                results = self._mcp_search_brave(query, count, api_key)
+            elif engine == "serpapi":
+                if not api_key:
+                    return json.dumps({"success": False, "error": "SerpApi key required. Configure in Web Search settings."})
+                results = self._mcp_search_serpapi(query, count, api_key)
+            elif engine == "serper":
+                if not api_key:
+                    return json.dumps({"success": False, "error": "Serper API key required. Configure in Web Search settings."})
+                results = self._mcp_search_serper(query, count, api_key)
+            else:
+                return json.dumps({"success": False, "error": f"Unknown engine: {engine}"})
+            
+            output = {
+                "success": True,
+                "query": query,
+                "engine": engine,
+                "count": len(results),
+                "results": results
+            }
+            return json.dumps(output, indent=2, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+    
+    def _get_encrypted_web_search_api_key(self, engine_key: str) -> str:
+        """Load encrypted API key for a search engine from database settings.
+        
+        Uses the same database path as the Pomera UI to ensure keys are loaded
+        from the correct location.
+        """
+        try:
+            from tools.ai_tools import decrypt_api_key
+            from core.database_settings_manager import DatabaseSettingsManager
+            
+            # Get the correct database path (same as UI uses)
+            try:
+                from core.data_directory import get_database_path
+                db_path = get_database_path("settings.db")
+            except ImportError:
+                # Fallback to relative path
+                db_path = "settings.db"
+            
+            settings_manager = DatabaseSettingsManager(db_path=db_path)
+            web_search_settings = settings_manager.get_tool_settings("Web Search")
+            
+            encrypted = web_search_settings.get(f"{engine_key}_api_key", "")
+            if encrypted:
+                return decrypt_api_key(encrypted)
+        except Exception as e:
+            self._logger.warning(f"Failed to load API key for {engine_key}: {e}")
+        return ""
+    
+    def _get_web_search_setting(self, engine_key: str, setting: str, default: str) -> str:
+        """Get a web search setting from database.
+        
+        Uses the same database path as the Pomera UI.
+        """
+        try:
+            from core.database_settings_manager import DatabaseSettingsManager
+            
+            # Get the correct database path (same as UI uses)
+            try:
+                from core.data_directory import get_database_path
+                db_path = get_database_path("settings.db")
+            except ImportError:
+                db_path = "settings.db"
+            
+            settings_manager = DatabaseSettingsManager(db_path=db_path)
+            web_search_settings = settings_manager.get_tool_settings("Web Search")
+            
+            return web_search_settings.get(f"{engine_key}_{setting}", default)
+        except Exception:
+            return default
+    
+    def _mcp_search_duckduckgo(self, query: str, count: int) -> list:
+        """Search DuckDuckGo (free, no API key)."""
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            return [{"title": "Error", "snippet": "DuckDuckGo requires: pip install ddgs", "url": ""}]
+        
+        try:
+            with DDGS() as ddgs:
+                results = []
+                for r in ddgs.text(query, max_results=count):
+                    results.append({
+                        "title": r.get("title", ""),
+                        "snippet": r.get("body", ""),
+                        "url": r.get("href", ""),
+                        "source": "duckduckgo"
+                    })
+                return results
+        except Exception as e:
+            return [{"title": "Error", "snippet": str(e), "url": ""}]
+    
+    def _mcp_search_tavily(self, query: str, count: int, api_key: str) -> list:
+        """Search using Tavily API."""
+        import urllib.request
+        import json
+        
+        url = "https://api.tavily.com/search"
+        data = json.dumps({
+            "api_key": api_key,
+            "query": query,
+            "search_depth": "basic",
+            "max_results": count
+        }).encode()
+        
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode())
+        
+        return [
+            {"title": item.get("title", ""), "snippet": item.get("content", ""), 
+             "url": item.get("url", ""), "source": "tavily"}
+            for item in result.get("results", [])
+        ]
+    
+    def _mcp_search_google(self, query: str, count: int, api_key: str, cse_id: str) -> list:
+        """Search using Google Custom Search API."""
+        import urllib.request
+        import urllib.parse
+        import json
+        
+        url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cse_id}&q={urllib.parse.quote(query)}&num={min(count, 10)}"
+        
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+        
+        return [
+            {"title": item.get("title", ""), "snippet": item.get("snippet", ""), 
+             "url": item.get("link", ""), "source": "google"}
+            for item in data.get("items", [])
+        ]
+    
+    def _mcp_search_brave(self, query: str, count: int, api_key: str) -> list:
+        """Search using Brave Search API."""
+        import urllib.request
+        import urllib.parse
+        import json
+        
+        url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}&count={min(count, 20)}"
+        
+        req = urllib.request.Request(url, headers={
+            "Accept": "application/json",
+            "X-Subscription-Token": api_key
+        })
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+        
+        return [
+            {"title": item.get("title", ""), "snippet": item.get("description", ""), 
+             "url": item.get("url", ""), "source": "brave"}
+            for item in data.get("web", {}).get("results", [])
+        ]
+    
+    def _mcp_search_serpapi(self, query: str, count: int, api_key: str) -> list:
+        """Search using SerpApi."""
+        import urllib.request
+        import urllib.parse
+        import json
+        
+        url = f"https://serpapi.com/search?q={urllib.parse.quote(query)}&api_key={api_key}&num={min(count, 10)}"
+        
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode())
+        
+        return [
+            {"title": item.get("title", ""), "snippet": item.get("snippet", ""), 
+             "url": item.get("link", ""), "source": "serpapi"}
+            for item in data.get("organic_results", [])[:count]
+        ]
+    
+    def _mcp_search_serper(self, query: str, count: int, api_key: str) -> list:
+        """Search using Serper.dev."""
+        import urllib.request
+        import json
+        
+        url = "https://google.serper.dev/search"
+        data = json.dumps({"q": query, "num": min(count, 10)}).encode()
+        
+        req = urllib.request.Request(url, data=data, headers={
+            "X-API-KEY": api_key,
+            "Content-Type": "application/json"
+        })
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode())
+        
+        return [
+            {"title": item.get("title", ""), "snippet": item.get("snippet", ""), 
+             "url": item.get("link", ""), "source": "serper"}
+            for item in result.get("organic", [])
+        ]
+    
+    def _register_read_url_tool(self) -> None:
+        """Register the URL Content Reader Tool."""
+        self.register(MCPToolAdapter(
+            name="pomera_read_url",
+            description="Fetch URL content and convert HTML to Markdown. "
+                       "Extracts main content area and outputs clean markdown format.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL to fetch"
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Request timeout in seconds",
+                        "default": 30,
+                        "minimum": 5,
+                        "maximum": 120
+                    },
+                    "extract_main_content": {
+                        "type": "boolean",
+                        "description": "Try to extract main content area only",
+                        "default": True
+                    }
+                },
+                "required": ["url"]
+            },
+            handler=self._handle_read_url
+        ))
+    
+    def _handle_read_url(self, args: Dict[str, Any]) -> str:
+        """Handle URL content reader tool execution."""
+        from tools.url_content_reader import URLContentReader
+        import json
+        
+        url = args.get("url", "")
+        timeout = args.get("timeout", 30)
+        extract_main = args.get("extract_main_content", True)
+        
+        if not url:
+            return json.dumps({"success": False, "error": "URL is required"})
+        
+        try:
+            reader = URLContentReader()
+            markdown = reader.fetch_and_convert(url, timeout=timeout, extract_main_content=extract_main)
+            return json.dumps({
+                "success": True,
+                "url": url,
+                "markdown": markdown,
+                "length": len(markdown)
+            }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"success": False, "error": f"Error fetching URL: {str(e)}"})
 
 
 # Singleton instance for convenience

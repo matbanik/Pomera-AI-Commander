@@ -5,6 +5,8 @@ Centralizes all tool default settings into a single registry system for consiste
 first-launch initialization. Provides schema validation, deep merge capability,
 and backward compatibility with existing tools.
 
+Supports loading custom defaults from external defaults.json file.
+
 Author: Pomera AI Commander Team
 """
 
@@ -12,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable, Set, Tuple
 from copy import deepcopy
 import logging
+import json
+import os
 
 
 @dataclass
@@ -47,6 +51,7 @@ class SettingsDefaultsRegistry:
     - Schema validation for tool settings
     - Deep merge capability for user settings with defaults
     - Backward compatibility with existing tools
+    - External defaults.json file support for user customization
     """
     
     _instance: Optional['SettingsDefaultsRegistry'] = None
@@ -67,9 +72,103 @@ class SettingsDefaultsRegistry:
         self._tool_specs: Dict[str, ToolDefaultsSpec] = {}
         self._app_defaults: Dict[str, Any] = {}
         self._initialized = True
+        self._json_defaults_loaded = False
         
         # Register all built-in tool defaults
         self._register_builtin_defaults()
+        
+        # Load custom defaults from external JSON file (overrides builtins)
+        self._load_from_json_file()
+    
+    def _load_from_json_file(self) -> bool:
+        """
+        Load custom defaults from external defaults.json file.
+        
+        This allows users to customize tool defaults without modifying Python code.
+        The JSON file overrides built-in defaults for matching tool names.
+        
+        Returns:
+            True if JSON was loaded successfully, False otherwise.
+        """
+        try:
+            # Try multiple locations for defaults.json
+            possible_paths = [
+                os.path.join(os.path.dirname(__file__), "..", "defaults.json"),  # app root
+                os.path.join(os.path.dirname(__file__), "defaults.json"),  # core directory
+            ]
+            
+            json_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    json_path = os.path.abspath(path)
+                    break
+            
+            if not json_path:
+                self.logger.debug("No external defaults.json found - using built-in defaults")
+                return False
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            tools_data = data.get("tools", {})
+            
+            # Override defaults for matching tools
+            for tool_name, custom_defaults in tools_data.items():
+                # Skip metadata keys
+                if tool_name.startswith("_"):
+                    continue
+                    
+                if tool_name in self._tool_specs:
+                    # Merge custom defaults with existing (custom takes precedence)
+                    existing = self._tool_specs[tool_name]
+                    merged_defaults = deepcopy(existing.defaults)
+                    for key, value in custom_defaults.items():
+                        if not key.startswith("_"):  # Skip metadata keys like _note
+                            merged_defaults[key] = value
+                    
+                    # Update the spec with merged defaults
+                    self._tool_specs[tool_name] = ToolDefaultsSpec(
+                        tool_name=existing.tool_name,
+                        defaults=merged_defaults,
+                        required_keys=existing.required_keys,
+                        description=existing.description,
+                        version=existing.version
+                    )
+                    self.logger.debug(f"Loaded custom defaults for '{tool_name}' from JSON")
+                else:
+                    # New tool not in builtins - create new spec
+                    self._tool_specs[tool_name] = ToolDefaultsSpec(
+                        tool_name=tool_name,
+                        defaults={k: v for k, v in custom_defaults.items() if not k.startswith("_")},
+                        description=f"Custom tool from defaults.json"
+                    )
+                    self.logger.debug(f"Added new tool '{tool_name}' from JSON")
+            
+            self._json_defaults_loaded = True
+            self.logger.info(f"Loaded custom defaults from: {json_path}")
+            return True
+            
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Invalid JSON in defaults.json: {e}")
+            return False
+        except Exception as e:
+            self.logger.warning(f"Could not load defaults.json: {e}")
+            return False
+    
+    def get_json_defaults_path(self) -> Optional[str]:
+        """Get the path to the defaults.json file if it exists."""
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), "..", "defaults.json"),
+            os.path.join(os.path.dirname(__file__), "defaults.json"),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                return os.path.abspath(path)
+        return None
+    
+    def is_json_defaults_loaded(self) -> bool:
+        """Check if external defaults.json was loaded."""
+        return self._json_defaults_loaded
     
     def _register_builtin_defaults(self) -> None:
         """Register all built-in tool default settings."""
@@ -406,21 +505,25 @@ class SettingsDefaultsRegistry:
             description="Cohere AI integration"
         ))
         
-        # HuggingFace AI - Updated December 2025
-        # Latest: Llama 3.3, Mistral Small 3, Qwen 2.5
+        # HuggingFace AI - Updated January 2026
+        # Free inference API - most popular open models
         self.register_tool(ToolDefaultsSpec(
             tool_name="HuggingFace AI",
             defaults={
                 "API_KEY": "putinyourkey",
                 "MODEL": "meta-llama/Llama-3.3-70B-Instruct",
                 "MODELS_LIST": [
+                    # Most popular free inference models
                     "meta-llama/Llama-3.3-70B-Instruct",
                     "meta-llama/Meta-Llama-3.1-70B-Instruct",
                     "meta-llama/Meta-Llama-3.1-8B-Instruct",
-                    "mistralai/Mistral-Small-3-Instruct",
-                    "mistralai/Mistral-7B-Instruct-v0.3",
                     "Qwen/Qwen2.5-72B-Instruct",
-                    "google/gemma-2-27b-it"
+                    "Qwen/Qwen2.5-Coder-32B-Instruct",
+                    "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+                    "mistralai/Mistral-7B-Instruct-v0.3",
+                    "deepseek-ai/DeepSeek-V3",
+                    "google/gemma-2-27b-it",
+                    "microsoft/Phi-3.5-mini-instruct"
                 ],
                 "system_prompt": "You are a helpful assistant.",
                 "max_tokens": 4096,
@@ -430,7 +533,7 @@ class SettingsDefaultsRegistry:
                 "seed": ""
             },
             required_keys={"API_KEY", "MODEL"},
-            description="HuggingFace AI integration"
+            description="HuggingFace AI free inference (popular open models)"
         ))
         
         # Groq AI - Updated December 2025
@@ -462,23 +565,31 @@ class SettingsDefaultsRegistry:
             description="Groq AI integration"
         ))
         
-        # OpenRouterAI - Updated December 2025
-        # Latest: Claude Opus 4.5, GPT-4.1, Gemini 2.5, DeepSeek 3.2
+        # OpenRouterAI - Updated January 2026
+        # Latest: Claude Opus 4.5, GPT-4.1, Gemini 2.5, DeepSeek V3
+        # Includes FREE tier models marked with :free suffix
         self.register_tool(ToolDefaultsSpec(
             tool_name="OpenRouterAI",
             defaults={
                 "API_KEY": "putinyourkey",
                 "MODEL": "anthropic/claude-sonnet-4.5",
                 "MODELS_LIST": [
+                    # Premium models
                     "anthropic/claude-sonnet-4.5",
                     "anthropic/claude-opus-4.5",
-                    "openai/gpt-4.1",
+                    "openai/gpt-4o",
                     "google/gemini-2.5-pro",
                     "google/gemini-2.5-flash",
                     "deepseek/deepseek-chat",
                     "meta-llama/llama-3.3-70b-instruct",
+                    # FREE models (no cost)
+                    "google/gemini-2.5-flash:free",
                     "google/gemini-2.0-flash:free",
-                    "meta-llama/llama-3.1-8b-instruct:free"
+                    "meta-llama/llama-3.3-70b-instruct:free",
+                    "meta-llama/llama-3.1-8b-instruct:free",
+                    "qwen/qwen-2.5-72b-instruct:free",
+                    "mistralai/mistral-7b-instruct:free",
+                    "deepseek/deepseek-chat:free"
                 ],
                 "system_prompt": "You are a helpful assistant.",
                 "temperature": 0.7,
@@ -492,7 +603,34 @@ class SettingsDefaultsRegistry:
                 "stop": ""
             },
             required_keys={"API_KEY", "MODEL"},
-            description="OpenRouter AI integration"
+            description="OpenRouter AI integration (includes free models)"
+        ))
+        
+        # Studio LM - Local LLM support via LM Studio or Ollama (January 2026)
+        # Default endpoint is LM Studio (port 1234), Ollama uses port 11434
+        self.register_tool(ToolDefaultsSpec(
+            tool_name="Studio LM",
+            defaults={
+                "API_KEY": "",  # Often not required for local
+                "MODEL": "local-model",
+                "MODELS_LIST": [
+                    "local-model",
+                    "llama-3.3-70b",
+                    "qwen2.5-72b",
+                    "mistral-7b",
+                    "phi-3.5-mini",
+                    "gemma-2-9b",
+                    "deepseek-coder-v2"
+                ],
+                "ENDPOINT": "http://127.0.0.1:1234/v1",  # LM Studio default
+                "system_prompt": "You are a helpful assistant.",
+                "temperature": 0.7,
+                "max_tokens": 4096,
+                "top_p": 0.95,
+                "stream": True
+            },
+            required_keys={"ENDPOINT", "MODEL"},
+            description="Local LLM via LM Studio or Ollama (OpenAI-compatible API)"
         ))
         
         # AWS Bedrock - Updated December 2025
@@ -913,15 +1051,21 @@ class SettingsDefaultsRegistry:
         """
         Get complete default settings including app-level and all tool defaults.
         
+        NOTE: This method intentionally EXCLUDES input_tabs and output_tabs.
+        Tab content is user data that must be loaded from persistent storage,
+        not overwritten with empty defaults. Including tabs here caused a
+        regression where saved tab content was lost on app restart.
+        
         Args:
-            tab_count: Number of tabs for input/output (default 7)
+            tab_count: Number of tabs for input/output (default 7, unused but kept for API compatibility)
             
         Returns:
-            Complete default settings dictionary
+            Complete default settings dictionary (excludes tab content)
         """
         defaults = deepcopy(self._app_defaults)
-        defaults["input_tabs"] = [""] * tab_count
-        defaults["output_tabs"] = [""] * tab_count
+        # NOTE: input_tabs and output_tabs are intentionally NOT included here.
+        # They are user data stored in the database, not default configurations.
+        # Adding them here would overwrite saved user content with empty arrays.
         defaults["tool_settings"] = self.get_all_tool_defaults()
         return defaults
     

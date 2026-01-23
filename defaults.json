@@ -1,0 +1,75 @@
+{
+    "_version": "1.0",
+    "_description": "External defaults configuration for Pomera AI Commander tools. Edit this file to customize tool defaults. Changes take effect on app restart.",
+    "_last_updated": "2026-01-22",
+    "tools": {
+        "Case Tool": {
+            "mode": "Sentence",
+            "exclusions": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"
+        },
+        "Find & Replace Text": {
+            "find": "",
+            "replace": "",
+            "mode": "Text",
+            "option": "ignore_case",
+            "find_history": [],
+            "replace_history": []
+        },
+        "Generator Tools": {
+            "password_length": 20,
+            "password_include_lowercase": true,
+            "password_include_uppercase": true,
+            "password_include_numbers": true,
+            "password_include_special": true,
+            "repeat_times": 5,
+            "uuid_count": 1,
+            "lorem_paragraph_count": 3
+        },
+        "Sorter Tools": {
+            "order": "Ascending",
+            "sort_type": "Alphabetical"
+        },
+        "Studio LM": {
+            "API_KEY": "",
+            "MODEL": "local-model",
+            "MODELS_LIST": [
+                "local-model",
+                "llama-3.3-70b",
+                "qwen2.5-72b",
+                "mistral-7b",
+                "phi-3.5-mini",
+                "gemma-2-9b",
+                "deepseek-coder-v2"
+            ],
+            "ENDPOINT": "http://127.0.0.1:1234/v1",
+            "system_prompt": "You are a helpful assistant.",
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.95,
+            "stream": true
+        },
+        "OpenRouterAI_FREE_MODELS": {
+            "_note": "This section lists free OpenRouter models - use :free suffix",
+            "models": [
+                "google/gemini-2.5-flash:free",
+                "google/gemini-2.0-flash:free",
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "meta-llama/llama-3.1-8b-instruct:free",
+                "qwen/qwen-2.5-72b-instruct:free",
+                "mistralai/mistral-7b-instruct:free",
+                "deepseek/deepseek-chat:free"
+            ]
+        },
+        "HuggingFace_POPULAR_MODELS": {
+            "_note": "Popular free inference models on HuggingFace",
+            "models": [
+                "meta-llama/Llama-3.3-70B-Instruct",
+                "Qwen/Qwen2.5-72B-Instruct",
+                "Qwen/Qwen2.5-Coder-32B-Instruct",
+                "mistralai/Mistral-Small-3.1-24B-Instruct-2503",
+                "deepseek-ai/DeepSeek-V3",
+                "microsoft/Phi-3.5-mini-instruct"
+            ]
+        }
+    }
+}

@@ -284,6 +284,9 @@ class CurlToolWidget:
         # Create the UI
         self.create_widgets()
         
+        # Restore saved UI state (URL, method, headers, body, auth)
+        self._restore_ui_state()
+        
         # Save settings when the window is closed
         if hasattr(self.parent, 'protocol'):
             self.parent.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -4232,17 +4235,8 @@ curl -X POST https://api.example.com/users \\
             if self.logger:
                 self.logger.error(f"Error saving settings: {e}")
     
-    def _on_closing(self):
-        """Handle application closing - save settings before exit."""
-        try:
-            self._save_current_settings()
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Error saving settings on close: {e}")
-        
-        # Continue with normal closing
-        if hasattr(self.parent, 'destroy'):
-            self.parent.destroy()
+    # NOTE: _on_closing method has been moved to end of class (line ~5490)
+    # to consolidate with UI state persistence logic
     
     def _export_curl(self):
         """Export current request as cURL command."""
@@ -5483,6 +5477,177 @@ Timestamp: {timestamp}{additional_details}"""
         if item:
             self.history_tree.selection_set(item)
             self.history_context_menu.post(event.x_root, event.y_root)
+    
+    def _on_closing(self):
+        """Handle widget/window closing - save all settings and UI state."""
+        # Save original settings (from the original method at line 4238)
+        try:
+            self._save_current_settings()
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error saving settings on close: {e}")
+        
+        # Also save UI state for full persistence (new functionality)
+        try:
+            self._save_ui_state()
+            self.logger.info("cURL Tool UI state saved on close")
+        except Exception as e:
+            self.logger.error(f"Error saving UI state on close: {e}")
+        
+        # If parent has destroy, call it
+        if hasattr(self.parent, 'destroy'):
+            self.parent.destroy()
+    
+    def _save_ui_state(self):
+        """Save current UI state to settings for persistence."""
+        if not self.settings_manager:
+            return
+        
+        # Check if UI state persistence is enabled
+        if not self.settings.get("persist_ui_state", True):
+            return
+        
+        try:
+            # Get current URL from text widget
+            url = ""
+            if self.url_text and self.url_text.winfo_exists():
+                url = self.url_text.get("1.0", tk.END).strip()
+            
+            # Get current method
+            method = self.method_var.get() if self.method_var else "GET"
+            
+            # Get headers from text widget
+            headers = ""
+            if hasattr(self, 'headers_text') and self.headers_text and self.headers_text.winfo_exists():
+                headers = self.headers_text.get("1.0", tk.END).strip()
+            
+            # Get body from text widget
+            body = ""
+            if hasattr(self, 'body_text') and self.body_text and self.body_text.winfo_exists():
+                body = self.body_text.get("1.0", tk.END).strip()
+            
+            # Get body type
+            body_type = self.body_type_var.get() if self.body_type_var else "None"
+            
+            # Get auth type
+            auth_type = self.auth_type_var.get() if self.auth_type_var else "None"
+            
+            # Get auth data (encrypted)
+            auth_data = {}
+            if auth_type == "Bearer":
+                token = self.bearer_token_var.get() if hasattr(self, 'bearer_token_var') else ""
+                if token:
+                    auth_data["bearer_token"] = encrypt_auth_value(token)
+            elif auth_type == "Basic":
+                username = self.basic_username_var.get() if hasattr(self, 'basic_username_var') else ""
+                password = self.basic_password_var.get() if hasattr(self, 'basic_password_var') else ""
+                if username or password:
+                    auth_data["basic_username"] = username
+                    auth_data["basic_password"] = encrypt_auth_value(password)
+            elif auth_type == "API Key":
+                key_name = self.api_key_name_var.get() if hasattr(self, 'api_key_name_var') else ""
+                key_value = self.api_key_value_var.get() if hasattr(self, 'api_key_value_var') else ""
+                key_location = self.api_key_location_var.get() if hasattr(self, 'api_key_location_var') else "header"
+                if key_value:
+                    auth_data["api_key_name"] = key_name
+                    auth_data["api_key_value"] = encrypt_auth_value(key_value)
+                    auth_data["api_key_location"] = key_location
+            
+            # Get complex options
+            complex_options = self.complex_options_var.get() if hasattr(self, 'complex_options_var') else ""
+            
+            # Update settings
+            self.settings_manager.set_setting("last_url", url)
+            self.settings_manager.set_setting("last_method", method)
+            self.settings_manager.set_setting("last_headers", headers)
+            self.settings_manager.set_setting("last_body", body)
+            self.settings_manager.set_setting("last_body_type", body_type)
+            self.settings_manager.set_setting("last_auth_type", auth_type)
+            self.settings_manager.set_setting("last_auth_data", auth_data)
+            self.settings_manager.set_setting("last_complex_options", complex_options)
+            
+            # Save to persistent storage
+            self.settings_manager.save_settings()
+            self.logger.debug("UI state saved successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error saving UI state: {e}")
+    
+    def _restore_ui_state(self):
+        """Restore UI state from saved settings."""
+        if not self.settings_manager:
+            return
+        
+        # Check if UI state persistence is enabled
+        if not self.settings.get("persist_ui_state", True):
+            return
+        
+        try:
+            # Restore URL
+            last_url = self.settings.get("last_url", "")
+            if last_url and self.url_text and self.url_text.winfo_exists():
+                self.url_text.delete("1.0", tk.END)
+                self.url_text.insert("1.0", last_url)
+            
+            # Restore method
+            last_method = self.settings.get("last_method", "GET")
+            if self.method_var:
+                self.method_var.set(last_method)
+            
+            # Restore headers
+            last_headers = self.settings.get("last_headers", "")
+            if last_headers and hasattr(self, 'headers_text') and self.headers_text:
+                if self.headers_text.winfo_exists():
+                    self.headers_text.delete("1.0", tk.END)
+                    self.headers_text.insert("1.0", last_headers)
+            
+            # Restore body
+            last_body = self.settings.get("last_body", "")
+            if last_body and hasattr(self, 'body_text') and self.body_text:
+                if self.body_text.winfo_exists():
+                    self.body_text.delete("1.0", tk.END)
+                    self.body_text.insert("1.0", last_body)
+            
+            # Restore body type
+            last_body_type = self.settings.get("last_body_type", "None")
+            if self.body_type_var:
+                self.body_type_var.set(last_body_type)
+            
+            # Restore auth type
+            last_auth_type = self.settings.get("last_auth_type", "None")
+            if self.auth_type_var:
+                self.auth_type_var.set(last_auth_type)
+            
+            # Restore auth data (decrypted)
+            last_auth_data = self.settings.get("last_auth_data", {})
+            if last_auth_data:
+                if last_auth_type == "Bearer" and hasattr(self, 'bearer_token_var'):
+                    token = last_auth_data.get("bearer_token", "")
+                    self.bearer_token_var.set(decrypt_auth_value(token))
+                elif last_auth_type == "Basic":
+                    if hasattr(self, 'basic_username_var'):
+                        self.basic_username_var.set(last_auth_data.get("basic_username", ""))
+                    if hasattr(self, 'basic_password_var'):
+                        password = last_auth_data.get("basic_password", "")
+                        self.basic_password_var.set(decrypt_auth_value(password))
+                elif last_auth_type == "API Key":
+                    if hasattr(self, 'api_key_name_var'):
+                        self.api_key_name_var.set(last_auth_data.get("api_key_name", ""))
+                    if hasattr(self, 'api_key_value_var'):
+                        key_value = last_auth_data.get("api_key_value", "")
+                        self.api_key_value_var.set(decrypt_auth_value(key_value))
+                    if hasattr(self, 'api_key_location_var'):
+                        self.api_key_location_var.set(last_auth_data.get("api_key_location", "header"))
+            
+            # Restore complex options
+            last_complex_options = self.settings.get("last_complex_options", "")
+            if last_complex_options and hasattr(self, 'complex_options_var'):
+                self.complex_options_var.set(last_complex_options)
+            
+            self.logger.debug("UI state restored successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error restoring UI state: {e}")
 
 
 # For standalone testing

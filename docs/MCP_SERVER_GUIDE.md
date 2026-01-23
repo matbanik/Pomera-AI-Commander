@@ -186,7 +186,7 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 
 ---
 
-## Available MCP Tools (24 Total)
+## Available MCP Tools (26 Total)
 
 ### Text Processing Tools (21)
 
@@ -213,6 +213,13 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 | `pomera_email_header_analyzer` | Parse and analyze email headers |
 | `pomera_html` | Strip HTML tags, extract content |
 | `pomera_list_compare` | Compare two lists, find differences |
+
+### Web Tools (2)
+
+| Tool Name | Description |
+|-----------|-------------|
+| `pomera_web_search` | Search the web using multiple engines (Tavily, Google, Brave, DuckDuckGo, SerpApi, Serper). API keys loaded from Pomera UI settings. |
+| `pomera_read_url` | Fetch URL content and convert HTML to clean Markdown. Extracts main content area. |
 
 ### Notes Management (1)
 
@@ -293,6 +300,40 @@ User: Generate a new UUID for my config
 AI uses: pomera_generators(type="uuid")
 
 Result: "550e8400-e29b-41d4-a716-446655440000"
+```
+
+### Example 4: Web Search
+
+```
+User: Search for Python documentation
+
+AI uses: pomera_web_search(query="Python documentation", engine="duckduckgo", count=5)
+
+Result: {
+  "success": true,
+  "engine": "duckduckgo",
+  "results": [
+    {"title": "Welcome to Python.org", "snippet": "...", "url": "https://python.org"},
+    ...
+  ]
+}
+```
+
+> **Note:** API keys for Tavily, Google, Brave, SerpApi, and Serper must be configured in the Pomera UI (Web Search tool settings). DuckDuckGo requires no API key.
+
+### Example 5: Read URL Content
+
+```
+User: Summarize this article: https://example.com/article
+
+AI uses: pomera_read_url(url="https://example.com/article")
+
+Result: {
+  "success": true,
+  "url": "https://example.com/article",
+  "markdown": "# Article Title\n\nContent in markdown format...",
+  "length": 1234
+}
 ```
 
 ---

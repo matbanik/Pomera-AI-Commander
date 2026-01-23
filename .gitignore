@@ -52,6 +52,7 @@ backups/
 .DS_Store
 Thumbs.db
 *.db
+api-keys.json
 
 # Logs
 *.log
