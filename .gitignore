@@ -21,6 +21,9 @@ wheels/
 *.egg
 MANIFEST
 
+# Auto-generated version file (managed by setuptools_scm)
+pomera/_version.py
+
 
 # PyInstaller
 *.manifest

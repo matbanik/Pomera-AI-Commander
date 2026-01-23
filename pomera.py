@@ -5901,13 +5901,115 @@ class PromeraAIApp(tk.Tk):
         # Format selection
         self.url_reader_format_var = tk.StringVar(value=self.settings["tool_settings"].get("URL Reader", {}).get("format", "markdown"))
         
-        formats = [("Raw HTML", "html"), ("JSON", "json"), ("Markdown", "markdown")]
+        formats = [("Raw HTML", "html"), ("HTML Extraction", "html_extraction"), ("Markdown", "markdown")]
         for text, value in formats:
             rb = ttk.Radiobutton(options_frame, text=text, variable=self.url_reader_format_var, value=value)
             rb.pack(side=tk.LEFT, padx=10)
         
-        # Auto-save on change
-        self.url_reader_format_var.trace_add("write", lambda *_: self._save_url_reader_settings())
+        # Auto-save on change and update UI
+        self.url_reader_format_var.trace_add("write", lambda *_: self._on_url_reader_format_change())
+        
+        # HTML Extraction settings frame (shows when HTML Extraction is selected)
+        self.url_reader_html_settings_frame = ttk.LabelFrame(main_frame, text="HTML Extraction Settings", padding=5)
+        
+        # Get current settings or defaults
+        url_reader_settings = self.settings["tool_settings"].get("URL Reader", {})
+        
+        # Import HTML tool settings configuration
+        from tools.html_tool import get_default_settings, get_settings_ui_config
+        default_html_settings = get_default_settings()
+        
+        # Ensure URL Reader has HTML extraction settings
+        if "html_extraction" not in url_reader_settings:
+            url_reader_settings["html_extraction"] = default_html_settings.copy()
+        
+        # Get UI configuration
+        ui_config = get_settings_ui_config()
+        
+        # Store setting variables
+        self.url_reader_html_vars = {}
+        
+        # Separate UI elements by type for better layout
+        dropdown_configs = []
+        checkbox_configs = []
+        entry_configs = []
+        
+        for setting_key, config in ui_config.items():
+            if config["type"] == "dropdown":
+                dropdown_configs.append((setting_key, config))
+            elif config["type"] == "checkbox":
+                checkbox_configs.append((setting_key, config))
+            elif config["type"] == "entry":
+                entry_configs.append((setting_key, config))
+        
+        # Create a single row for dropdown and entry elements
+        if dropdown_configs or entry_configs:
+            controls_frame = ttk.Frame(self.url_reader_html_settings_frame)
+            controls_frame.pack(fill=tk.X, pady=5)
+            
+            # Create dropdown elements (left side)
+            for setting_key, config in dropdown_configs:
+                ttk.Label(controls_frame, text=config["label"]).pack(side=tk.LEFT, padx=(0, 5))
+                
+                current_value = url_reader_settings["html_extraction"].get(setting_key, config["default"])
+                var = tk.StringVar(value=current_value)
+                self.url_reader_html_vars[setting_key] = var
+                
+                combo = ttk.Combobox(controls_frame, textvariable=var, state="readonly", width=20)
+                combo['values'] = [option[0] for option in config["options"]]
+                
+                # Set the display value based on the internal value
+                for option_display, option_value in config["options"]:
+                    if option_value == current_value:
+                        var.set(option_display)
+                        break
+                
+                combo.pack(side=tk.LEFT, padx=(0, 20))
+                
+                # Set up change callback
+                var.trace('w', lambda *args, key=setting_key: self._on_url_reader_html_setting_change(key))
+            
+            # Create entry elements (right side of same row)
+            for setting_key, config in entry_configs:
+                ttk.Label(controls_frame, text=config["label"]).pack(side=tk.LEFT, padx=(0, 5))
+                
+                current_value = url_reader_settings["html_extraction"].get(setting_key, config["default"])
+                var = tk.StringVar(value=current_value)
+                self.url_reader_html_vars[setting_key] = var
+                
+                entry = ttk.Entry(controls_frame, textvariable=var, width=15)
+                entry.pack(side=tk.LEFT)
+                
+                # Set up change callback
+                var.trace('w', lambda *args, key=setting_key: self._on_url_reader_html_setting_change(key))
+        
+        # Create checkbox elements in 3 columns
+        if checkbox_configs:
+            checkbox_frame = ttk.Frame(self.url_reader_html_settings_frame)
+            checkbox_frame.pack(fill=tk.X, pady=5)
+            
+            # Configure 3 columns with equal weight
+            checkbox_frame.grid_columnconfigure(0, weight=1)
+            checkbox_frame.grid_columnconfigure(1, weight=1)
+            checkbox_frame.grid_columnconfigure(2, weight=1)
+            
+            # Distribute checkboxes across 3 columns
+            for i, (setting_key, config) in enumerate(checkbox_configs):
+                column = i % 3
+                row = i // 3
+                
+                current_value = url_reader_settings["html_extraction"].get(setting_key, config["default"])
+                var = tk.BooleanVar(value=current_value)
+                self.url_reader_html_vars[setting_key] = var
+                
+                check = ttk.Checkbutton(checkbox_frame, text=config["label"], variable=var)
+                check.grid(row=row, column=column, sticky="w", padx=5, pady=2)
+                
+                # Set up change callback
+                var.trace('w', lambda *args, key=setting_key: self._on_url_reader_html_setting_change(key))
+        
+        # Show/hide HTML extraction settings based on current format
+        self._update_url_reader_html_settings_visibility()
         
         # Action row
         action_frame = ttk.Frame(main_frame)
@@ -5924,6 +6026,58 @@ class PromeraAIApp(tk.Tk):
         # Track fetch state
         self.url_fetch_in_progress = False
         self.url_fetch_thread = None
+    
+    def _on_url_reader_format_change(self):
+        """Handle URL Reader format change."""
+        self._save_url_reader_settings()
+        self._update_url_reader_html_settings_visibility()
+    
+    def _update_url_reader_html_settings_visibility(self):
+        """Show or hide HTML extraction settings based on selected format."""
+        if not hasattr(self, 'url_reader_html_settings_frame'):
+            return
+        
+        format_value = self.url_reader_format_var.get()
+        if format_value == "html_extraction":
+            self.url_reader_html_settings_frame.pack(fill=tk.X, padx=5, pady=5, before=self.url_fetch_btn.master)
+        else:
+            self.url_reader_html_settings_frame.pack_forget()
+    
+    def _on_url_reader_html_setting_change(self, setting_key):
+        """Handle URL Reader HTML extraction setting changes."""
+        if not hasattr(self, 'url_reader_html_vars'):
+            return
+        
+        # Ensure settings structure exists
+        if "URL Reader" not in self.settings["tool_settings"]:
+            self.settings["tool_settings"]["URL Reader"] = {}
+        if "html_extraction" not in self.settings["tool_settings"]["URL Reader"]:
+            self.settings["tool_settings"]["URL Reader"]["html_extraction"] = {}
+        
+        # Get the actual value based on setting type
+        var = self.url_reader_html_vars[setting_key]
+        if isinstance(var, tk.BooleanVar):
+            value = var.get()
+        elif isinstance(var, tk.StringVar):
+            # For dropdown, convert display value to internal value
+            display_value = var.get()
+            from tools.html_tool import get_settings_ui_config
+            ui_config = get_settings_ui_config()
+            if setting_key in ui_config and ui_config[setting_key]["type"] == "dropdown":
+                # Find the internal value for this display value
+                for option_display, option_value in ui_config[setting_key]["options"]:
+                    if option_display == display_value:
+                        value = option_value
+                        break
+                else:
+                    value = display_value
+            else:
+                value = display_value
+        else:
+            value = var.get()
+        
+        self.settings["tool_settings"]["URL Reader"]["html_extraction"][setting_key] = value
+        self.save_settings()
     
     def _save_url_reader_settings(self):
         """Save URL Reader settings."""
@@ -5979,10 +6133,16 @@ class PromeraAIApp(tk.Tk):
                     if output_format == "html":
                         content = reader.fetch_url(url, timeout=30)
                         results.append(f"<!-- URL: {url} -->\n{content}")
-                    elif output_format == "json":
-                        import json
-                        content = reader.fetch_url(url, timeout=30)
-                        results.append(json.dumps({"url": url, "html": content[:5000]}, indent=2))
+                    elif output_format == "html_extraction":
+                        # Fetch HTML and process with HTML Extraction Tool
+                        from tools.html_tool import HTMLExtractionTool
+                        html_content = reader.fetch_url(url, timeout=30)
+                        html_tool = HTMLExtractionTool()
+                        
+                        # Get HTML extraction settings
+                        html_settings = self.settings["tool_settings"].get("URL Reader", {}).get("html_extraction", {})
+                        extracted_content = html_tool.process_text(html_content, html_settings)
+                        results.append(f"# Content from: {url}\n\n{extracted_content}")
                     else:  # markdown
                         content = reader.fetch_and_convert(url, timeout=30)
                         results.append(f"# Content from: {url}\n\n{content}")
