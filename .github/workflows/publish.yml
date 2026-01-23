@@ -82,30 +82,11 @@ jobs:
             echo "📦 Building version: $VERSION (from pyproject.toml)"
           fi
       
-      - name: Update version in pyproject.toml
-        if: github.event_name == 'release'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
-          echo "Updated pyproject.toml to version $VERSION"
-          grep "^version" pyproject.toml
-          
-      - name: Update version in package.json
-        if: github.event_name == 'release'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          # Use jq to update version
-          jq ".version = \"$VERSION\"" package.json > package.json.tmp && mv package.json.tmp package.json
-          echo "Updated package.json to version $VERSION"
-          grep '"version"' package.json
-          
-      - name: Update version in mcp.json
-        if: github.event_name == 'release'
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          jq ".version = \"$VERSION\"" mcp.json > mcp.json.tmp && mv mcp.json.tmp mcp.json
-          echo "Updated mcp.json to version $VERSION"
-          grep '"version"' mcp.json
+      # Note: File modifications removed - they cause uncommitted changes
+      # which make setuptools_scm generate .dev0 versions
+      # - package.json is updated by bump_version.py before tagging
+      # - pyproject.toml version is dynamic (uses setuptools_scm)
+      # - mcp.json version is updated by publish-mcp-registry job
       
       - name: Set up Python
         uses: actions/setup-python@v5
