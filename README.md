@@ -8,7 +8,7 @@
 
 A desktop text "workbench" + MCP server: clean, transform, extract, and analyze text fast—manually in a GUI or programmatically from AI assistants (Cursor / Claude Desktop / MCP clients).
 
-> Hook: Stop pasting text into 10 random websites. Pomera gives you one place (GUI + MCP) to do the 90% text ops you repeat every week.
+> Stop pasting text into 10 random websites. Pomera (GUI + MCP) - do web searches with MCP and save your work as Pomera Notes in case of text corruption in IDE! Your search API keys are stored encrypted in local database instead of JSON config file.
 
 [Download latest release](https://github.com/matbanik/Pomera-AI-Commander/releases) · Docs: [Tools](docs/TOOLS_DOCUMENTATION.md) · [MCP Guide](docs/MCP_SERVER_GUIDE.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 
