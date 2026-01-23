@@ -60,3 +60,8 @@ api-keys.json
 # Node.js
 node_modules/
 package-lock.json
+
+# MCP Registry
+mcp-publisher.exe
+.mcpregistry_*
+settings.json

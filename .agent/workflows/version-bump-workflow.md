@@ -56,16 +56,47 @@ git push --tags
 
 **Important:** Use `--amend` to avoid creating a new commit after the tag, which causes the `.dev*` suffix issue.
 
-### 5. Verify
+### 5. Wait for GitHub Actions
+
+The release triggers GitHub Actions that:
+- Compile executables for Windows, macOS, and Linux
+- Publish to PyPI
+- Publish to npm
+- Publish to MCP Registry
+- Verify publications
 
 ```bash
-# Check tag
+# Watch workflow status (takes ~3 minutes)
+gh run watch
+
+# Or check status manually
+gh run list --limit 3
+```
+
+**Wait until the workflow completes successfully before proceeding.**
+
+### 6. Validate npm Publication
+
+```bash
+# Update npm package globally
+npm update -g pomera
+
+# Check installed version matches release
+npm list -g pomera
+```
+
+Expected output should show: `pomera@X.Y.Z` matching the version you just released.
+
+### 7. Final Verification
+
+```bash
+# Check tag points to current commit
 git describe --tags --abbrev=0
 
-# Check release exists
-gh release view v1.2.8
+# Check release exists on GitHub
+gh release view vX.Y.Z
 
-# Check clean status
+# Check clean working directory
 git status
 ```
 
@@ -81,3 +112,46 @@ The script will update existing releases, not error.
 
 ### gh CLI not found
 Install: `winget install GitHub.cli`
+
+## MCP Registry
+
+The official MCP Registry ([registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io/)) lists MCP servers for discoverability.
+
+### Automatic Publishing
+
+The GitHub Actions workflow automatically publishes to the MCP Registry after PyPI/npm publish succeeds. No manual action needed.
+
+**Files involved:**
+- `server.json` - MCP Registry metadata (version auto-updated by workflow)
+- `README.md` - Contains verification comment `<!-- mcp-name: io.github.matbanik/pomera -->`
+- `package.json` - Contains `mcpName` property for npm verification
+
+### Manual Publishing (First Time or Debug)
+
+```bash
+# Install mcp-publisher (one-time)
+Invoke-WebRequest -Uri "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_windows_amd64.tar.gz" -OutFile "mcp-publisher.tar.gz"
+tar xf mcp-publisher.tar.gz; rm mcp-publisher.tar.gz
+
+# Login with GitHub (one-time, credentials cached)
+.\mcp-publisher.exe login github
+
+# Publish (after PyPI/npm packages are live)
+.\mcp-publisher.exe publish
+```
+
+### Verification
+
+```bash
+# Check if Pomera is listed
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=pomera"
+```
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| "PyPI package not found" | Wait for PyPI publish to complete, or new version not yet released |
+| "npm package not found" | Wait for npm publish to complete |
+| "Validation failed" | Ensure `mcp-name` comment is in published README on PyPI/npm |
+
