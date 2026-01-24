@@ -11,6 +11,10 @@ google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.1.1
 
+# Security dependencies
+cryptography>=41.0.0  # For note encryption
+detect-secrets>=1.5.0  # For sensitive data detection
+
 # Google AI SDK (recommended for better error handling and streaming)
 google-genai>=1.0.0
 

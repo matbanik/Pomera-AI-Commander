@@ -206,6 +206,10 @@ class ToolRegistry:
         self._register_web_search_tool()
         self._register_read_url_tool()
         
+        # Smart Diff tools (Phase 1: 2-way and 3-way)
+        self._register_smart_diff_2way_tool()
+        self._register_smart_diff_3way_tool()
+        
         self._logger.info(f"Registered {len(self._tools)} built-in MCP tools")
 
     
@@ -1827,6 +1831,21 @@ class ToolRegistry:
                         "type": "integer",
                         "description": "Max results for list/search",
                         "default": 50
+                    },
+                    "encrypt_input": {
+                        "type": "boolean",
+                        "description": "Encrypt input content at rest (for save/update)",
+                        "default": False
+                    },
+                    "encrypt_output": {
+                        "type": "boolean",
+                        "description": "Encrypt output content at rest (for save/update)",
+                        "default": False
+                    },
+                    "auto_encrypt": {
+                        "type": "boolean",
+                        "description": "Auto-detect sensitive data and warn/encrypt if found (for save/update)",
+                        "default": False
                     }
                 },
                 "required": ["action"]
@@ -1901,15 +1920,62 @@ class ToolRegistry:
             return ''.join(c for c in text if not (0xD800 <= ord(c) <= 0xDFFF))
     
     def _handle_notes_save(self, args: Dict[str, Any]) -> str:
-        """Handle saving a new note."""
+        """Handle saving a new note with optional encryption."""
         from datetime import datetime
+        from core.note_encryption import (
+            detect_sensitive_data, encrypt_note_content, 
+            is_encryption_available, format_encryption_metadata
+        )
         
         title = self._sanitize_text(args.get("title", ""))
         input_content = self._sanitize_text(args.get("input_content", ""))
         output_content = self._sanitize_text(args.get("output_content", ""))
+        encrypt_input = args.get("encrypt_input", False)
+        encrypt_output = args.get("encrypt_output", False)
+        auto_encrypt = args.get("auto_encrypt", False)
         
         if not title:
             return "Error: Title is required"
+        
+        # Check if encryption is available
+        if (encrypt_input or encrypt_output or auto_encrypt) and not is_encryption_available():
+            return ("Error: Encryption requested but cryptography library not available. "
+                   "Install with: pip install cryptography")
+        
+        # Auto-detect sensitive data if requested
+        warning_parts = []
+        if auto_encrypt:
+            # Check input content
+            if input_content:
+                input_detection = detect_sensitive_data(input_content)
+                if input_detection['is_sensitive']:
+                    encrypt_input = True
+                    warning_parts.append(f"Input: {input_detection['recommendation']}")
+            
+            # Check output content
+            if output_content:
+                output_detection = detect_sensitive_data(output_content)
+                if output_detection['is_sensitive']:
+                    encrypt_output = True
+                    warning_parts.append(f"Output: {output_detection['recommendation']}")
+        else:
+            # Warn if sensitive data detected but not encrypting
+            if input_content and not encrypt_input:
+                input_detection = detect_sensitive_data(input_content)
+                if input_detection['is_sensitive']:
+                    warning_parts.append(input_detection['recommendation'])
+            
+            if output_content and not encrypt_output:
+                output_detection = detect_sensitive_data(output_content)
+                if output_detection['is_sensitive']:
+                    warning_parts.append(output_detection['recommendation'])
+        
+        # Apply encryption if requested
+        if encrypt_input and input_content:
+            input_content = encrypt_note_content(input_content)
+        
+        if encrypt_output and output_content:
+            output_content = encrypt_note_content(output_content)
         
         try:
             conn = self._get_notes_connection()
@@ -1922,12 +1988,30 @@ class ToolRegistry:
             conn.commit()
             conn.close()
             
-            return f"Note saved successfully with ID: {note_id}"
+            # Build response with warnings
+            response_parts = [f"Note saved successfully with ID: {note_id}"]
+            
+            # Add encryption metadata
+            if encrypt_input or encrypt_output:
+                metadata = format_encryption_metadata(encrypt_input, encrypt_output)
+                response_parts.append(metadata)
+            
+            # Add warnings if any
+            if warning_parts:
+                response_parts.append("")
+                response_parts.extend(warning_parts)
+            
+            return "\n".join(response_parts)
         except Exception as e:
             return f"Error saving note: {str(e)}"
     
     def _handle_notes_get(self, args: Dict[str, Any]) -> str:
-        """Handle getting a note by ID."""
+        """Handle getting a note by ID with automatic decryption."""
+        from core.note_encryption import (
+            decrypt_note_content, get_encryption_status, 
+            format_encryption_metadata
+        )
+        
         note_id = args.get("note_id")
         
         if note_id is None:
@@ -1941,18 +2025,39 @@ class ToolRegistry:
             if not row:
                 return f"Note with ID {note_id} not found"
             
+            # Get encryption status before decryption
+            input_content = row['Input'] or ""
+            output_content = row['Output'] or ""
+            encryption_status = get_encryption_status(input_content, output_content)
+            
+            # Decrypt content if encrypted
+            decrypted_input = decrypt_note_content(input_content) if input_content else "(empty)"
+            decrypted_output = decrypt_note_content(output_content) if output_content else "(empty)"
+            
             lines = [
                 f"=== Note #{row['id']} ===",
                 f"Title: {row['Title'] or '(no title)'}",
                 f"Created: {row['Created']}",
                 f"Modified: {row['Modified']}",
+            ]
+            
+            # Add encryption metadata if any content is encrypted
+            if encryption_status['input_encrypted'] or encryption_status['output_encrypted']:
+                metadata = format_encryption_metadata(
+                    encryption_status['input_encrypted'],
+                    encryption_status['output_encrypted']
+                )
+                lines.append(f"Encryption: {metadata}")
+            
+            lines.extend([
                 "",
                 "--- INPUT ---",
-                row['Input'] or "(empty)",
+                decrypted_input,
                 "",
                 "--- OUTPUT ---",
-                row['Output'] or "(empty)"
-            ]
+                decrypted_output
+            ])
+            
             return "\n".join(lines)
         except Exception as e:
             return f"Error retrieving note: {str(e)}"
@@ -2051,13 +2156,25 @@ class ToolRegistry:
             return f"Error searching notes: {str(e)}"
     
     def _handle_notes_update(self, args: Dict[str, Any]) -> str:
-        """Handle updating an existing note."""
+        """Handle updating an existing note with encryption support."""
         from datetime import datetime
+        from core.note_encryption import (
+            detect_sensitive_data, encrypt_note_content, decrypt_note_content,
+            is_encryption_available, format_encryption_metadata
+        )
         
         note_id = args.get("note_id")
+        encrypt_input = args.get("encrypt_input", False)
+        encrypt_output = args.get("encrypt_output", False)
+        auto_encrypt = args.get("auto_encrypt", False)
         
         if note_id is None:
             return "Error: note_id is required"
+        
+        # Check if encryption is available
+        if (encrypt_input or encrypt_output or auto_encrypt) and not is_encryption_available():
+            return ("Error: Encryption requested but cryptography library not available. "
+                   "Install with: pip install cryptography")
         
         try:
             conn = self._get_notes_connection()
@@ -2071,18 +2188,53 @@ class ToolRegistry:
             # Build update query
             updates = []
             values = []
+            warning_parts = []
             
             if "title" in args:
                 updates.append("Title = ?")
                 values.append(self._sanitize_text(args["title"]))
             
             if "input_content" in args:
+                input_content = self._sanitize_text(args["input_content"])
+                
+                # Auto-detect sensitive data if requested
+                if auto_encrypt and input_content:
+                    detection = detect_sensitive_data(input_content)
+                    if detection['is_sensitive']:
+                        encrypt_input = True
+                        warning_parts.append(f"Input: {detection['recommendation']}")
+                elif input_content and not encrypt_input:
+                    detection = detect_sensitive_data(input_content)
+                    if detection['is_sensitive']:
+                        warning_parts.append(detection['recommendation'])
+                
+                # Apply encryption if requested
+                if encrypt_input and input_content:
+                    input_content = encrypt_note_content(input_content)
+                
                 updates.append("Input = ?")
-                values.append(self._sanitize_text(args["input_content"]))
+                values.append(input_content)
             
             if "output_content" in args:
+                output_content = self._sanitize_text(args["output_content"])
+                
+                # Auto-detect sensitive data if requested
+                if auto_encrypt and output_content:
+                    detection = detect_sensitive_data(output_content)
+                    if detection['is_sensitive']:
+                        encrypt_output = True
+                        warning_parts.append(f"Output: {detection['recommendation']}")
+                elif output_content and not encrypt_output:
+                    detection = detect_sensitive_data(output_content)
+                    if detection['is_sensitive']:
+                        warning_parts.append(detection['recommendation'])
+                
+                # Apply encryption if requested
+                if encrypt_output and output_content:
+                    output_content = encrypt_note_content(output_content)
+                
                 updates.append("Output = ?")
-                values.append(self._sanitize_text(args["output_content"]))
+                values.append(output_content)
             
             if not updates:
                 conn.close()
@@ -2100,7 +2252,20 @@ class ToolRegistry:
             conn.commit()
             conn.close()
             
-            return f"Note {note_id} updated successfully"
+            # Build response
+            response_parts = [f"Note {note_id} updated successfully"]
+            
+            # Add encryption metadata
+            if encrypt_input or encrypt_output:
+                metadata = format_encryption_metadata(encrypt_input, encrypt_output)
+                response_parts.append(metadata)
+            
+            # Add warnings if any
+            if warning_parts:
+                response_parts.append("")
+                response_parts.extend(warning_parts)
+            
+            return "\n".join(response_parts)
         except Exception as e:
             return f"Error updating note: {str(e)}"
     
@@ -3038,6 +3203,474 @@ class ToolRegistry:
             }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": f"Error fetching URL: {str(e)}"})
+    
+    # =========================================================================
+    # Smart Diff Tools (Phase 8)
+    # =========================================================================
+    
+    def _register_smart_diff_2way_tool(self) -> None:
+        """Register 2-way semantic diff MCP tool."""
+        self.register(MCPToolAdapter(
+            name="pomera_smart_diff_2way",
+            description=(
+                "**Semantic Diff Tool for Structured Data (JSON/YAML/ENV/TOML)**\n\n"
+                "Compares 'before' vs 'after' versions of configuration files, detecting modified/added/removed fields "
+                "while ignoring formatting differences.\n\n"
+                
+                "**WHEN TO USE THIS TOOL**:\n"
+                "- Comparing configuration files (JSON, YAML, .env, TOML)\n"
+                "- Validating changes before deployment\n"
+                "- Analyzing structural changes in data\n"
+                "- Debugging why two configs produce different behavior\n"
+                "- Generating change reports for documentation\n\n"
+                
+                "**KEY FEATURES**:\n"
+                "✅ Format-aware: Ignores whitespace/formatting, focuses on semantic changes\n"
+                "✅ JSON5/JSONC: Supports JSON with comments (VS Code standard)\n"
+                "✅ Auto-repair: Fixes common LLM JSON output issues (trailing commas, markdown fences)\n"
+                "✅ Type-safe: Handles mixed types (int/str/null) without crashes\n"
+                "✅ Validation warnings: Reports malformed data before processing\n\n"
+                
+                "**CASE SENSITIVITY**:\n"
+                "- Default: CASE-SENSITIVE ('Alice' != 'alice')\n"
+                "- With case_insensitive=true: Ignores case for strings only\n"
+                "- Rationale: Prevents crashes with mixed-type data (int/str/null)\n\n"
+                
+                "**SUPPORTED FORMATS**:\n"
+                "- json: Standard JSON (no comments)\n"
+                "- json5/jsonc: JSON with comments (// and /* */)\n"
+                "- yaml: YAML with automatic comment stripping\n"
+                "- env: .env files (KEY=value)\n"
+                "- toml: TOML configuration files\n"
+                "- auto: Automatic format detection\n\n"
+                
+                "**COMMON USE CASES**:\n\n"
+                "1. **Config File Changes**:\n"
+                "   before: '{\"host\": \"localhost\", \"port\": 8080}'\n"
+                "   after: '{\"host\": \"prod.example.com\", \"port\": 443}'\n"
+                "   → Detects 2 modifications\n\n"
+                
+                "2. **JSON with Comments** (AI-friendly):\n"
+                "   format: 'json5'\n"
+                "   before: '{\"name\": \"test\", // production config\\n\"env\": \"prod\"}'\n"
+                "   → Comments automatically handled\n\n"
+                
+                "3. **Case-Insensitive Comparison**:\n"
+                "   case_insensitive: true\n"
+                "   before: '{\"status\": \"Active\"}'\n"
+                "   after: '{\"status\": \"active\"}'\n"
+                "   → No differences detected\n\n"
+                
+                "4. **Order-Independent Arrays**:\n"
+                "   ignore_order: true\n"
+                "   before: '{\"tags\": [\"a\", \"b\", \"c\"]}'\n"
+                "   after: '{\"tags\": [\"c\", \"b\", \"a\"]}'\n"
+                "   → No differences (order ignored)\n\n"
+                
+                "**ERROR HANDLING**:\n"
+                "- Invalid format: Returns success=false with error details and line/column numbers\n"
+                "- Auto-repair: JSON errors trigger automatic repair attempt (LLM output)\n"
+                "- Warnings: Non-fatal issues (malformed ENV lines) returned in 'warnings' array\n\n"
+                
+                "**BEST PRACTICES FOR AI AGENTS**:\n"
+                "1. Use 'auto' format for unknown configs (automatic detection)\n"
+                "2. Use 'json5' when generating JSON with explanatory comments\n"
+                "3. Set case_insensitive=true for case-insensitive comparisons\n"
+                "4. Check 'warnings' array for validation issues\n"
+                "5. Use semantic mode (default) for config changes, strict mode for data validation\n\n"
+                
+                "**OUTPUT STRUCTURE**:\n"
+                "{\n"
+                "  'success': bool,\n"
+                "  'format': str,  // Detected/used format\n"
+                "  'summary': {'modified': N, 'added': N, 'removed': N},\n"
+                "  'changes': [{type, path, old_value, new_value}, ...],\n"
+                "  'text_output': str,  // Human-readable summary\n"
+                "  'similarity_score': float,  // 0-100\n"
+                "  'warnings': [str, ...],  // Validation warnings\n"
+                "  'error': str or null\n"
+                "}\n\n"
+                
+                "**KNOWN LIMITATIONS**:\n"
+                "- DeepDiff v8.6.1: Some dict field changes reported as single 'modified' instead of granular add/remove\n"
+                "- ENV format: Inline comments (KEY=value # comment) become part of value (per spec)\n\n"
+                
+                "**RELATED TOOLS**:\n"
+                "- Use pomera_notes to save diff results for future reference\n"
+                "- Use pomera_extract to pull specific fields from configs before diffing\n"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "before": {
+                        "type": "string",
+                        "description": "Original content (before changes). Can be JSON, YAML, ENV, or TOML format. "
+                                     "For AI agents: If generating config, use json5 format to include helpful comments."
+                    },
+                    "after": {
+                        "type": "string",
+                        "description": "Modified content (after changes). Must be same format as 'before'. "
+                                     "For AI agents: Ensure format consistency for accurate comparison."
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["json", "json5", "jsonc", "yaml", "env", "toml", "auto"],
+                        "description": "Data format (auto-detect if 'auto'). Use 'json5' or 'jsonc' for JSON with comments.",
+                        "default": "auto"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["semantic", "strict"],
+                        "description": "semantic=lenient (ignore minor formatting), strict=detect all differences. "
+                                     "NOTE: Both modes are CASE-SENSITIVE by default ('Alice' != 'alice'). "
+                                     "Use case_insensitive=true for case-insensitive string comparisons.",
+                        "default": "semantic"
+                    },
+                    "ignore_order": {
+                        "type": "boolean",
+                        "description": "Ignore array/list ordering",
+                        "default": False
+                    },
+                    "case_insensitive": {
+                        "type": "boolean",
+                        "description": "Ignore string case differences (Alice == alice). "
+                                     "TYPE-SAFE: Only affects strings; other types (int, null, bool) compared normally. "
+                                     "Prevents crashes with mixed-type data. Default: false (case-sensitive)",
+                        "default": False
+                    },
+                    "include_stats": {
+                        "type": "boolean",
+                        "description": "Include before/after statistics for context. "
+                                     "Returns: total_keys (all keys including nested), total_values (leaf values), "
+                                     "nesting_depth (max nesting level), data_size_bytes (approximate size), "
+                                     "change_percentage (% of values modified). "
+                                     "Helps assess magnitude: '3 changes in 5-key config' vs '3 changes in 50-key config'.",
+                        "default": False
+                    },
+                    "schema": {
+                        "type": "object",
+                        "description": "Optional JSON Schema for validation. Validates both before and after content. "
+                                     "Schema errors appear in warnings. Requires 'jsonschema' library installed."
+                    },
+                    "save_to_notes": {
+                        "type": "boolean",
+                        "description": "Save diff result to Notes database for future reference. "
+                                     "AI agents: Useful for tracking config changes across sessions.",
+                        "default": False
+                    },
+                    "note_title": {
+                        "type": "string",
+                        "description": "Title for saved note (if save_to_notes=true)"
+                    }
+                },
+                "required": ["before", "after"]
+            },
+            handler=self._handle_smart_diff_2way
+        ))
+    
+    def _handle_smart_diff_2way(self, args: Dict[str, Any]) -> str:
+        """Handle 2-way semantic diff execution."""
+        from core.semantic_diff import SemanticDiffEngine
+        import json
+        import sys
+        
+        engine = SemanticDiffEngine()
+        
+        before = args.get("before", "")
+        after = args.get("after", "")
+        format_type = args.get("format", "auto")
+        mode = args.get("mode", "semantic")
+        ignore_order = args.get("ignore_order", False)
+        case_insensitive = args.get("case_insensitive", False)
+        include_stats = args.get("include_stats", False)
+        schema = args.get("schema")  # Optional JSON Schema
+        save_to_notes = args.get("save_to_notes", False)
+        note_title = args.get("note_title", "Smart Diff 2-Way Result")
+        
+        # Validate inputs
+        if not before or not after:
+            return json.dumps({
+                "success": False,
+                "error": "Both 'before' and 'after' parameters are required"
+            }, ensure_ascii=False)
+        
+        # Estimate complexity for progress tracking
+        estimation = engine.estimate_complexity(before, after)
+        
+        # Progress callback for stderr logging (AI agents can see this!)
+        def progress_callback(current: int, total: int):
+            if estimation['should_show_progress']:
+                percent = int((current / total) * 100)
+                # Use stderr so it doesn't interfere with JSON-RPC on stdout
+                # AI agents read stderr and can interpret progress messages
+                print(f"🔄 Smart Diff Progress: {percent}% ({current}/{total})", 
+                      file=sys.stderr, flush=True)
+        
+        # Log initial message for large operations
+        if estimation['should_show_progress']:
+            print(f"🔍 Starting Smart Diff comparison...", file=sys.stderr, flush=True)
+            print(f"   Estimated time: {estimation['estimated_seconds']}s", file=sys.stderr, flush=True)
+            if estimation['skip_similarity']:
+                print(f"   ⚡ Large config detected - skipping similarity calculation", 
+                      file=sys.stderr, flush=True)
+        
+        # Perform diff
+        options_dict = {
+            "mode": mode,
+            "ignore_order": ignore_order,
+            "case_insensitive": case_insensitive,
+            "include_stats": include_stats
+        }
+        if schema:
+            options_dict["schema"] = schema
+        
+        result = engine.compare_2way(before, after, format_type, options_dict, 
+                                      progress_callback=progress_callback)
+        
+        # Log completion
+        if estimation['should_show_progress']:
+            print(f"✅ Smart Diff complete!", file=sys.stderr, flush=True)
+        
+        # Convert to dictionary
+        result_dict = {
+            "success": result.success,
+            "format": result.format,
+            "summary": result.summary,
+            "changes": result.changes,
+            "text_output": result.text_output,
+            "similarity_score": result.similarity_score,
+            "warnings": result.warnings  # Validation/parsing warnings
+        }
+        
+        # Include statistics if requested
+        if include_stats:
+            result_dict["before_stats"] = result.before_stats
+            result_dict["after_stats"] = result.after_stats
+            result_dict["change_percentage"] = result.change_percentage
+        
+        if result.error:
+            result_dict["error"] = result.error
+        
+        # Save to notes if requested
+        if save_to_notes and result.success:
+            try:
+                notes_handler = self._create_notes_handler()
+                note_id = notes_handler(
+                    title=note_title,
+                    input_content=f"BEFORE:\n{before}\n\nAFTER:\n{after}",
+                    output_content=result.text_output
+                )
+                result_dict["note_id"] = note_id
+            except Exception as e:
+                self._logger.warning(f"Failed to save to notes: {e}")
+        
+        return json.dumps(result_dict, ensure_ascii=False, indent=2)
+    
+    def _register_smart_diff_3way_tool(self) -> None:
+        """Register 3-way semantic merge MCP tool."""
+        self.register(MCPToolAdapter(
+            name="pomera_smart_diff_3way",
+            description=(
+                "**3-Way Merge Tool for Structured Data (JSON/YAML/ENV/TOML)**\n\n"
+                "Merges changes from two versions ('yours' and 'theirs') relative to a common base, "
+                "automatically resolving non-conflicting changes and reporting conflicts.\n\n"
+                
+                "**WHEN TO USE THIS TOOL**:\n"
+                "- Merging configuration files from multiple sources (e.g., local + remote changes)\n"
+                "- Resolving git merge conflicts in config files\n"
+                "- Combining changes from different team members\n"
+                "- Synchronizing configs across environments with local modifications\n\n"
+                
+                "**HOW 3-WAY MERGE WORKS**:\n"
+                "1. Compare 'base' vs 'yours' to find your changes\n"
+                "2. Compare 'base' vs 'theirs' to find their changes\n"
+                "3. Auto-merge non-conflicting changes (modified in only one version)\n"
+                "4. Report conflicts (same field modified in both versions with different values)\n\n"
+                
+                "**CONFLICT STRATEGIES**:\n"
+                "- 'report' (default): List all conflicts without resolving\n"
+                "- 'keep_yours': Auto-resolve by preferring 'yours' version\n"
+                "- 'keep_theirs': Auto-resolve by preferring 'theirs' version\n\n"
+                
+                "**SUPPORTED FORMATS**:\n"
+                "- json, json5/jsonc, yaml, env, toml, auto (all from 2-way diff)\n\n"
+                
+                "**EXAMPLE USE CASES**:\n\n"
+                "1. **Non-Conflicting Merge** (both sides modify different fields):\n"
+                "   base: '{\"host\": \"localhost\", \"port\": 8080}'\n"
+                "   yours: '{\"host\": \"localhost\", \"port\": 9000}'  // Changed port\n"
+                "   theirs: '{\"host\": \"prod.com\", \"port\": 8080}'  // Changed host\n"
+                "   → Auto-merged: '{\"host\": \"prod.com\", \"port\": 9000}'\n\n"
+                
+                "2. **Conflict Detection** (both sides modify same field differently):\n"
+                "   base: '{\"port\": 8080}'\n"
+                "   yours: '{\"port\": 9000}'\n"
+                "   theirs: '{\"port\": 5000}'\n"
+                "   → CONFLICT: port (base=8080, yours=9000, theirs=5000)\n"
+                "   → Strategy='report': merged=null, conflicts=[{path: 'port', ...}]\n"
+                "   → Strategy='keep_yours': merged shows port=9000\n\n"
+                
+                "3. **Git Merge Conflict Assistance**:\n"
+                "   base: Content from common ancestor commit\n"
+                "   yours: Your current branch\n"
+                "   theirs: Incoming branch\n"
+                "   → Get structured conflict report for intelligent resolution\n\n"
+                
+                "**OUTPUT STRUCTURE**:\n"
+                "{\n"
+                "  'success': bool,\n"
+                "  'format': str,\n"
+                "  'merged': str | null,  // Merged content (if strategy != 'report' or no conflicts)\n"
+                "  'conflicts': [{path, base, yours, theirs}, ...],\n"
+                "  'auto_merged_count': int,  // # of fields merged without conflict\n"
+                "  'conflict_count': int,  // # of conflicting fields\n"
+                "  'text_output': str,  // Human-readable summary\n"
+                "  'error': str | null\n"
+                "}\n\n"
+                
+                "**BEST PRACTICES FOR AI AGENTS**:\n"
+                "1. Use 'report' strategy first to understand conflicts before choosing resolution\n"
+                "2. For known safe merges (e.g., env-specific overrides), use 'keep_yours' or 'keep_theirs'\n"
+                "3. Check auto_merged_count to verify what was merged automatically\n"
+                "4. present conflicts to user BEFORE applying conflict resolution strategy\n"
+                "5. Save merge results to pomera_notes for audit trail\n\n"
+                
+                "**RELATED TOOLS**:\n"
+                "- Use pomera_smart_diff_2way to preview changes in 'yours' vs 'base' or 'theirs' vs 'base'\n"
+                "- Use pomera_notes to save merge results and conflict decisions\n"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "base": {
+                        "type": "string",
+                        "description": "Base/original version (common ancestor). This is the version both 'yours' and 'theirs' branched from."
+                    },
+                    "yours": {
+                        "type": "string",
+                        "description": "Your version with changes. This should be in the same format as 'base'."
+                    },
+                    "theirs": {
+                        "type": "string",
+                        "description": "Their version with changes. This should be in the same format as 'base'."
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["json", "json5", "jsonc", "yaml", "env", "toml", "auto"],
+                        "description": "Data format (same options as 2-way diff)",
+                        "default": "auto"
+                    },
+                    "auto_merge": {
+                        "type": "boolean",
+                        "description": "Whether to automatically merge non-conflicting changes (default: true)",
+                        "default": True
+                    },
+                    "conflict_strategy": {
+                        "type": "string",
+                        "enum": ["report", "keep_yours", "keep_theirs"],
+                        "description": "How to handle conflicts: 'report' (list only), 'keep_yours' (prefer yours on conflict), 'keep_theirs' (prefer theirs on conflict)",
+                        "default": "report"
+                    },
+                    "ignore_order": {
+                        "type": "boolean",
+                        "description": "Ignore array/list ordering (same as 2-way diff)",
+                        "default": False
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["semantic", "strict"],
+                        "description": "semantic=lenient (ignore minor formatting), strict=detect all differences",
+                        "default": "semantic"
+                    },
+                    "case_insensitive": {
+                        "type": "boolean",
+                        "description": "Ignore string case differences (same as 2-way diff)",
+                        "default": False
+                    },
+                    "save_to_notes": {
+                        "type": "boolean",
+                        "description": "Save merge result to Notes database for audit trail",
+                        "default": False
+                    },
+                    "note_title": {
+                        "type": "string",
+                        "description": "Title for saved note (if save_to_notes=true)"
+                    }
+                },
+                "required": ["base", "yours", "theirs"]
+            },
+            handler=self._handle_smart_diff_3way
+        ))
+    
+    def _handle_smart_diff_3way(self, args: Dict[str, Any]) -> str:
+        """Handle 3-way merge execution."""
+        from core.semantic_diff import SemanticDiffEngine
+        import json
+        
+        engine = SemanticDiffEngine()
+        
+        base = args.get("base", "")
+        yours = args.get("yours", "")
+        theirs = args.get("theirs", "")
+        format_type = args.get("format", "auto")
+        auto_merge = args.get("auto_merge", True)
+        conflict_strategy = args.get("conflict_strategy", "report")
+        ignore_order = args.get("ignore_order", False)
+        mode = args.get("mode", "semantic")
+        case_insensitive = args.get("case_insensitive", False)
+        save_to_notes = args.get("save_to_notes", False)
+        note_title = args.get("note_title", "Smart Diff 3-Way Merge Result")
+        
+        # Validate inputs
+        if not base or not yours or not theirs:
+            return json.dumps({
+                "success": False,
+                "error": "All three parameters are required: 'base', 'yours', 'theirs'"
+            }, ensure_ascii=False)
+        
+        # Perform 3-way merge
+        result = engine.compare_3way(
+            base=base,
+            yours=yours,
+            theirs=theirs,
+            format=format_type,
+            options={
+                "auto_merge": auto_merge,
+                "conflict_strategy": conflict_strategy,
+                "ignore_order": ignore_order,
+                "mode": mode,
+                "case_insensitive": case_insensitive
+            }
+        )
+        
+        # Convert to dictionary
+        result_dict = {
+            "success": result.success,
+            "format": result.format,
+            "merged": result.merged,
+            "conflicts": result.conflicts,
+            "auto_merged_count": result.auto_merged_count,
+            "conflict_count": result.conflict_count,
+            "text_output": result.text_output
+        }
+        
+        if result.error:
+            result_dict["error"] = result.error
+        
+        # Save to notes if requested
+        if save_to_notes and result.success:
+            try:
+                notes_handler = self._create_notes_handler()
+                note_id = notes_handler(
+                    title=note_title,
+                    input_content=f"BASE:\n{base}\n\nYOURS:\n{yours}\n\nTHEIRS:\n{theirs}",
+                    output_content=result.text_output
+                )
+                result_dict["note_id"] = note_id
+            except Exception as e:
+                self._logger.warning(f"Failed to save to notes: {e}")
+        
+        return json.dumps(result_dict, ensure_ascii=False, indent=2)
 
 
 # Singleton instance for convenience

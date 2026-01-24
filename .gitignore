@@ -29,6 +29,7 @@ pomera/_version.py
 *.manifest
 
 # Testing
+.hypothesis/
 .pytest_cache/
 .coverage
 htmlcov/

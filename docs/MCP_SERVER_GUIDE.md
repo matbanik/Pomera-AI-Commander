@@ -234,6 +234,46 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 | `pomera_safe_update` | Backup → update → verify workflow for AI-initiated changes |
 | `pomera_find_replace_diff` | Regex find/replace with diff preview and auto-backup to Notes |
 
+### Smart Diff Tools (2)
+
+| Tool Name | Description |
+|-----------|-------------|
+| `pomera_smart_diff_2way` | Semantic 2-way diff for JSON, YAML, TOML, ENV configs with progress tracking |
+| `pomera_smart_diff_3way` | 3-way merge for configs (base/yours/theirs) with conflict detection |
+
+#### Smart Diff Progress Monitoring (AI Agent Guidance)
+
+**For long-running operations (>2 seconds), AI agents will see progress messages on stderr:**
+
+```
+🔍 Starting Smart Diff comparison...
+   Estimated time: 17.7s
+   ⚡ Large config detected - skipping similarity calculation
+🔄 Smart Diff Progress: 0% (0/100)
+🔄 Smart Diff Progress: 35% (35/100)
+🔄 Smart Diff Progress: 60% (60/100)
+🔄 Smart Diff Progress: 90% (90/100)
+🔄 Smart Diff Progress: 100% (100/100)
+✅ Smart Diff complete!
+```
+
+**AI agents should:**
+- Interpret these messages to inform users of progress
+- Use elapsed time to estimate remaining duration
+- Relay updates for operations >10 seconds ("The comparison is 35% complete, parsing the 'after' configuration...")
+
+**Performance Characteristics:**
+
+| Config Size | Estimated Time | Progress Shown | Similarity Calculated |
+|-------------|----------------|----------------|----------------------|
+| < 10KB | < 0.1s | No | Yes |
+| 10-50KB | 0.1-2s | No | Yes |
+| 50-100KB | 2-10s | **Yes** | Yes |
+| 100-200KB | 10-30s | **Yes** | No (skipped - O(n²) avoidance) |
+| > 200KB | 30-60s+ | **Yes** | No (skipped) |
+
+> **Note:** For configs >100KB, similarity scoring is automatically skipped to avoid O(n²) performance degradation. Similarity is estimated from change count instead.
+
 ---
 
 ## pomera_find_replace_diff - Recovery Workflow

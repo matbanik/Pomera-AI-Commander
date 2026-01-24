@@ -10,7 +10,10 @@ A desktop text "workbench" + MCP server: clean, transform, extract, and analyze 
 
 > Stop pasting text into 10 random websites. Pomera (GUI + MCP) - do web searches with MCP and save your work as Pomera Notes in case of text corruption in IDE! Your search API keys are stored encrypted in local database instead of JSON config file.
 
+**📊 [Why AI needs Pomera!](docs/pomera-mcp-agentic-ai-analysis.md)** - Pomera's MCP tools reduce token usage upto 70-80% for deterministic operations.
+
 [Download latest release](https://github.com/matbanik/Pomera-AI-Commander/releases) · Docs: [Tools](docs/TOOLS_DOCUMENTATION.md) · [MCP Guide](docs/MCP_SERVER_GUIDE.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
+
 
 ---
 

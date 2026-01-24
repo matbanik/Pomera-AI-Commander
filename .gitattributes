@@ -1,0 +1,3 @@
+# Exclude test fixtures from GitHub secret scanning
+tests/fixtures/** -diff linguist-generated
+docs/TOOLS_DOCUMENTATION.md -diff linguist-documentation

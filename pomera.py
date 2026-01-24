@@ -213,6 +213,14 @@ except ImportError:
     NOTES_WIDGET_MODULE_AVAILABLE = False
     print("Notes Widget module not available")
 
+# Smart Diff widget module import
+try:
+    from tools.smart_diff_widget import SmartDiffWidget
+    SMART_DIFF_WIDGET_AVAILABLE = True
+except ImportError:
+    SMART_DIFF_WIDGET_AVAILABLE = False
+    print("Smart Diff widget module not available")
+
 # Folder File Reporter module import
 try:
     from tools.folder_file_reporter_adapter import FolderFileReporterAdapter
@@ -3325,6 +3333,14 @@ class PromeraAIApp(tk.Tk):
                 accelerator="Ctrl+M"
             )
         
+        # Add Smart Diff if available
+        if SMART_DIFF_WIDGET_AVAILABLE:
+            widgets_menu.add_command(
+                label="Smart Diff",
+                command=self.open_smart_diff_window,
+                accelerator="Ctrl+D"
+            )
+        
         # Help Menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
@@ -4404,6 +4420,47 @@ class PromeraAIApp(tk.Tk):
             
         except Exception as e:
             self._handle_error(e, "Opening MCP Manager", "Tool Operations")
+    
+    def open_smart_diff_window(self):
+        """Opens the Smart Diff widget in a separate window."""
+        if not SMART_DIFF_WIDGET_AVAILABLE:
+            self._handle_warning("Smart Diff widget is not available", "Opening Smart Diff", "Module", show_dialog=True)
+            return
+        
+        # Show existing window if it exists
+        if hasattr(self, 'smart_diff_window') and self.smart_diff_window and self.smart_diff_window.winfo_exists():
+            self.smart_diff_window.lift()
+            self.logger.info("Smart Diff window already exists, bringing to front")
+            return
+        
+        try:
+            # Create a new window for Smart Diff
+            self.smart_diff_window = tk.Toplevel(self)
+            self.smart_diff_window.title("Smart Diff - Semantic Comparison Tool")
+            self.smart_diff_window.geometry("1000x700")
+            self.smart_diff_window.transient(self)
+            
+            # Create the Smart Diff widget
+            self.smart_diff_widget = SmartDiffWidget(
+                self.smart_diff_window,
+                logger=self.logger,
+                parent_app=self,
+                tab_count=len(self.input_tabs)
+            )
+            # Handle window close - save state before closing
+            def on_smart_diff_close():
+                if hasattr(self, 'smart_diff_widget') and self.smart_diff_widget:
+                    self.smart_diff_widget._save_state()
+                self.smart_diff_window.destroy()
+                self.smart_diff_window = None
+                self.smart_diff_widget = None
+            
+            self.smart_diff_window.protocol("WM_DELETE_WINDOW", on_smart_diff_close)
+            
+            self.logger.info("Smart Diff window opened successfully")
+        
+        except Exception as e:
+            self._handle_error(e, "Opening Smart Diff", "Tool Operations")
             if hasattr(self, 'mcp_manager_window') and self.mcp_manager_window:
                 self.mcp_manager_window.destroy()
                 self.mcp_manager_window = None

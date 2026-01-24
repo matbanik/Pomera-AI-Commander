@@ -44,7 +44,7 @@ The application includes **30+ primary tools** organized into 6 categories:
 | AI Integration | 1 | Multi-provider AI Tools Widget |
 | Data Extraction | 1 | Extraction Tools (Email, HTML, Regex, URL/Link) |
 | Encoding/Decoding | 5 | Base64, Binary, Morse Code, String Escape, Number Base Converter |
-| Analysis & Comparison | 3 | Diff Viewer, Text Statistics (includes Word Frequency), Column Tools |
+| Analysis & Comparison | 4 | Diff Viewer, Text Statistics (includes Word Frequency), Column Tools, Smart Diff |
 | Utility | 8 | Cron Tool, cURL Tool, Generator Tools, Extraction Tools, JSON/XML Tool, Folder File Reporter, URL Parser, Timestamp Converter |
 
 ### Dialog Configuration System
@@ -358,7 +358,7 @@ Tools for encoding and decoding text in various formats:
   - **Options**: Uppercase/lowercase, show/hide prefixes
   - **Availability**: Always available
 
-### Analysis & Comparison Tools (3 tools)
+### Analysis & Comparison Tools (4 tools)
 
 Tools for analyzing and comparing text:
 
@@ -390,6 +390,34 @@ Tools for analyzing and comparing text:
   - **Features**: Extract columns, reorder columns, delete columns, transpose, fixed-width conversion
   - **Options**: Configurable delimiters, quote characters, column indices
   - **Availability**: Always available
+
+- **Smart Diff**: Semantic diff and 3-way merge for structured data (JSON, YAML, ENV, TOML)
+  - **Implementation**: `tools/smart_diff_widget.py` with `core/semantic_diff.py` backend
+  - **Modes**: 2-Way Diff (compare two versions) and 3-Way Merge (merge three versions with conflict detection)
+  - **Features**: 
+    - **Format Support**: JSON, JSON5/JSONC (with comments), YAML, ENV, TOML, auto-detection
+    - **Semantic Comparison**: Focuses on meaningful changes, ignores formatting differences
+    - **Token Savings**: 49-75% reduction in AI context usage vs full content
+    - **Conflict Detection**: Identifies and displays conflicting changes in 3-way merge
+    - **Auto-Merge**: Automatically merges non-conflicting changes
+  - **UI Components**:
+    - **Mode Toggle**: Switch between 2-Way Diff and 3-Way Merge
+    - **Dynamic Panes**: Base | Yours | Theirs (3-way) or Before | After (2-way)
+    - **Smart Labels**: Auto-update based on selected mode
+    - **Results Display**: Shows diff summary, merged output, and conflicts
+  - **Options**: 
+    - **ignore_order**: Ignore array/list element ordering
+    - **mode**: `semantic` (lenient, ignores formatting) or `strict` (detects all differences)
+    - **case_insensitive**: Ignore string case differences
+  - **Common Use Cases**:
+    - Config file comparison (package.json, database configs, .env files)
+    - Git 3-way merge conflict resolution
+    - API response validation
+    - Environment variable diff
+    - AI agent token optimization for large config files
+  - **MCP Integration**: Available as `pomera_smart_diff_2way` and `pomera_smart_diff_3way` for AI agents
+  - **Availability**: Always available
+
 
 ### Utility Tools (8 tools)
 
@@ -11106,7 +11134,7 @@ https://api.openweathermap.org/data/2.5/weather?q=London&appid=your_api_key_here
 **cURL Command**:
 ```bash
 curl -X POST https://api.stripe.com/v1/charges \
-  -H "Authorization: Bearer sk_test_1234567890" \
+  -H "Authorization: Bearer sk_fake_test_1234567890" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "amount=2000" \
   -d "currency=usd" \
@@ -11125,7 +11153,7 @@ curl -X POST https://api.stripe.com/v1/charges \
 - URL: `https://api.stripe.com/v1/charges`
 - Headers:
   ```
-  Authorization: Bearer sk_test_1234567890
+  Authorization: Bearer sk_fake_test_1234567890
   Content-Type: application/x-www-form-urlencoded
   ```
 - Body Type: Form Data
