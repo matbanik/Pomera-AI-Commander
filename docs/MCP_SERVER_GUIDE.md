@@ -225,7 +225,128 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 
 | Tool Name | Description |
 |-----------|-------------|
-| `pomera_notes` | Save, get, list, search, update, delete notes |
+| `pomera_notes` | Persistent note-taking with full-text search, encryption, and file loading |
+
+#### Pomera Notes - Persistent Memory for AI Agents
+
+**Core Capabilities:**
+
+- **Dual Input/Output Fields**: Store both source/before (`input_content`) and result/after (`output_content`) states
+- **Full-Text Search (FTS5)**: Fast wildcard search across all notes with `*` pattern support
+- **Encryption at Rest**: Auto-detect and encrypt sensitive data (API keys, passwords, tokens)
+- **File Loading**: Load content directly from file paths instead of pasting
+- **Session Persistence**: Maintain context across AI sessions
+
+**Common Use Cases:**
+
+```bash
+# 1. Save code before refactoring (rollback capability)
+pomera_notes action=save \
+  title="Code/semantic_diff.py/Original-2025-01-25" \
+  input_content="/path/to/semantic_diff.py" \
+  input_content_is_file=true
+
+# 2. Session continuity (resume work after restart)
+# At session start - check for interrupted work:
+pomera_notes action=search search_term="Memory/Session/*" limit=5
+
+# At session end - save progress:
+pomera_notes action=save \
+  title="Memory/Session/SmartDiff-2025-01-25-15:30" \
+  input_content="USER: Add progress tracking" \
+  output_content="AI: Added callbacks, 26/27 tests passing"
+
+# 3. Store research findings
+pomera_notes action=save \
+  title="Research/2025-01-25/hypothesis-testing" \
+  input_content="https://hypothesis.readthedocs.io/" \
+  output_content="Property-based testing strategies"
+
+# 4. Backup with encryption (sensitive data)
+pomera_notes action=save \
+  title="API-Keys/Backup-2025-01-25" \
+  input_content="API_KEY=sk-1234567890abcdef" \
+  auto_encrypt=true
+
+# 5. Compare versions (before/after)
+pomera_notes action=save \
+  title="Code/utils.py/Refactor-2025-01-25" \
+  input_content="./before/utils.py" \
+  input_content_is_file=true \
+  output_content="./after/utils.py" \
+  output_content_is_file=true
+```
+
+**Naming Conventions:**
+
+Use hierarchical titles with forward slashes for easy searching:
+
+| Pattern | Example | Use Case |
+|---------|---------|----------|
+| `Memory/Session/{description}-{date}` | `Memory/Session/BlogPost-2025-01-25` | Session progress |
+| `Code/{component}/{state}-{date}` | `Code/SemanticDiff/Original-2025-01-10` | Code backups |
+| `Research/{topic}/{description}` | `Research/TrendRadar/API-Analysis` | Research notes |
+| `Deleted/{path}-{date}` | `Deleted/old_tool.py-2025-01-25` | File deletion backups |
+
+**Quick search examples:**
+- `Memory/*` → All memory notes
+- `Code/SemanticDiff*` → All semantic diff backups
+- `Research/2025-01*` → January 2025 research
+
+**Encryption Features:**
+
+```bash
+# Auto-detect sensitive data (recommended)
+pomera_notes action=save \
+  title="Config/Production-Secrets" \
+  input_content="API_KEY=..." \
+  auto_encrypt=true  # Auto-detects API keys, passwords, etc.
+
+# Manual encryption for known sensitive data
+pomera_notes action=save \
+  title="Credentials/Database" \
+  input_content="..." \
+  encrypt_input=true \
+  encrypt_output=true
+```
+
+**Detection patterns**: API keys, passwords, credit cards (Luhn), bearer tokens, SSH keys, OAuth secrets
+
+**File Loading Support:**
+
+```bash
+# Load file contents directly into notes
+pomera_notes action=save \
+  title="Backup/utils.py-2025-01-25" \
+  input_content="P:/Pomera-AI-Commander/core/utils.py" \
+  input_content_is_file=true
+
+# Load both input and output from files
+pomera_notes action=save \
+  title="Before/After Comparison" \
+  input_content="./before.json" \
+  input_content_is_file=true \
+  output_content="./after.json" \
+  output_content_is_file=true
+
+# Update existing note with file content
+pomera_notes action=update \
+  note_id=42 \
+  output_content="/path/to/result.json" \
+  output_content_is_file=true
+```
+
+**Actions Reference:**
+
+| Action | Required | Optional | Returns |
+|--------|----------|----------|---------|
+| `save` | `title` | `input_content`, `output_content`, `input_content_is_file`, `output_content_is_file`, `encrypt_input`, `encrypt_output`, `auto_encrypt` | Note ID |
+| `get` | `note_id` | - | Full note with timestamps |
+| `list` | - | `search_term`, `limit` (default: 50) | Note IDs, titles, dates |
+| `search` | `search_term` | `limit` (default: 10) | Full notes with previews |
+| `update` | `note_id` | `title`, content fields, encryption flags | Success message |
+| `delete` | `note_id` | - | Confirmation |
+
 
 ### AI Agent Workflow Tools (2)
 

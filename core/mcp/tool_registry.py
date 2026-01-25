@@ -1793,9 +1793,118 @@ class ToolRegistry:
         """Register unified Notes tool for MCP access."""
         self.register(MCPToolAdapter(
             name="pomera_notes",
-            description="Manage notes in Pomera's database. Actions: save (create new note), get (retrieve by ID), "
-                       "list (list/filter notes), search (full-text search with content), update (modify existing), "
-                       "delete (remove note).",
+            description=(
+                "**Pomera Notes - Persistent note-taking system for AI agent memory and backup**\n\n"
+                
+                "Manage notes in Pomera's database with full-text search, encryption, and dual input/output fields. "
+                "Notes persist across sessions and can be searched with FTS5 wildcards.\n\n"
+                
+                "**WHEN TO USE THIS TOOL**:\n"
+                "- Save code snapshots before refactoring (rollback capability)\n"
+                "- Create persistent memory across AI sessions (prevent context loss)\n"
+                "- Store research findings, URLs, and documentation notes\n"
+                "- Document architectural decisions and rationale\n"
+                "- Save session progress for resuming later\n"
+                "- Backup important text before risky operations\n"
+                "- Store sensitive data with encryption (API keys, credentials)\n\n"
+                
+                "**KEY FEATURES**:\n"
+                "✅ Dual fields: input_content (source/before) and output_content (result/after)\n"
+                "✅ Full-text search with FTS5 (supports wildcards: *)\n"
+                "✅ Automatic encryption for sensitive data (API keys, passwords, tokens)\n"
+                "✅ File loading: load content directly from file paths\n"
+                "✅ UTF-8 sanitization (handles invalid surrogate characters)\n"
+                "✅ Persistent storage in SQLite database\n\n"
+                
+                "**ENCRYPTION FEATURES**:\n"
+                "- `encrypt_input`: Encrypt input content at rest\n"
+                "- `encrypt_output`: Encrypt output content at rest\n"
+                "- `auto_encrypt`: Auto-detect and encrypt sensitive data (API keys, passwords, tokens, credit cards, SSNs)\n"
+                "- Automatic decryption on retrieval (transparent to user)\n"
+                "- Machine-specific encryption key (PBKDF2 + Fernet)\n\n"
+                
+                "**FILE LOADING**:\n"
+                "- Set `input_content_is_file: true` to load from file path\n"
+                "- Set `output_content_is_file: true` to load from file path\n"
+                "- Supports absolute and relative paths\n"
+                "- UTF-8 encoding with Latin-1 fallback\n\n"
+                
+                "**ACTIONS**:\n"
+                "- `save`: Create new note (requires title)\n"
+                "- `get`: Retrieve note by ID (automatic decryption)\n"
+                "- `list`: List notes, optionally filtered by FTS5 search\n"
+                "- `search`: Full-text search with content preview\n"
+                "- `update`: Modify existing note (requires note_id)\n"
+                "- `delete`: Remove note (requires note_id)\n\n"
+                
+                "**BEST PRACTICES FOR AI AGENTS**:\n"
+                "1. **Naming Convention**: Use hierarchical titles for organization\n"
+                "   - Format: `Category/Subcategory/Description-Date`\n"
+                "   - Examples: `Memory/Session/BlogPost-2025-01-25`, `Code/Component/Original-2025-01-10`\n"
+                "   - Categories: Memory, Code, Research, Session, Deleted, Translation\n\n"
+                
+                "2. **Dual Fields Strategy**:\n"
+                "   - `input_content`: Original/source/before state\n"
+                "   - `output_content`: Result/processed/after state\n"
+                "   - Example: input=user request, output=AI response\n\n"
+                
+                "3. **Search with Wildcards**: Use FTS5 wildcards for flexible search\n"
+                "   - `search_term: 'Memory/*'` - All memory notes\n"
+                "   - `search_term: 'Blog/Cycling*'` - All cycling blog notes\n"
+                "   - `search_term: 'Draft*'` - Any note starting with Draft\n\n"
+                
+                "4. **Encryption Best Practices**:\n"
+                "   - Use `auto_encrypt: true` to automatically detect sensitive data\n"
+                "   - Manually encrypt with `encrypt_input: true` for known sensitive content\n"
+                "   - Encrypted content is automatically decrypted on `get`/`search`\n\n"
+                
+                "5. **Session Continuity**:\n"
+                "   - At session start: `action: 'search', search_term: 'Memory/Session/*'`\n"
+                "   - At session end: Save progress with `action: 'save', title: 'Memory/Session/{task}-{date}'`\n\n"
+                
+                "6. **File Backup Before Deletion**:\n"
+                "   - Always save file to notes before deletion\n"
+                "   - Use: `title: 'Deleted/{filepath}-{date}', input_content: '{path}', input_content_is_file: true`\n\n"
+                
+                "**OUTPUT STRUCTURE**:\n"
+                "Save/Update: 'Note saved successfully with ID: {id}'\n"
+                "Get: Full note with title, timestamps, input, output\n"
+                "List: Array of notes with IDs, titles, modified dates\n"
+                "Search: Full-text results with content previews (500 char)\n"
+                "Delete: 'Note {id} deleted successfully'\n\n"
+                
+                "**EXAMPLES**:\n\n"
+                
+                "Save code snapshot:\n"
+                "```\n"
+                "{\n"
+                '  "action": "save",\n'
+                '  "title": "Code/utils.py/Original-2025-01-25",\n'
+                '  "input_content": "/path/to/utils.py",\n'
+                '  "input_content_is_file": true\n'
+                "}\n"
+                "```\n\n"
+                
+                "Save session with encryption:\n"
+                "```\n"
+                "{\n"
+                '  "action": "save",\n'
+                '  "title": "Memory/Session/Task-2025-01-25",\n'
+                '  "input_content": "USER: Implement feature",\n'
+                '  "output_content": "AI: Completed",\n'
+                '  "auto_encrypt": true\n'
+                "}\n"
+                "```\n\n"
+                
+                "Search notes:\n"
+                "```\n"
+                "{\n"
+                '  "action": "search",\n'
+                '  "search_term": "Memory/*",\n'
+                '  "limit": 10\n'
+                "}\n"
+                "```"
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -1845,6 +1954,16 @@ class ToolRegistry:
                     "auto_encrypt": {
                         "type": "boolean",
                         "description": "Auto-detect sensitive data and warn/encrypt if found (for save/update)",
+                        "default": False
+                    },
+                    "input_content_is_file": {
+                        "type": "boolean",
+                        "description": "If true, treat input_content as a file path to load content from",
+                        "default": False
+                    },
+                    "output_content_is_file": {
+                        "type": "boolean",
+                        "description": "If true, treat output_content as a file path to load content from",
                         "default": False
                     }
                 },
@@ -1919,8 +2038,49 @@ class ToolRegistry:
             # Fallback: manually filter out surrogate characters
             return ''.join(c for c in text if not (0xD800 <= ord(c) <= 0xDFFF))
     
+    def _load_file_content(self, file_path: str) -> tuple[bool, str]:
+        """
+        Load content from a file path.
+        
+        Args:
+            file_path: Path to file to load
+            
+        Returns:
+            Tuple of (success: bool, content_or_error: str)
+        """
+        import os
+        
+        try:
+            # Normalize path
+            normalized_path = os.path.normpath(file_path)
+            
+            # Check if file exists
+            if not os.path.isfile(normalized_path):
+                return False, f"File not found: {file_path}"
+            
+            # Check if file is readable
+            if not os.access(normalized_path, os.R_OK):
+                return False, f"File is not readable: {file_path}"
+            
+            # Read file content
+            try:
+                with open(normalized_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                return True, content
+            except UnicodeDecodeError:
+                # Try with different encoding
+                try:
+                    with open(normalized_path, 'r', encoding='latin-1') as f:
+                        content = f.read()
+                    return True, content
+                except Exception as e:
+                    return False, f"Failed to read file {file_path}: {str(e)}"
+        except Exception as e:
+            return False, f"Error loading file {file_path}: {str(e)}"
+    
+    
     def _handle_notes_save(self, args: Dict[str, Any]) -> str:
-        """Handle saving a new note with optional encryption."""
+        """Handle saving a new note with optional encryption and file loading."""
         from datetime import datetime
         from core.note_encryption import (
             detect_sensitive_data, encrypt_note_content, 
@@ -1928,14 +2088,33 @@ class ToolRegistry:
         )
         
         title = self._sanitize_text(args.get("title", ""))
-        input_content = self._sanitize_text(args.get("input_content", ""))
-        output_content = self._sanitize_text(args.get("output_content", ""))
+        input_content = args.get("input_content", "")
+        output_content = args.get("output_content", "")
+        input_is_file = args.get("input_content_is_file", False)
+        output_is_file = args.get("output_content_is_file", False)
         encrypt_input = args.get("encrypt_input", False)
         encrypt_output = args.get("encrypt_output", False)
         auto_encrypt = args.get("auto_encrypt", False)
         
         if not title:
             return "Error: Title is required"
+        
+        # Load file content if specified
+        if input_is_file and input_content:
+            success, content_or_error = self._load_file_content(input_content)
+            if not success:
+                return f"Error loading input file: {content_or_error}"
+            input_content = content_or_error
+        
+        if output_is_file and output_content:
+            success, content_or_error = self._load_file_content(output_content)
+            if not success:
+                return f"Error loading output file: {content_or_error}"
+            output_content = content_or_error
+        
+        # Sanitize content after loading
+        input_content = self._sanitize_text(input_content)
+        output_content = self._sanitize_text(output_content)
         
         # Check if encryption is available
         if (encrypt_input or encrypt_output or auto_encrypt) and not is_encryption_available():
@@ -2185,7 +2364,6 @@ class ToolRegistry:
                 conn.close()
                 return f"Note with ID {note_id} not found"
             
-            # Build update query
             updates = []
             values = []
             warning_parts = []
@@ -2195,7 +2373,19 @@ class ToolRegistry:
                 values.append(self._sanitize_text(args["title"]))
             
             if "input_content" in args:
-                input_content = self._sanitize_text(args["input_content"])
+                input_content = args["input_content"]
+                input_is_file = args.get("input_content_is_file", False)
+                
+                # Load file content if specified
+                if input_is_file and input_content:
+                    success, content_or_error = self._load_file_content(input_content)
+                    if not success:
+                        conn.close()
+                        return f"Error loading input file: {content_or_error}"
+                    input_content = content_or_error
+                
+                # Sanitize content after loading
+                input_content = self._sanitize_text(input_content)
                 
                 # Auto-detect sensitive data if requested
                 if auto_encrypt and input_content:
@@ -2216,7 +2406,19 @@ class ToolRegistry:
                 values.append(input_content)
             
             if "output_content" in args:
-                output_content = self._sanitize_text(args["output_content"])
+                output_content = args["output_content"]
+                output_is_file = args.get("output_content_is_file", False)
+                
+                # Load file content if specified
+                if output_is_file and output_content:
+                    success, content_or_error = self._load_file_content(output_content)
+                    if not success:
+                        conn.close()
+                        return f"Error loading output file: {content_or_error}"
+                    output_content = content_or_error
+                
+                # Sanitize content after loading
+                output_content = self._sanitize_text(output_content)
                 
                 # Auto-detect sensitive data if requested
                 if auto_encrypt and output_content:

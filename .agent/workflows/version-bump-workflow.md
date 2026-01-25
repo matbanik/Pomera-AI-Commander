@@ -136,6 +136,21 @@ The old workflow had a critical bug:
 
 The key: **version files are committed BEFORE the tag is created**, ensuring `setuptools_scm` sees a clean tag when building packages.
 
+### Additional Fixes (January 2026)
+
+Three additional issues were fixed:
+
+| File | Issue | Fix |
+|------|-------|-----|
+| `pyproject.toml` | `write_to_template` used literal `\n` | Changed to triple-quoted string |
+| `pomera.spec` | `pomera/` package not in PyInstaller | Added to `datas[]` |
+| `release.yml` | No `_version.py` generation in CI | Added step to generate from tag |
+
+**Debug version resolution:**
+```bash
+set POMERA_VERSION_DEBUG=1 && python -c "from pomera.version import __version__"
+```
+
 ---
 
 ## Troubleshooting
@@ -175,6 +190,33 @@ Common issues:
 - **PyPI 502 error**: Temporary PyPI outage, re-run workflow with `gh run rerun <run-id> --failed`
 - **npm 403 error**: Version already published, need to bump version
 - **MCP Registry skipped**: npm failed, fix npm first
+
+### Version shows "unknown" in the app
+
+Enable debug logging to diagnose:
+```bash
+# Windows
+set POMERA_VERSION_DEBUG=1 && python pomera.py
+
+# Linux/macOS
+POMERA_VERSION_DEBUG=1 python pomera.py
+```
+
+This shows the version resolution chain:
+```
+[pomera.version] Priority 1 success: _version.py -> 1.3.3
+```
+
+**Common causes:**
+- **Priority 1 fails (SyntaxError)**: `pomera/_version.py` is corrupted - regenerate it
+- **Priority 1 fails (ImportError)**: `pomera/` not included in executable - check `pomera.spec`
+- **All priorities fail**: No valid version source - ensure git tags exist
+
+**To manually fix locally:**
+```bash
+echo '# AUTO-GENERATED' > pomera/_version.py
+echo '__version__ = "1.3.3"' >> pomera/_version.py
+```
 
 ---
 

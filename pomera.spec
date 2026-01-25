@@ -16,6 +16,7 @@ a = Analysis(
     datas=[
         ('tools', 'tools'),  # Include the tools directory
         ('core', 'core'),    # Include the core directory
+        ('pomera', 'pomera'),  # Include version module package
     ],
     hiddenimports=[
         # Tools modules
