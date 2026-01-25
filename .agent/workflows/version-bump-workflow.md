@@ -274,3 +274,128 @@ gh run watch
 pip index versions pomera-ai-commander
 npm view pomera-ai-commander version
 ```
+
+---
+
+## Agentic / Manual Release Workflow
+
+When working with an AI agent or when `bump_version.py` fails, use this manual workflow.
+
+### Step 1: Commit Pending Changes
+
+```bash
+# Check what needs to be committed
+git status --short
+
+# Stage all changes
+git add -A
+
+# Commit with descriptive message
+git commit -m "feat: Add feature X + fix issue Y
+
+Features:
+- Feature description
+
+Fixes:
+- Bug fix description"
+```
+
+### Step 2: Validate Version
+
+```bash
+# Verify version is available on all platforms
+python tools/validate_version.py 1.3.3
+```
+
+Expected output:
+```
+✓ Version format (X.Y.Z): Version format valid
+✓ No .dev suffix: No .dev suffix
+✓ Git clean: Git working directory clean
+✓ Version not published: Version available on all platforms
+============================================================
+✓ All validation checks passed!
+```
+
+### Step 3: Update package.json
+
+```bash
+# Using Python one-liner
+python -c "import json; f=open('package.json','r',encoding='utf-8'); d=json.load(f); f.close(); d['version']='1.3.3'; f=open('package.json','w',encoding='utf-8'); json.dump(d,f,indent=4,ensure_ascii=False); f.write('\n'); f.close(); print('Updated package.json to 1.3.3')"
+```
+
+### Step 4: Commit Version Bump
+
+```bash
+git add package.json
+git commit -m "chore: Bump version to 1.3.3"
+```
+
+### Step 5: Create and Push Tag
+
+```bash
+# Create annotated tag
+git tag -a v1.3.3 -m "Release v1.3.3"
+
+# Push commits and tag
+git push
+git push origin v1.3.3
+```
+
+### Step 6: Create GitHub Release
+
+```bash
+gh release create v1.3.3 --generate-notes --title v1.3.3
+```
+
+### Step 7: Monitor GitHub Actions
+
+```bash
+# List recent runs
+gh run list --limit 3
+
+# Watch current run
+gh run watch
+```
+
+---
+
+## AI Agent Release Checklist
+
+When an AI agent performs releases, it should follow this checklist:
+
+| Step | Command | Verify |
+|------|---------|--------|
+| 1. Check status | `git status --short` | All changes identified |
+| 2. Stage changes | `git add -A` | All files staged |
+| 3. Commit | `git commit -m "..."` | Commit successful |
+| 4. Validate | `python tools/validate_version.py X.Y.Z` | All checks pass |
+| 5. Update version | Python one-liner above | `package.json` updated |
+| 6. Commit version | `git commit -m "chore: Bump..."` | Commit successful |
+| 7. Create tag | `git tag -a vX.Y.Z -m "..."` | Tag created |
+| 8. Push | `git push && git push origin vX.Y.Z` | Both pushes succeed |
+| 9. Create release | `gh release create vX.Y.Z ...` | Release URL returned |
+| 10. Verify | `gh run list --limit 3` | Workflows running |
+
+### Example v1.3.3 Release (January 2026)
+
+**What was released:**
+- `pomera_notes` file loading feature (`input_content_is_file`, `output_content_is_file`)
+- Version management fixes (pyproject.toml, pomera.spec, release.yml)
+- Debug logging with `POMERA_VERSION_DEBUG=1`
+
+**Commits made:**
+```
+1. feat: Add pomera_notes file loading + fix version management (9 files, 657 insertions)
+2. chore: Bump version to 1.3.3 (1 file, 1 insertion)
+```
+
+**Why manual workflow was used:**
+- `bump_version.py` encountered a charmap encoding error
+- Validation passed, so proceeded with manual steps
+- All steps completed successfully
+
+---
+
+*Last updated: January 2026*
+
