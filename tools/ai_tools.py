@@ -151,6 +151,7 @@ class AIToolsWidget(ttk.Frame):
             },
             "OpenAI": {
                 "url": "https://api.openai.com/v1/chat/completions",
+                "url_responses": "https://api.openai.com/v1/responses",  # For GPT-5.2 models
                 "headers_template": {"Authorization": "Bearer {api_key}", "Content-Type": "application/json"},
                 "api_url": "https://platform.openai.com/settings/organization/api-keys"
             },
@@ -2049,7 +2050,11 @@ class AIToolsWidget(ttk.Frame):
         elif "url_template" in provider_config:
             url = provider_config["url_template"].format(model=settings.get("MODEL"), api_key=api_key)
         else:
-            url = provider_config["url"]
+            # Check if using GPT-5.2 (needs Responses API)
+            if provider_name == "OpenAI" and self._is_gpt52_model(settings.get("MODEL", "")):
+                url = provider_config["url_responses"]
+            else:
+                url = provider_config["url"]
         
         # Build payload first (needed for AWS signing)
         payload = self._build_payload(provider_name, prompt, settings)
@@ -2216,40 +2221,53 @@ class AIToolsWidget(ttk.Frame):
             if stop_str:
                 payload['stop'] = [s.strip() for s in stop_str.split(',')]
         elif provider_name in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio"]:
-            payload = {"model": settings.get("MODEL"), "messages": []}
-            system_prompt = settings.get("system_prompt", "").strip()
-            if system_prompt:
-                payload["messages"].append({"role": "system", "content": system_prompt})
-            payload["messages"].append({"role": "user", "content": prompt})
+            model = settings.get("MODEL", "")
             
-            # LM Studio specific parameters
-            if provider_name == "LM Studio":
-                max_tokens = settings.get("MAX_TOKENS", "2048")
-                if max_tokens:
-                    try:
-                        payload["max_tokens"] = int(max_tokens)
-                    except ValueError:
-                        pass
-            else:
-                # Standard OpenAI-compatible parameters
+            # GPT-5.2 uses Responses API with different format
+            if provider_name == "OpenAI" and self._is_gpt52_model(model):
+                payload = {"model": model, "input": prompt}
+                
+                # Optional parameters for Responses API (limited support)
                 self._add_param_if_valid(payload, settings, 'temperature', float)
                 self._add_param_if_valid(payload, settings, 'top_p', float)
-                self._add_param_if_valid(payload, settings, 'max_tokens', int)
-                self._add_param_if_valid(payload, settings, 'frequency_penalty', float)
-                self._add_param_if_valid(payload, settings, 'presence_penalty', float)
-                self._add_param_if_valid(payload, settings, 'seed', int)
                 
-                stop_str = str(settings.get('stop', '')).strip()
-                if stop_str:
-                    payload['stop'] = [s.strip() for s in stop_str.split(',')]
+                # Note: Responses API doesn't support max_tokens, frequency_penalty, presence_penalty, or seed
+            else:
+                # Standard Chat Completions API
+                payload = {"model": model, "messages": []}
+                system_prompt = settings.get("system_prompt", "").strip()
+                if system_prompt:
+                    payload["messages"].append({"role": "system", "content": system_prompt})
+                payload["messages"].append({"role": "user", "content": prompt})
                 
-                if settings.get("response_format") == "json_object":
-                    payload["response_format"] = {"type": "json_object"}
-                
-                # OpenRouter specific parameters
-                if provider_name == "OpenRouterAI":
-                    self._add_param_if_valid(payload, settings, 'top_k', int)
-                    self._add_param_if_valid(payload, settings, 'repetition_penalty', float)
+                # LM Studio specific parameters
+                if provider_name == "LM Studio":
+                    max_tokens = settings.get("MAX_TOKENS", "2048")
+                    if max_tokens:
+                        try:
+                            payload["max_tokens"] = int(max_tokens)
+                        except ValueError:
+                            pass
+                else:
+                    # Standard OpenAI-compatible parameters
+                    self._add_param_if_valid(payload, settings, 'temperature', float)
+                    self._add_param_if_valid(payload, settings, 'top_p', float)
+                    self._add_param_if_valid(payload, settings, 'max_tokens', int)
+                    self._add_param_if_valid(payload, settings, 'frequency_penalty', float)
+                    self._add_param_if_valid(payload, settings, 'presence_penalty', float)
+                    self._add_param_if_valid(payload, settings, 'seed', int)
+                    
+                    stop_str = str(settings.get('stop', '')).strip()
+                    if stop_str:
+                        payload['stop'] = [s.strip() for s in stop_str.split(',')]
+                    
+                    if settings.get("response_format") == "json_object":
+                        payload["response_format"] = {"type": "json_object"}
+                    
+                    # OpenRouter specific parameters
+                    if provider_name == "OpenRouterAI":
+                        self._add_param_if_valid(payload, settings, 'top_k', int)
+                        self._add_param_if_valid(payload, settings, 'repetition_penalty', float)
         
         elif provider_name == "AWS Bedrock":
             # AWS Bedrock InvokeModel API - model-specific payload formats
@@ -2334,21 +2352,29 @@ class AIToolsWidget(ttk.Frame):
                     "max_tokens": max_tokens_int,
                     "temperature": 0.7
                 }
-                if system_prompt:
-                    payload["messages"].insert(0, {"role": "system", "content": system_prompt})
+                payload["messages"].insert(0, {"role": "system", "content": system_prompt})
         
         return payload
     
+    def _is_gpt52_model(self, model: str) -> bool:
+        """Check if model is GPT-5.2 which requires Responses API."""
+        if not model:
+            return False
+        model_lower = model.lower()
+        return 'gpt-5.2' in model_lower or 'gpt5.2' in model_lower or model_lower.startswith('gpt-52')
+    
     def _add_param_if_valid(self, param_dict, settings, key, param_type):
         """Add parameter to dict if it's valid."""
-        val_str = str(settings.get(key, '')).strip()
-        if val_str:
+        val = settings.get(key)
+        if val is not None and val != "":
             try:
-                converted_val = param_type(val_str)
-                if converted_val:  # Excludes empty strings, 0, and 0.0
+                converted_val = param_type(val)
+                # Only add if not an empty string, 0, or 0.0 (unless 0 or 0.0 is a valid setting)
+                # For now, assuming 0/0.0 are valid if type is int/float
+                if converted_val is not None and (converted_val != "" or param_type == str):
                     param_dict[key] = converted_val
             except (ValueError, TypeError):
-                self.logger.warning(f"Could not convert {key} value '{val_str}' to {param_type}")
+                self.logger.warning(f"Could not convert {key} value '{val}' to {param_type}")
     
     def _extract_response_text(self, provider_name, data):
         """Extract response text from API response."""
@@ -2359,7 +2385,13 @@ class AIToolsWidget(ttk.Frame):
         elif provider_name == "Anthropic AI":
             result_text = data.get('content', [{}])[0].get('text', result_text)
         elif provider_name in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio", "Azure AI"]:
-            result_text = data.get('choices', [{}])[0].get('message', {}).get('content', result_text)
+            # Check for Responses API format (GPT-5.2)
+            if 'item' in data and isinstance(data['item'], dict):
+                # Responses API format
+                result_text = data['item'].get('content', result_text)
+            else:
+                # Standard Chat Completions format
+                result_text = data.get('choices', [{}])[0].get('message', {}).get('content', result_text)
         elif provider_name == "Cohere AI":
             result_text = data.get('text', result_text)
         elif provider_name == "AWS Bedrock":
@@ -2455,6 +2487,11 @@ class AIToolsWidget(ttk.Frame):
                 self.display_ai_response(result_text)
                 return
             
+            
+            # Debug logging for GPT-5.2 troubleshooting
+            self.logger.info(f"Making API request to: {url}")
+            self.logger.info(f"Payload: {json.dumps(payload, indent=2)}")
+            
             # Make streaming request
             response = requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
             response.raise_for_status()
@@ -2501,6 +2538,18 @@ class AIToolsWidget(ttk.Frame):
                 self.logger.warning("No content received from streaming response")
                 self.app.after(0, self.app.update_output_text, "Error: No content received from streaming response.")
                 
+        except requests.exceptions.HTTPError as e:
+            self.cancel_streaming()
+            # Log the detailed error response
+            error_detail = "No details available"
+            if e.response is not None:
+                try:
+                    error_detail = e.response.text
+                    self.logger.error(f"API Error Response: {error_detail}")
+                except:
+                    pass
+            self.logger.error(f"Streaming API request failed: {e}")
+            self.app.after(0, self.app.update_output_text, f"Streaming API Error: {e}\\n\\nDetails: {error_detail}")
         except requests.exceptions.RequestException as e:
             self.cancel_streaming()
             self.logger.error(f"Streaming API request failed: {e}")
@@ -2528,7 +2577,13 @@ class AIToolsWidget(ttk.Frame):
                     return chunk_data.get("delta", {}).get("text", "")
                 return ""
             else:
-                # OpenAI-compatible format (OpenAI, Groq, OpenRouter, Azure AI)
+                # Check for Responses API format first (GPT-5.2)
+                chunk_type = chunk_data.get("type", "")
+                if chunk_type == "response.output_text.delta":
+                    # Responses API format: {"type": "response.output_text.delta", "delta": "..."}
+                    return chunk_data.get("delta", "")
+                
+                # OpenAI Chat Completions format (OpenAI, Groq, OpenRouter, Azure AI)
                 # Format: {"choices": [{"delta": {"content": "..."}}]}
                 choices = chunk_data.get("choices", [])
                 if choices and len(choices) > 0:

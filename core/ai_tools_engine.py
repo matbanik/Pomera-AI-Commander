@@ -81,6 +81,7 @@ class AIToolsEngine:
         },
         "OpenAI": {
             "url": "https://api.openai.com/v1/chat/completions",
+            "url_responses": "https://api.openai.com/v1/responses",  # For GPT-5.2 models
             "headers_template": {"Authorization": "Bearer {api_key}", "Content-Type": "application/json"},
         },
         "Cohere AI": {
@@ -459,7 +460,11 @@ class AIToolsEngine:
                 api_key=api_key
             )
         else:
-            url = provider_config["url"]
+            # Check if using GPT-5.2 (needs Responses API)
+            if provider == "OpenAI" and self._is_gpt52_model(settings.get("MODEL", "")):
+                url = provider_config["url_responses"]
+            else:
+                url = provider_config["url"]
         
         # Build payload
         payload = self._build_payload(provider, prompt, settings)
@@ -557,32 +562,47 @@ class AIToolsEngine:
                 payload['max_tokens'] = int(settings['max_tokens'])
         
         elif provider in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio"]:
-            payload = {"model": settings.get("MODEL"), "messages": []}
-            system_prompt = settings.get("system_prompt", "").strip()
-            if system_prompt:
-                payload["messages"].append({"role": "system", "content": system_prompt})
-            payload["messages"].append({"role": "user", "content": prompt})
+            model = settings.get("MODEL", "")
             
-            if provider == "LM Studio":
-                max_tokens = settings.get("MAX_TOKENS", "2048")
-                if max_tokens:
-                    try:
-                        payload["max_tokens"] = int(max_tokens)
-                    except ValueError:
-                        pass
-            else:
+            # GPT-5.2 uses Responses API with different format
+            if provider == "OpenAI" and self._is_gpt52_model(model):
+                payload = {"model": model, "input": prompt}
+                
+                # Optional parameters for Responses API (limited support)
                 if settings.get('temperature') is not None:
                     payload['temperature'] = float(settings['temperature'])
                 if settings.get('top_p') is not None:
                     payload['top_p'] = float(settings['top_p'])
-                if settings.get('max_tokens') is not None:
-                    payload['max_tokens'] = int(settings['max_tokens'])
-                if settings.get('seed') is not None:
-                    payload['seed'] = int(settings['seed'])
                 
-                stop_str = str(settings.get('stop_sequences', '')).strip()
-                if stop_str:
-                    payload['stop'] = [s.strip() for s in stop_str.split(',')]
+                # Note: Responses API doesn't support max_tokens, frequency_penalty, presence_penalty, or seed
+            else:
+                # Standard Chat Completions API
+                payload = {"model": model, "messages": []}
+                system_prompt = settings.get("system_prompt", "").strip()
+                if system_prompt:
+                    payload["messages"].append({"role": "system", "content": system_prompt})
+                payload["messages"].append({"role": "user", "content": prompt})
+                
+                if provider == "LM Studio":
+                    max_tokens = settings.get("MAX_TOKENS", "2048")
+                    if max_tokens:
+                        try:
+                            payload["max_tokens"] = int(max_tokens)
+                        except ValueError:
+                            pass
+                else:
+                    if settings.get('temperature') is not None:
+                        payload['temperature'] = float(settings['temperature'])
+                    if settings.get('top_p') is not None:
+                        payload['top_p'] = float(settings['top_p'])
+                    if settings.get('max_tokens') is not None:
+                        payload['max_tokens'] = int(settings['max_tokens'])
+                    if settings.get('seed') is not None and settings['seed'] != '':
+                        payload['seed'] = int(settings['seed'])
+                    
+                    stop_str = str(settings.get('stop_sequences', '')).strip()
+                    if stop_str:
+                        payload['stop'] = [s.strip() for s in stop_str.split(',')]
         
         elif provider == "AWS Bedrock":
             model_id = settings.get("MODEL", "")
@@ -616,6 +636,13 @@ class AIToolsEngine:
         
         return payload
     
+    def _is_gpt52_model(self, model: str) -> bool:
+        """Check if model is GPT-5.2 which requires Responses API."""
+        if not model:
+            return False
+        model_lower = model.lower()
+        return 'gpt-5.2' in model_lower or 'gpt5.2' in model_lower or model_lower.startswith('gpt-52')
+    
     def _extract_response_text(self, provider: str, data: Dict[str, Any]) -> str:
         """Extract response text from API response."""
         result_text = f"Error: Could not parse response from {provider}."
@@ -625,7 +652,13 @@ class AIToolsEngine:
         elif provider == "Anthropic AI":
             result_text = data.get('content', [{}])[0].get('text', result_text)
         elif provider in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio", "Azure AI"]:
-            result_text = data.get('choices', [{}])[0].get('message', {}).get('content', result_text)
+            # Check for Responses API format (GPT-5.2)
+            if 'item' in data and isinstance(data['item'], dict):
+                # Responses API format
+                result_text = data['item'].get('content', result_text)
+            else:
+                # Standard Chat Completions format
+                result_text = data.get('choices', [{}])[0].get('message', {}).get('content', result_text)
         elif provider == "Cohere AI":
             result_text = data.get('text', result_text)
         elif provider == "AWS Bedrock":

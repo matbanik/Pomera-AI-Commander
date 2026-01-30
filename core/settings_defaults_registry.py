@@ -445,14 +445,18 @@ class SettingsDefaultsRegistry:
             description="Anthropic Claude AI integration"
         ))
         
-        # OpenAI - Updated December 2025
-        # Latest: GPT-4.1 series, GPT-4o being retired Feb 2026
+        # OpenAI - Updated January 2026
+        # Latest: GPT-5.2 series, GPT-4.1 series, GPT-4o being retired Feb 2026
         self.register_tool(ToolDefaultsSpec(
             tool_name="OpenAI",
             defaults={
                 "API_KEY": "putinyourkey",
-                "MODEL": "gpt-4.1",
+                "MODEL": "gpt-5.2",
                 "MODELS_LIST": [
+                    "gpt-5.2",
+                    "gpt-5.2-instant-2025-12-11",
+                    "gpt-5.2-thinking-2025-12-11",
+                    "gpt-5.2-pro-2025-12-11",
                     "gpt-4.1",
                     "gpt-4.1-mini",
                     "gpt-4.1-nano",
