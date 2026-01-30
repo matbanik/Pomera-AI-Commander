@@ -160,6 +160,36 @@ class ToolRegistry:
         """Check if tool is registered."""
         return name in self._tools
     
+    def _get_or_create_db_settings_manager(self):
+        """
+        Get DatabaseSettingsManager from app context or create standalone instance.
+        
+        Priority:
+        1. Try GUI app context (if available) - maintains GUI integration
+        2. Create new instance with correct database path - enables standalone mode
+        
+        Returns:
+            DatabaseSettingsManager instance (never None)
+        """
+        # Try app context first (GUI integration)
+        try:
+            from core.app_context import get_app
+            app = get_app()
+            if app and hasattr(app, 'db_settings_manager'):
+                self._logger.debug("Using database settings manager from app context")
+                return app.db_settings_manager
+        except Exception as e:
+            self._logger.debug(f"App context not available: {e}")
+        
+        # Fallback: Create standalone instance
+        from core.data_directory import get_database_path
+        from core.database_settings_manager import DatabaseSettingsManager
+        
+        db_path = get_database_path("settings.db")
+        self._logger.debug(f"Creating standalone database settings manager: {db_path}")
+        return DatabaseSettingsManager(db_path=db_path)
+
+    
     # =========================================================================
     # Built-in Tool Registration
     # =========================================================================
@@ -4320,16 +4350,9 @@ class ToolRegistry:
         
         action = args.get("action", "generate")
         
-        # Initialize engine and security
-        # Try to get db_settings_manager from app context
-        db_settings_manager = None
-        try:
-            from core.app_context import get_app
-            app = get_app()
-            if app and hasattr(app, 'db_settings_manager'):
-                db_settings_manager = app.db_settings_manager
-        except Exception:
-            pass
+        # Initialize engine and security with database settings manager
+        # Works in both GUI mode (uses app context) and standalone mode (creates instance)
+        db_settings_manager = self._get_or_create_db_settings_manager()
         
         engine = AIToolsEngine(db_settings_manager=db_settings_manager)
         security = get_security_manager(db_settings_manager)

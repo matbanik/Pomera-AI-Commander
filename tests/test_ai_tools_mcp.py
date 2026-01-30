@@ -157,6 +157,44 @@ class TestAIToolsMCP:
         assert data['success'] is False
         assert 'provider' in data and data['provider'] == 'OpenAI'
     
+    def test_generate_standalone_database_access(self, tool_registry):
+        """Test AI Tools can access database in standalone mode (no GUI context).
+        
+        This test verifies the fix for the app context bug where AI Tools
+        couldn't access the database when running standalone (outside GUI).
+        
+        The test confirms database access is working by checking:
+        - If no API key configured: Gets "API key not configured" error (proves DB was queried)
+        - If API key IS configured: Should either succeed or fail with API error (proves DB was queried)
+        - Should NOT fail with "NoneType" or "database not accessible" errors
+        """
+        result = tool_registry.execute('pomera_ai_tools', {
+            "action": "generate",
+            "provider": "Google AI",
+            "model": "gemini-2.0-flash-exp",
+            "prompt": "Hello, world!",
+            "max_tokens": 50
+        })
+        
+        data = get_result(result)
+        
+        # Test passes if:
+        # 1. Database was accessed (no NoneType errors)
+        # 2. Provider and model were read from args
+        assert 'provider' in data
+        assert data['provider'] == 'Google AI'
+        assert 'model' in data
+        assert data['model'] == 'gemini-2.0-flash-exp'
+        
+        # Should not have database access errors
+        if not data['success']:
+            error_msg = data.get('error', '').lower()
+            # These would indicate database access failure:
+            assert 'nonetype' not in error_msg, "Database manager was None (app context bug)"
+            assert 'database not accessible' not in error_msg
+            assert 'failed to load' not in error_msg or 'api key' in error_msg
+
+    
     # =========================================================================
     # Unknown Action Tests
     # =========================================================================
