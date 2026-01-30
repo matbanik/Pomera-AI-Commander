@@ -171,7 +171,7 @@ class TestAIToolsMCP:
         result = tool_registry.execute('pomera_ai_tools', {
             "action": "generate",
             "provider": "Google AI",
-            "model": "gemini-2.0-flash-exp",
+            "model": "gemini-2.5-flash",
             "prompt": "Hello, world!",
             "max_tokens": 50
         })
@@ -184,7 +184,7 @@ class TestAIToolsMCP:
         assert 'provider' in data
         assert data['provider'] == 'Google AI'
         assert 'model' in data
-        assert data['model'] == 'gemini-2.0-flash-exp'
+        assert data['model'] == 'gemini-2.5-flash'
         
         # Should not have database access errors
         if not data['success']:

@@ -2150,7 +2150,7 @@ The AI Tools Widget supports 11 different AI providers, each with unique capabil
 - `gemini-1.5-pro-latest` - Latest Pro model with advanced reasoning, 2M token context
 - `gemini-1.5-flash-latest` - Fast model optimized for speed, 1M token context
 - `gemini-1.0-pro` - Stable production model, 32K token context
-- `gemini-2.0-flash-exp` - Experimental next-generation model
+- `gemini-2.5-flash` - Current fast and efficient model
 
 **Key Parameters**:
 - **temperature** (0.0-2.0): Controls randomness in responses

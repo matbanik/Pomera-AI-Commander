@@ -3472,7 +3472,17 @@ class ToolRegistry:
             
             return json.dumps(output, indent=2, ensure_ascii=False)
         except Exception as e:
-            return json.dumps({"success": False, "error": str(e)})
+            # Sanitize error message to prevent API key exposure
+            # Use the same sanitization as AI Tools
+            error_msg = str(e)
+            import re
+            # Remove API key from URL parameters
+            error_msg = re.sub(r'([?&](?:key|api_key|apikey)=)[^&\s]+', r'\1[REDACTED]', error_msg, flags=re.IGNORECASE)
+            # Remove Bearer tokens
+            error_msg = re.sub(r'(Bearer\s+)[A-Za-z0-9._-]+', r'\1[REDACTED]', error_msg)
+            # Remove X-API-KEY and similar headers
+            error_msg = re.sub(r'(X-API-KEY["\']?:\s*["\']?)[A-Za-z0-9._-]+', r'\1[REDACTED]', error_msg, flags=re.IGNORECASE)
+            return json.dumps({"success": False, "error": error_msg})
     
     def _get_encrypted_web_search_api_key(self, engine_key: str) -> str:
         """Load encrypted API key for a search engine from database settings.
