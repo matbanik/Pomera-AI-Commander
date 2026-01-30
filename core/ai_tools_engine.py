@@ -660,8 +660,16 @@ class AIToolsEngine:
             result_text = data.get('content', [{}])[0].get('text', result_text)
         elif provider in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio", "Azure AI"]:
             # Check for Responses API format (GPT-5.2)
-            if 'item' in data and isinstance(data['item'], dict):
+            # Format: {"output": [{"content": [{"type": "output_text", "text": "..."}]}]}
+            if 'output' in data and isinstance(data.get('output'), list) and len(data['output']) > 0:
                 # Responses API format
+                output_item = data['output'][0]
+                if 'content' in output_item and isinstance(output_item['content'], list) and len(output_item['content']) > 0:
+                    content_item = output_item['content'][0]
+                    if content_item.get('type') == 'output_text':
+                        result_text = content_item.get('text', result_text)
+            elif 'item' in data and isinstance(data['item'], dict):
+                # Alternative Responses API format
                 result_text = data['item'].get('content', result_text)
             else:
                 # Standard Chat Completions format
