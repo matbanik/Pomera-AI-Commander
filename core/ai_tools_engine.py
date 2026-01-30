@@ -257,7 +257,8 @@ class AIToolsEngine:
             # Build request
             url, payload, headers = self._build_api_request(provider, api_key, prompt, settings)
             
-            self.logger.debug(f"{provider} URL: {url}")
+            # Log with sanitized URL (never log API keys)
+            self.logger.debug(f"{provider} URL: {self._sanitize_url(url)}")
             self.logger.debug(f"{provider} payload: {json.dumps(payload, indent=2)}")
             
             # Notify progress
@@ -308,7 +309,9 @@ class AIToolsEngine:
                         self.logger.warning(f"Rate limit exceeded. Retrying in {delay:.2f} seconds...")
                         time.sleep(delay)
                     else:
+                        # Sanitize error message to remove API keys from URLs
                         error_text = e.response.text if hasattr(e, 'response') and e.response else str(e)
+                        error_text = self._sanitize_url(error_text)
                         return AIToolsResult(
                             success=False,
                             error=f"API Error ({e.response.status_code}): {error_text[:500]}",
@@ -317,9 +320,11 @@ class AIToolsEngine:
                         )
                         
                 except requests.exceptions.RequestException as e:
+                    # Sanitize error message to remove API keys
+                    error_msg = self._sanitize_url(str(e))
                     return AIToolsResult(
                         success=False,
-                        error=f"Network Error: {str(e)}",
+                        error=f"Network Error: {error_msg}",
                         provider=provider,
                         model=actual_model
                     )
@@ -360,6 +365,23 @@ class AIToolsEngine:
             'should_show_progress': True,  # Always show for AI calls
             'input_size_kb': int(size_kb)
         }
+    
+    def _sanitize_url(self, url: str) -> str:
+        """
+        Sanitize URL by removing API keys and sensitive parameters.
+        
+        Args:
+            url: URL that may contain sensitive data
+            
+        Returns:
+            Sanitized URL with sensitive parameters masked
+        """
+        import re
+        # Remove API key from URL parameters
+        url = re.sub(r'([?&](?:key|api_key|apikey)=)[^&]+', r'\1[REDACTED]', url, flags=re.IGNORECASE)
+        # Remove Bearer tokens from Authorization headers that might be in error messages
+        url = re.sub(r'(Bearer\s+)[A-Za-z0-9._-]+', r'\1[REDACTED]', url)
+        return url
     
     def _get_provider_settings(self, provider: str) -> Dict[str, Any]:
         """Get settings for a provider from database or cache."""
