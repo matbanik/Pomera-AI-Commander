@@ -69,3 +69,4 @@ package-lock.json
 mcp-publisher.exe
 .mcpregistry_*
 settings.json
+.mcp_server.pid
