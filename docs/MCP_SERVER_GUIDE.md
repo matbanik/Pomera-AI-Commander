@@ -186,7 +186,112 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 
 ---
 
-## Available MCP Tools (26 Total)
+## MCP Security (Circuit Breaker)
+
+Pomera includes an optional **proactive security system** for MCP tools that access paid APIs (AI providers, web search). When enabled, it monitors usage and **automatically locks protected tools** if unusual activity is detected.
+
+> ⚠️ **DISABLED BY DEFAULT** - Opt-in for security-conscious users via Pomera UI → Settings → MCP Security
+
+### Protected Tools
+
+These tools are monitored when security is enabled:
+
+| Tool | Why Protected |
+|------|---------------|
+| `pomera_ai_tools` | Incurs API costs (OpenAI, Anthropic, etc.) |
+| `pomera_web_search` | May incur API costs (Google, Brave, SerpApi) |
+| `pomera_read_url` | URL fetching can be abused |
+
+### Security Features
+
+1. **Rate Limiting**: Max calls per minute (default: 30)
+2. **Token Limits**: Max estimated tokens per hour (default: 100,000)
+3. **Cost Limits**: Max estimated cost per hour (default: $1.00)
+4. **Auto-Lock**: Automatically locks protected tools when thresholds exceeded
+5. **Password Unlock**: Requires password to unlock (set via UI)
+
+### Configuration (Pomera UI)
+
+Open **Pomera AI Commander** → **Settings** → **MCP Security**:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enable Security | ❌ Off | Must be enabled for protection |
+| Rate Limit (calls/min) | 30 | Lock triggers if exceeded |
+| Token Limit (tokens/hour) | 100,000 | Lock triggers if exceeded |
+| Cost Limit ($/hour) | $1.00 | Lock triggers if exceeded |
+| Unlock Password | (none) | Required to unlock after trigger |
+
+### When Lock Triggers
+
+When a threshold is exceeded, AI agents will receive this error:
+
+```json
+{
+  "success": false,
+  "error": "🔒 MCP tools locked: Rate limit exceeded. Unlock via Pomera UI → Settings → MCP Security",
+  "locked": true
+}
+```
+
+**To unlock**: Open Pomera UI → Settings → MCP Security → Enter password
+
+### AI Agent Guidance
+
+When security is enabled and you encounter a locked error:
+
+1. Inform the user: "MCP tools are locked due to unusual activity"
+2. Explain: "This is a security feature to prevent runaway API costs"
+3. Guide: "To unlock, open Pomera UI → Settings → MCP Security → Enter your unlock password"
+
+---
+
+## Available MCP Tools (29 Total)
+
+### AI Tools (1)
+
+| Tool Name | Description |
+|-----------|-------------|
+| `pomera_ai_tools` | Access 11 AI providers (Google AI, OpenAI, Anthropic, Groq, OpenRouter, Azure, Vertex, Cohere, HuggingFace, LM Studio, AWS Bedrock) via MCP |
+
+#### AI Tools Usage
+
+```bash
+# List available providers
+pomera_ai_tools action=list_providers
+
+# List models for a provider
+pomera_ai_tools action=list_models provider="OpenAI"
+
+# Generate text
+pomera_ai_tools action=generate \
+  provider="OpenAI" \
+  model="gpt-4o-mini" \
+  prompt="Summarize the key points..." \
+  system_prompt="You are a helpful assistant." \
+  temperature=0.7 \
+  max_tokens=500
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `action` | string | `list_providers`, `list_models`, or `generate` |
+| `provider` | string | AI provider name (required for generate) |
+| `model` | string | Model name (uses default if not specified) |
+| `prompt` | string | Input text to send to AI |
+| `prompt_is_file` | boolean | If true, load prompt from file path |
+| `system_prompt` | string | System prompt for context |
+| `temperature` | float | Sampling temperature (0.0-2.0) |
+| `top_p` | float | Nucleus sampling (0.0-1.0) |
+| `top_k` | integer | Top-k sampling (1-100) |
+| `max_tokens` | integer | Max tokens to generate |
+| `stop_sequences` | string | Comma-separated stop sequences |
+| `seed` | integer | Random seed for reproducibility |
+| `output_to_file` | string | Save response to file path |
+
+> **Security Note**: API keys are loaded from Pomera UI settings (encrypted at rest). Never pass API keys as MCP parameters.
 
 ### Text Processing Tools (21)
 

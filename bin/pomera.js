@@ -8,16 +8,37 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 // Get the path to pomera.py
 const pomeraPath = path.join(__dirname, '..', 'pomera.py');
 
-// Find Python executable
+// Check for bundled venv Python first, fall back to system Python
 function findPython() {
     const { execSync } = require('child_process');
+    const isWin = process.platform === 'win32';
 
+    // Check for bundled venv first (created by postinstall)
+    // For GUI, prefer pythonw on Windows (no console window)
+    const venvPython = path.join(__dirname, '..', '.venv',
+        isWin ? 'Scripts' : 'bin',
+        isWin ? 'pythonw.exe' : 'python3');
+
+    // Also check regular python.exe if pythonw not found
+    const venvPythonAlt = path.join(__dirname, '..', '.venv',
+        isWin ? 'Scripts' : 'bin',
+        isWin ? 'python.exe' : 'python3');
+
+    if (fs.existsSync(venvPython)) {
+        return venvPython;
+    }
+    if (fs.existsSync(venvPythonAlt)) {
+        return venvPythonAlt;
+    }
+
+    // Fall back to system Python
     // Try pythonw first (Windows - no console)
-    if (process.platform === 'win32') {
+    if (isWin) {
         try {
             execSync('pythonw --version', { stdio: 'ignore' });
             return 'pythonw';

@@ -979,6 +979,18 @@ class SettingsDefaultsRegistry:
                 "favorite_tools": [],
                 "recent_tools": [],
                 "recent_tools_max": 10
+            },
+            # MCP Security Settings (Circuit Breaker)
+            # DISABLED by default - opt-in for security-conscious users
+            "mcp_security": {
+                "enabled": False,  # Must be explicitly enabled
+                "rate_limit_per_minute": 30,  # Max protected tool calls per minute
+                "token_limit_per_hour": 100000,  # Max estimated tokens per hour
+                "cost_limit_per_hour": 1.00,  # Max estimated cost (USD) per hour
+                "password_hash": "",  # bcrypt hash of unlock password
+                "locked": False,  # Current lock state
+                "lock_reason": "",  # Why it was locked
+                "lock_timestamp": ""  # When it was locked (ISO format)
             }
         }
     

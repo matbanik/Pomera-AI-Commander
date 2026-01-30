@@ -2,7 +2,7 @@
 requests>=2.25.0
 reportlab>=3.6.0
 python-docx>=0.8.11
-aiohttp>=3.9.0
+aiohttp>=3.13.0  # Updated for security and stability
 platformdirs>=4.0.0
 
 # AI Tools dependencies
@@ -12,7 +12,7 @@ google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.1.1
 
 # Security dependencies
-cryptography>=41.0.0  # For note encryption
+cryptography>=45.0.0  # Updated for critical security patches
 detect-secrets>=1.5.0  # For sensitive data detection
 
 # Google AI SDK (recommended for better error handling and streaming)

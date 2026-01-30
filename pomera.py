@@ -3296,6 +3296,9 @@ class PromeraAIApp(tk.Tk):
         if DATABASE_SETTINGS_AVAILABLE and hasattr(self, 'db_settings_manager'):
             settings_menu.add_command(label="Retention Settings...", command=self.open_retention_settings)
         
+        # Add MCP Security settings
+        settings_menu.add_command(label="MCP Security...", command=self.open_mcp_security_settings)
+        
         settings_menu.add_separator()
         settings_menu.add_command(label="Console Log", command=self.show_console_log)
         
@@ -8968,6 +8971,244 @@ class PromeraAIApp(tk.Tk):
         except Exception as e:
             self.logger.error(f"Error opening retention settings: {e}")
             self.show_error(f"Error opening retention settings: {e}")
+    
+    def open_mcp_security_settings(self):
+        """Open MCP Security settings configuration dialog."""
+        try:
+            # Create MCP security settings window
+            security_window = tk.Toplevel(self)
+            security_window.title("MCP Security Settings")
+            security_window.transient(self)
+            security_window.geometry("550x600")
+            security_window.minsize(500, 550)
+            security_window.resizable(True, True)
+            security_window.grab_set()
+            
+            # Load current settings
+            mcp_settings = self.settings.get("mcp_security", {
+                "enabled": False,
+                "rate_limit_per_minute": 30,
+                "token_limit_per_hour": 100000,
+                "cost_limit_per_hour": 1.00,
+                "locked": False,
+                "lock_reason": ""
+            })
+            
+            # Create main frame with padding
+            main_frame = ttk.Frame(security_window, padding="15")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # === HEADER ===
+            header_frame = ttk.Frame(main_frame)
+            header_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            ttk.Label(header_frame, text="🛡️ MCP Security Circuit Breaker", 
+                     font=("TkDefaultFont", 12, "bold")).pack(anchor=tk.W)
+            
+            header_text = ("Protects against runaway API costs by automatically locking\n"
+                          "protected MCP tools when usage thresholds are exceeded.")
+            ttk.Label(header_frame, text=header_text, foreground="gray").pack(anchor=tk.W, pady=(5, 0))
+            
+            # === STATUS DISPLAY ===
+            status_frame = ttk.LabelFrame(main_frame, text="Current Status")
+            status_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            is_locked = mcp_settings.get("locked", False)
+            lock_reason = mcp_settings.get("lock_reason", "")
+            
+            status_inner = ttk.Frame(status_frame)
+            status_inner.pack(fill=tk.X, padx=10, pady=10)
+            
+            if is_locked:
+                status_text = f"🔒 LOCKED: {lock_reason}"
+                status_color = "red"
+            else:
+                status_text = "🔓 Unlocked - Protected tools are available"
+                status_color = "green"
+            
+            status_label = ttk.Label(status_inner, text=status_text, foreground=status_color)
+            status_label.pack(anchor=tk.W)
+            
+            # Unlock button (only if locked)
+            if is_locked:
+                unlock_frame = ttk.Frame(status_inner)
+                unlock_frame.pack(fill=tk.X, pady=(10, 0))
+                
+                ttk.Label(unlock_frame, text="Password:").pack(side=tk.LEFT)
+                unlock_password = ttk.Entry(unlock_frame, show="*", width=20)
+                unlock_password.pack(side=tk.LEFT, padx=(5, 10))
+                
+                def do_unlock():
+                    from core.mcp_security_manager import get_security_manager
+                    security = get_security_manager()
+                    if security.unlock(unlock_password.get()):
+                        mcp_settings["locked"] = False
+                        mcp_settings["lock_reason"] = ""
+                        self.settings["mcp_security"] = mcp_settings
+                        self.save_settings()
+                        self.show_success("MCP tools unlocked successfully!")
+                        security_window.destroy()
+                        self.open_mcp_security_settings()  # Reopen to show updated status
+                    else:
+                        self.show_error("Incorrect password")
+                
+                ttk.Button(unlock_frame, text="Unlock", command=do_unlock).pack(side=tk.LEFT)
+            
+            # === ENABLE TOGGLE ===
+            enable_frame = ttk.LabelFrame(main_frame, text="Security Status")
+            enable_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            enable_inner = ttk.Frame(enable_frame)
+            enable_inner.pack(fill=tk.X, padx=10, pady=10)
+            
+            enabled_var = tk.BooleanVar(value=mcp_settings.get("enabled", False))
+            
+            enable_check = ttk.Checkbutton(enable_inner, text="Enable MCP Security Monitoring", 
+                                           variable=enabled_var)
+            enable_check.pack(anchor=tk.W)
+            
+            ttk.Label(enable_inner, text="When enabled, protected tools are monitored and auto-locked if thresholds exceeded.",
+                     foreground="gray", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0))
+            
+            ttk.Label(enable_inner, text="Protected: pomera_ai_tools, pomera_web_search, pomera_read_url",
+                     foreground="blue", font=("TkDefaultFont", 8)).pack(anchor=tk.W, padx=(20, 0), pady=(2, 0))
+            
+            # === THRESHOLD SETTINGS ===
+            threshold_frame = ttk.LabelFrame(main_frame, text="Threshold Settings")
+            threshold_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            threshold_inner = ttk.Frame(threshold_frame)
+            threshold_inner.pack(fill=tk.X, padx=10, pady=10)
+            
+            # Rate limit
+            rate_frame = ttk.Frame(threshold_inner)
+            rate_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            ttk.Label(rate_frame, text="Rate Limit (calls/minute):").pack(side=tk.LEFT)
+            rate_var = tk.IntVar(value=mcp_settings.get("rate_limit_per_minute", 30))
+            rate_spinbox = ttk.Spinbox(rate_frame, from_=5, to=100, textvariable=rate_var, width=8)
+            rate_spinbox.pack(side=tk.LEFT, padx=(10, 0))
+            ttk.Label(rate_frame, text="(Lock if exceeded)", foreground="gray").pack(side=tk.LEFT, padx=(10, 0))
+            
+            # Token limit
+            token_frame = ttk.Frame(threshold_inner)
+            token_frame.pack(fill=tk.X, pady=(0, 10))
+            
+            ttk.Label(token_frame, text="Token Limit (tokens/hour):").pack(side=tk.LEFT)
+            token_var = tk.IntVar(value=mcp_settings.get("token_limit_per_hour", 100000))
+            token_entry = ttk.Entry(token_frame, textvariable=token_var, width=10)
+            token_entry.pack(side=tk.LEFT, padx=(10, 0))
+            ttk.Label(token_frame, text="(Estimated via tiktoken)", foreground="gray").pack(side=tk.LEFT, padx=(10, 0))
+            
+            # Cost limit
+            cost_frame = ttk.Frame(threshold_inner)
+            cost_frame.pack(fill=tk.X, pady=(0, 0))
+            
+            ttk.Label(cost_frame, text="Cost Limit ($/hour):").pack(side=tk.LEFT)
+            cost_var = tk.DoubleVar(value=mcp_settings.get("cost_limit_per_hour", 1.00))
+            cost_spinbox = ttk.Spinbox(cost_frame, from_=0.10, to=100.0, increment=0.10, textvariable=cost_var, width=8)
+            cost_spinbox.pack(side=tk.LEFT, padx=(10, 0))
+            ttk.Label(cost_frame, text="(Estimated @ $0.003/1K tokens)", foreground="gray").pack(side=tk.LEFT, padx=(10, 0))
+            
+            # === PASSWORD SETTINGS ===
+            password_frame = ttk.LabelFrame(main_frame, text="Unlock Password")
+            password_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            password_inner = ttk.Frame(password_frame)
+            password_inner.pack(fill=tk.X, padx=10, pady=10)
+            
+            has_password = bool(mcp_settings.get("password_hash", ""))
+            
+            if has_password:
+                ttk.Label(password_inner, text="✅ Password is set", foreground="green").pack(anchor=tk.W)
+            else:
+                ttk.Label(password_inner, text="⚠️ No password set - set one to enable unlock", foreground="orange").pack(anchor=tk.W)
+            
+            new_pass_frame = ttk.Frame(password_inner)
+            new_pass_frame.pack(fill=tk.X, pady=(10, 0))
+            
+            ttk.Label(new_pass_frame, text="New Password:").pack(side=tk.LEFT)
+            new_password_entry = ttk.Entry(new_pass_frame, show="*", width=20)
+            new_password_entry.pack(side=tk.LEFT, padx=(10, 0))
+            
+            confirm_pass_frame = ttk.Frame(password_inner)
+            confirm_pass_frame.pack(fill=tk.X, pady=(5, 0))
+            
+            ttk.Label(confirm_pass_frame, text="Confirm Password:").pack(side=tk.LEFT)
+            confirm_password_entry = ttk.Entry(confirm_pass_frame, show="*", width=20)
+            confirm_password_entry.pack(side=tk.LEFT, padx=(10, 0))
+            
+            # === BUTTONS ===
+            button_frame = ttk.Frame(main_frame)
+            button_frame.pack(fill=tk.X, pady=(10, 0))
+            
+            def apply_settings():
+                try:
+                    # Validate password if entered
+                    new_pass = new_password_entry.get()
+                    confirm_pass = confirm_password_entry.get()
+                    
+                    if new_pass or confirm_pass:
+                        if new_pass != confirm_pass:
+                            self.show_error("Passwords do not match")
+                            return
+                        if len(new_pass) < 4:
+                            self.show_error("Password must be at least 4 characters")
+                            return
+                    
+                    # Update settings
+                    mcp_settings["enabled"] = enabled_var.get()
+                    mcp_settings["rate_limit_per_minute"] = rate_var.get()
+                    mcp_settings["token_limit_per_hour"] = token_var.get()
+                    mcp_settings["cost_limit_per_hour"] = cost_var.get()
+                    
+                    self.settings["mcp_security"] = mcp_settings
+                    self.save_settings()
+                    
+                    # Update security manager
+                    from core.mcp_security_manager import get_security_manager
+                    security = get_security_manager()
+                    security._config.enabled = enabled_var.get()
+                    security._config.rate_limit_per_minute = rate_var.get()
+                    security._config.token_limit_per_hour = token_var.get()
+                    security._config.cost_limit_per_hour_usd = cost_var.get()
+                    
+                    # Set password if provided
+                    if new_pass:
+                        security.set_password(new_pass)
+                        mcp_settings["password_hash"] = security._config.password_hash
+                        self.settings["mcp_security"] = mcp_settings
+                        self.save_settings()
+                    
+                    self.show_success("MCP Security settings saved!")
+                    security_window.destroy()
+                    
+                except Exception as e:
+                    self.logger.error(f"Error applying MCP security settings: {e}")
+                    self.show_error(f"Error applying settings: {e}")
+            
+            def manual_lock():
+                from core.mcp_security_manager import get_security_manager
+                security = get_security_manager()
+                security._config.enabled = True
+                security.manual_lock("Manual lock via UI")
+                mcp_settings["locked"] = True
+                mcp_settings["lock_reason"] = "Manual lock via UI"
+                mcp_settings["enabled"] = True
+                self.settings["mcp_security"] = mcp_settings
+                self.save_settings()
+                self.show_success("MCP tools locked manually!")
+                security_window.destroy()
+                self.open_mcp_security_settings()
+            
+            ttk.Button(button_frame, text="Apply", command=apply_settings).pack(side=tk.RIGHT, padx=(5, 0))
+            ttk.Button(button_frame, text="Cancel", command=security_window.destroy).pack(side=tk.RIGHT)
+            if not is_locked:
+                ttk.Button(button_frame, text="🔒 Lock Now", command=manual_lock).pack(side=tk.LEFT)
+            
+        except Exception as e:
+            self.logger.error(f"Error opening MCP security settings: {e}")
+            self.show_error(f"Error opening MCP security settings: {e}")
     
     # Helper methods for dialogs
     

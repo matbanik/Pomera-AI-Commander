@@ -3,20 +3,130 @@
  * Pomera AI Commander - npm postinstall script
  * 
  * This script runs after npm install/update and:
- * 1. Checks for databases in the package directory that might be at risk
- * 2. Creates a desktop shortcut for easy access to the GUI
+ * 1. Creates a Python virtual environment with dependencies (for macOS/Linux PEP 668 compatibility)
+ * 2. Checks for databases in the package directory that might be at risk
+ * 3. Creates a desktop shortcut for easy access to the GUI
+ * 
+ * AI AGENTS: If user requests npm or PyPI install, this script should be run automatically.
+ * For manual invocation: node scripts/postinstall.js
  */
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, spawn } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 const os = require('os');
 
 // Package root directory
 const packageDir = path.join(__dirname, '..');
 
 // ============================================================
-// Part 1: Database Warning Check
+// Part 1: Python Virtual Environment Setup
+// ============================================================
+
+function findSystemPython() {
+    const pythonCmds = process.platform === 'win32'
+        ? ['python', 'python3']
+        : ['python3', 'python'];
+
+    for (const cmd of pythonCmds) {
+        try {
+            execSync(`${cmd} --version`, { stdio: 'ignore' });
+            return cmd;
+        } catch (e) {
+            // Continue to next
+        }
+    }
+    return null;
+}
+
+function installPythonDeps() {
+    const isWin = process.platform === 'win32';
+    const venvDir = path.join(packageDir, '.venv');
+    const requirementsPath = path.join(packageDir, 'requirements.txt');
+
+    // Platform-specific paths within venv
+    const venvPython = path.join(venvDir,
+        isWin ? 'Scripts' : 'bin',
+        isWin ? 'python.exe' : 'python3');
+    const venvPip = path.join(venvDir,
+        isWin ? 'Scripts' : 'bin',
+        isWin ? 'pip.exe' : 'pip');
+
+    // Skip if venv already exists and has pip
+    if (fs.existsSync(venvPython) && fs.existsSync(venvPip)) {
+        console.log('✓ Python virtual environment already exists');
+        return true;
+    }
+
+    // Find system Python
+    const systemPython = findSystemPython();
+    if (!systemPython) {
+        console.log('\n⚠️  Python not found. Please install Python 3.8+ and run:');
+        console.log('   node scripts/postinstall.js');
+        console.log('   Or manually: pip3 install -r requirements.txt\n');
+        return false;
+    }
+
+    console.log('\n📦 Creating Python virtual environment...');
+    console.log(`   Using: ${systemPython}`);
+
+    try {
+        // Create venv
+        const createResult = spawnSync(systemPython, ['-m', 'venv', venvDir], {
+            stdio: 'inherit',
+            cwd: packageDir
+        });
+
+        if (createResult.status !== 0) {
+            throw new Error('Failed to create venv');
+        }
+
+        // Check if requirements.txt exists
+        if (!fs.existsSync(requirementsPath)) {
+            console.log('⚠️  requirements.txt not found, skipping dependency installation');
+            return true;
+        }
+
+        // Upgrade pip (optional but recommended)
+        console.log('📦 Upgrading pip...');
+        spawnSync(venvPython, ['-m', 'pip', 'install', '--upgrade', 'pip'], {
+            stdio: 'pipe',
+            cwd: packageDir
+        });
+
+        // Install requirements
+        console.log('📦 Installing Python dependencies (this may take a minute)...');
+        const installResult = spawnSync(venvPip, ['install', '-r', requirementsPath], {
+            stdio: 'inherit',
+            cwd: packageDir
+        });
+
+        if (installResult.status !== 0) {
+            throw new Error('Failed to install requirements');
+        }
+
+        console.log('✅ Python dependencies installed successfully!\n');
+        return true;
+
+    } catch (err) {
+        console.error('\n❌ Failed to set up Python environment:', err.message);
+        console.log('\n📋 Manual installation options:');
+        console.log('   Option 1 (Recommended): Create venv manually:');
+        console.log(`      cd "${packageDir}"`);
+        console.log('      python3 -m venv .venv');
+        console.log('      .venv/bin/pip install -r requirements.txt  # macOS/Linux');
+        console.log('      .venv\\Scripts\\pip install -r requirements.txt  # Windows');
+        console.log('\n   Option 2: Install globally (may require --break-system-packages on macOS):');
+        console.log('      pip3 install --break-system-packages -r requirements.txt\n');
+        return false;
+    }
+}
+
+// Run Python setup first
+const pythonOk = installPythonDeps();
+
+// ============================================================
+// Part 2: Database Warning Check
 // ============================================================
 
 const databases = ['settings.db', 'notes.db', 'settings.json'];
@@ -58,13 +168,13 @@ if (foundDatabases.length > 0) {
         console.log('   ~/.local/share/Pomera-AI-Commander/');
     }
     console.log('\n' + '='.repeat(70) + '\n');
-} else {
+} else if (pythonOk) {
     console.log('✅ Pomera AI Commander installed successfully.');
     console.log('   Data will be stored in platform-appropriate directory (safe from updates).');
 }
 
 // ============================================================
-// Part 2: Desktop Shortcut Creation
+// Part 3: Desktop Shortcut Creation
 // ============================================================
 
 function getDesktopPath() {
@@ -95,7 +205,7 @@ $Shortcut.WorkingDirectory = "${packageDir.replace(/\\/g, '\\\\')}"
 $Shortcut.Description = "Pomera AI Commander - Text Processing Toolkit"
 `;
     if (fs.existsSync(iconPath)) {
-        psScript += `$Shortcut.IconLocation = "${iconPath.replace(/\\/g, '\\\\')},0"\n`;
+        psScript += `$Shortcut.IconLocation = "${iconPath.replace(/\\/g, '\\\\')}",0\n`;
     }
     psScript += '$Shortcut.Save()';
 
@@ -114,11 +224,15 @@ function createMacOSShortcut() {
     const desktop = getDesktopPath();
     const shortcutPath = path.join(desktop, 'Pomera AI Commander.command');
     const pomeraPath = path.join(packageDir, 'pomera.py');
+    const venvPython = path.join(packageDir, '.venv', 'bin', 'python3');
+
+    // Use venv Python if available, otherwise system python3
+    const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python3';
 
     const script = `#!/bin/bash
 # Pomera AI Commander Launcher
 cd "${packageDir}"
-python3 "${pomeraPath}"
+"${pythonCmd}" "${pomeraPath}"
 `;
 
     try {
@@ -137,15 +251,18 @@ function createLinuxShortcut() {
     const shortcutPath = path.join(desktop, 'pomera-ai-commander.desktop');
     const pomeraPath = path.join(packageDir, 'pomera.py');
     const iconPath = path.join(packageDir, 'resources', 'icon.png');
+    const venvPython = path.join(packageDir, '.venv', 'bin', 'python3');
 
     const icon = fs.existsSync(iconPath) ? iconPath : 'utilities-terminal';
+    // Use venv Python if available
+    const pythonCmd = fs.existsSync(venvPython) ? venvPython : 'python3';
 
     const desktopEntry = `[Desktop Entry]
 Version=1.0
 Type=Application
 Name=Pomera AI Commander
 Comment=Text Processing Toolkit with MCP tools for AI assistants
-Exec=python3 "${pomeraPath}"
+Exec="${pythonCmd}" "${pomeraPath}"
 Icon=${icon}
 Terminal=false
 Categories=Development;Utility;TextTools;
@@ -191,18 +308,9 @@ function createDesktopShortcut() {
     }
 }
 
-// Check if Python/pythonw is available before creating shortcut
+// Check if Python is available before creating shortcut
 function checkPython() {
-    try {
-        if (process.platform === 'win32') {
-            execSync('where pythonw', { stdio: 'pipe' });
-        } else {
-            execSync('which python3', { stdio: 'pipe' });
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
+    return pythonOk || findSystemPython() !== null;
 }
 
 // Create shortcut if Python is available
@@ -214,8 +322,7 @@ if (checkPython()) {
 }
 
 console.log('\n📖 To start the GUI manually:');
-console.log('   python pomera.py');
+console.log('   pomera');
 console.log('\n📖 To start the MCP server:');
-console.log('   npx pomera-ai-commander');
+console.log('   pomera-mcp');
 console.log('');
-

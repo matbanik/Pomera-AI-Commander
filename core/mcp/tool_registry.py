@@ -210,6 +210,9 @@ class ToolRegistry:
         self._register_smart_diff_2way_tool()
         self._register_smart_diff_3way_tool()
         
+        # AI Tools (Phase 8) - AI model access via MCP
+        self._register_ai_tools_tool()
+        
         self._logger.info(f"Registered {len(self._tools)} built-in MCP tools")
 
     
@@ -219,13 +222,18 @@ class ToolRegistry:
             name="pomera_case_transform",
             description="Transform text case. Modes: sentence (capitalize first letter of sentences), "
                        "lower (all lowercase), upper (all uppercase), capitalized (title case), "
-                       "title (title case with exclusions for articles/prepositions).",
+                       "title (title case with exclusions for articles/prepositions). Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "The text to transform"
+                        "description": "The text to transform (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "mode": {
                         "type": "string",
@@ -237,6 +245,10 @@ class ToolRegistry:
                         "description": "Words to exclude from title case (one per line). "
                                       "Only used when mode is 'title'.",
                         "default": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "mode"]
@@ -246,7 +258,13 @@ class ToolRegistry:
     
     def _handle_case_transform(self, args: Dict[str, Any]) -> str:
         """Handle case transformation tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.case_tool import CaseToolProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         mode = args.get("mode", "sentence")
@@ -262,7 +280,8 @@ class ToolRegistry:
         }
         processor_mode = mode_map.get(mode.lower(), "Sentence")
         
-        return CaseToolProcessor.process_text(text, processor_mode, exclusions)
+        result = CaseToolProcessor.process_text(text, processor_mode, exclusions)
+        return handle_file_output(args, result)
     
     def _register_encode_tool(self) -> None:
         """Register unified Encoding Tool."""
@@ -405,13 +424,18 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_line_tools",
             description="Line manipulation tools: remove duplicates, remove empty lines, "
-                       "add/remove line numbers, reverse lines, shuffle lines.",
+                       "add/remove line numbers, reverse lines, shuffle lines. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "The text to process (line by line)"
+                        "description": "The text to process (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "operation": {
                         "type": "string",
@@ -435,6 +459,10 @@ class ToolRegistry:
                         "enum": ["1. ", "1) ", "[1] ", "1: "],
                         "description": "For add_numbers: number format style",
                         "default": "1. "
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "operation"]
@@ -444,7 +472,13 @@ class ToolRegistry:
     
     def _handle_line_tools(self, args: Dict[str, Any]) -> str:
         """Handle line tools execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.line_tools import LineToolsProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         operation = args.get("operation", "remove_duplicates")
@@ -452,20 +486,22 @@ class ToolRegistry:
         if operation == "remove_duplicates":
             mode = args.get("keep_mode", "keep_first")
             case_sensitive = args.get("case_sensitive", True)
-            return LineToolsProcessor.remove_duplicates(text, mode, case_sensitive)
+            result = LineToolsProcessor.remove_duplicates(text, mode, case_sensitive)
         elif operation == "remove_empty":
-            return LineToolsProcessor.remove_empty_lines(text)
+            result = LineToolsProcessor.remove_empty_lines(text)
         elif operation == "add_numbers":
             format_style = args.get("number_format", "1. ")
-            return LineToolsProcessor.add_line_numbers(text, format_style)
+            result = LineToolsProcessor.add_line_numbers(text, format_style)
         elif operation == "remove_numbers":
-            return LineToolsProcessor.remove_line_numbers(text)
+            result = LineToolsProcessor.remove_line_numbers(text)
         elif operation == "reverse":
-            return LineToolsProcessor.reverse_lines(text)
+            result = LineToolsProcessor.reverse_lines(text)
         elif operation == "shuffle":
-            return LineToolsProcessor.shuffle_lines(text)
+            result = LineToolsProcessor.shuffle_lines(text)
         else:
-            return f"Unknown operation: {operation}"
+            result = f"Unknown operation: {operation}"
+        
+        return handle_file_output(args, result)
     
     def _register_whitespace_tools(self) -> None:
         """Register the Whitespace Tools."""
@@ -502,6 +538,15 @@ class ToolRegistry:
                         "enum": ["lf", "crlf", "cr"],
                         "description": "For normalize_endings: target line ending",
                         "default": "lf"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "operation"]
@@ -511,45 +556,62 @@ class ToolRegistry:
     
     def _handle_whitespace_tools(self, args: Dict[str, Any]) -> str:
         """Handle whitespace tools execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.whitespace_tools import WhitespaceToolsProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         operation = args.get("operation", "trim")
         
         if operation == "trim":
             mode = args.get("trim_mode", "both")
-            return WhitespaceToolsProcessor.trim_lines(text, mode)
+            result = WhitespaceToolsProcessor.trim_lines(text, mode)
         elif operation == "remove_extra_spaces":
-            return WhitespaceToolsProcessor.remove_extra_spaces(text)
+            result = WhitespaceToolsProcessor.remove_extra_spaces(text)
         elif operation == "tabs_to_spaces":
             tab_size = args.get("tab_size", 4)
-            return WhitespaceToolsProcessor.tabs_to_spaces(text, tab_size)
+            result = WhitespaceToolsProcessor.tabs_to_spaces(text, tab_size)
         elif operation == "spaces_to_tabs":
             tab_size = args.get("tab_size", 4)
-            return WhitespaceToolsProcessor.spaces_to_tabs(text, tab_size)
+            result = WhitespaceToolsProcessor.spaces_to_tabs(text, tab_size)
         elif operation == "normalize_endings":
             ending = args.get("line_ending", "lf")
-            return WhitespaceToolsProcessor.normalize_line_endings(text, ending)
+            result = WhitespaceToolsProcessor.normalize_line_endings(text, ending)
         else:
-            return f"Unknown operation: {operation}"
+            result = f"Unknown operation: {operation}"
+        
+        return handle_file_output(args, result)
     
     def _register_string_escape_tool(self) -> None:
         """Register the String Escape Tool."""
         self.register(MCPToolAdapter(
             name="pomera_string_escape",
-            description="Escape/unescape strings for various formats: JSON, HTML, URL, XML, JavaScript, SQL.",
+            description="Escape/unescape strings for various formats: JSON, HTML, URL, XML. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "The text to escape or unescape"
+                        "description": "The text to escape or unescape (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "operation": {
                         "type": "string",
                         "enum": ["json_escape", "json_unescape", "html_escape", "html_unescape",
                                 "url_encode", "url_decode", "xml_escape", "xml_unescape"],
                         "description": "Escape/unescape operation"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "operation"]
@@ -559,7 +621,13 @@ class ToolRegistry:
     
     def _handle_string_escape(self, args: Dict[str, Any]) -> str:
         """Handle string escape tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.string_escape_tool import StringEscapeProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         operation = args.get("operation", "json_escape")
@@ -576,8 +644,11 @@ class ToolRegistry:
         }
         
         if operation in operations:
-            return operations[operation](text)
-        return f"Unknown operation: {operation}"
+            result = operations[operation](text)
+        else:
+            result = f"Unknown operation: {operation}"
+        
+        return handle_file_output(args, result)
     
     def _register_sorter_tools(self) -> None:
         """Register the Sorter Tools."""
@@ -611,6 +682,15 @@ class ToolRegistry:
                         "type": "boolean",
                         "description": "For alphabetical: trim whitespace",
                         "default": False
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "sort_type"]
@@ -620,31 +700,44 @@ class ToolRegistry:
     
     def _handle_sorter(self, args: Dict[str, Any]) -> str:
         """Handle sorter tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.sorter_tools import SorterToolsProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         sort_type = args.get("sort_type", "alphabetical")
         order = args.get("order", "ascending")
         
         if sort_type == "number":
-            return SorterToolsProcessor.number_sorter(text, order)
+            result = SorterToolsProcessor.number_sorter(text, order)
         else:
             unique_only = args.get("unique_only", False)
             trim = args.get("trim", False)
-            return SorterToolsProcessor.alphabetical_sorter(text, order, unique_only, trim)
+            result = SorterToolsProcessor.alphabetical_sorter(text, order, unique_only, trim)
+        
+        return handle_file_output(args, result)
     
     def _register_text_stats_tool(self) -> None:
         """Register the Text Statistics Tool."""
         self.register(MCPToolAdapter(
             name="pomera_text_stats",
             description="Analyze text and return statistics: character count, word count, "
-                       "line count, sentence count, reading time, and top frequent words.",
+                       "line count, sentence count, reading time, and top frequent words. Supports file input.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to analyze"
+                        "description": "Text to analyze (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "words_per_minute": {
                         "type": "integer",
@@ -659,8 +752,14 @@ class ToolRegistry:
     
     def _handle_text_stats(self, args: Dict[str, Any]) -> str:
         """Handle text statistics tool execution."""
+        from .file_io_helpers import process_file_args
         from tools.text_statistics_tool import TextStatisticsProcessor
         import json
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         wpm = args.get("words_per_minute", 200)
@@ -690,13 +789,19 @@ class ToolRegistry:
         """Register the JSON/XML Tool."""
         self.register(MCPToolAdapter(
             name="pomera_json_xml",
-            description="Convert between JSON and XML, prettify, minify, or validate JSON/XML.",
+            description="Convert between JSON and XML, prettify, minify, or validate JSON/XML. "
+                       "Supports file input (text_is_file) and file output (output_to_file).",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "JSON or XML text to process"
+                        "description": "JSON or XML text to process (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "operation": {
                         "type": "string",
@@ -709,6 +814,10 @@ class ToolRegistry:
                         "type": "integer",
                         "description": "Indentation spaces for prettify",
                         "default": 2
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path instead of returning directly"
                     }
                 },
                 "required": ["text", "operation"]
@@ -718,9 +827,15 @@ class ToolRegistry:
     
     def _handle_json_xml(self, args: Dict[str, Any]) -> str:
         """Handle JSON/XML tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         import json
         import xml.etree.ElementTree as ET
         import xml.dom.minidom
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         operation = args.get("operation", "json_prettify")
@@ -729,39 +844,40 @@ class ToolRegistry:
         try:
             if operation == "json_prettify":
                 data = json.loads(text)
-                return json.dumps(data, indent=indent, ensure_ascii=False)
+                result = json.dumps(data, indent=indent, ensure_ascii=False)
             
             elif operation == "json_minify":
                 data = json.loads(text)
-                return json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+                result = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
             
             elif operation == "json_validate":
                 json.loads(text)
-                return "Valid JSON"
+                result = "Valid JSON"
             
             elif operation == "xml_prettify":
                 dom = xml.dom.minidom.parseString(text)
-                return dom.toprettyxml(indent=" " * indent)
+                result = dom.toprettyxml(indent=" " * indent)
             
             elif operation == "xml_minify":
                 root = ET.fromstring(text)
-                return ET.tostring(root, encoding='unicode')
+                result = ET.tostring(root, encoding='unicode')
             
             elif operation == "xml_validate":
                 ET.fromstring(text)
-                return "Valid XML"
+                result = "Valid XML"
             
             elif operation == "json_to_xml":
                 data = json.loads(text)
-                return self._dict_to_xml(data, "root")
+                result = self._dict_to_xml(data, "root")
             
             elif operation == "xml_to_json":
                 root = ET.fromstring(text)
                 data = self._xml_to_dict(root)
-                return json.dumps(data, indent=indent, ensure_ascii=False)
+                result = json.dumps(data, indent=indent, ensure_ascii=False)
             
             else:
-                return f"Unknown operation: {operation}"
+                result = f"Unknown operation: {operation}"
+                return handle_file_output(args, result)
                 
         except json.JSONDecodeError as e:
             return f"JSON Error: {str(e)}"
@@ -769,6 +885,9 @@ class ToolRegistry:
             return f"XML Error: {str(e)}"
         except Exception as e:
             return f"Error: {str(e)}"
+        
+        # Handle file output if requested
+        return handle_file_output(args, result)
     
     def _dict_to_xml(self, data: Any, root_name: str = "root") -> str:
         """Convert dictionary to XML string."""
@@ -861,18 +980,27 @@ class ToolRegistry:
         """Register the Text Wrapper Tool."""
         self.register(MCPToolAdapter(
             name="pomera_text_wrap",
-            description="Wrap text to a specified width, preserving words.",
+            description="Wrap text to a specified width, preserving words. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to wrap"
+                        "description": "Text to wrap (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "width": {
                         "type": "integer",
                         "description": "Maximum line width",
                         "default": 80
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text"]
@@ -882,7 +1010,13 @@ class ToolRegistry:
     
     def _handle_text_wrap(self, args: Dict[str, Any]) -> str:
         """Handle text wrapper tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         import textwrap
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         width = args.get("width", 80)
@@ -897,7 +1031,8 @@ class ToolRegistry:
             else:
                 wrapped.append("")
         
-        return '\n\n'.join(wrapped)
+        result = '\n\n'.join(wrapped)
+        return handle_file_output(args, result)
     
     def _register_number_base_tool(self) -> None:
         """Register the Number Base Converter Tool."""
@@ -1066,7 +1201,12 @@ class ToolRegistry:
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to extract from"
+                        "description": "Text to extract from (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "type": {
                         "type": "string",
@@ -1136,6 +1276,13 @@ class ToolRegistry:
     
     def _handle_extract(self, args: Dict[str, Any]) -> str:
         """Route extraction to appropriate handler."""
+        from .file_io_helpers import process_file_args
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
+        
         extract_type = args.get("type", "")
         
         if extract_type == "regex":
@@ -1234,13 +1381,18 @@ class ToolRegistry:
         """Register the Translator Tools (Morse/Binary)."""
         self.register(MCPToolAdapter(
             name="pomera_translator",
-            description="Translate text to/from Morse code or binary.",
+            description="Translate text to/from Morse code or binary. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to translate"
+                        "description": "Text to translate (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "format": {
                         "type": "string",
@@ -1252,6 +1404,10 @@ class ToolRegistry:
                         "enum": ["encode", "decode", "auto"],
                         "description": "Translation direction (auto-detects for binary)",
                         "default": "encode"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "format"]
@@ -1261,7 +1417,13 @@ class ToolRegistry:
     
     def _handle_translator(self, args: Dict[str, Any]) -> str:
         """Handle translator tools execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.translator_tools import TranslatorToolsProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         fmt = args.get("format", "morse")
@@ -1269,12 +1431,14 @@ class ToolRegistry:
         
         if fmt == "morse":
             mode = "morse" if direction == "encode" else "text"
-            return TranslatorToolsProcessor.morse_translator(text, mode)
+            result = TranslatorToolsProcessor.morse_translator(text, mode)
         elif fmt == "binary":
             # Binary translator auto-detects direction
-            return TranslatorToolsProcessor.binary_translator(text)
+            result = TranslatorToolsProcessor.binary_translator(text)
         else:
-            return f"Unknown format: {fmt}"
+            result = f"Unknown format: {fmt}"
+        
+        return handle_file_output(args, result)
     
     def _register_cron_tool(self) -> None:
         """Register the Cron Expression Tool."""
@@ -1550,7 +1714,12 @@ class ToolRegistry:
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to analyze"
+                        "description": "Text to analyze (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     }
                 },
                 "required": ["text"]
@@ -1560,7 +1729,13 @@ class ToolRegistry:
     
     def _handle_word_frequency(self, args: Dict[str, Any]) -> str:
         """Handle word frequency counter tool execution."""
+        from .file_io_helpers import process_file_args
         from tools.word_frequency_counter import WordFrequencyCounterProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         return WordFrequencyCounterProcessor.word_frequency(text)
@@ -1570,13 +1745,18 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_column_tools",
             description="CSV/column manipulation: extract column, reorder columns, delete column, "
-                       "transpose, convert to fixed width.",
+                       "transpose, convert to fixed width. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "CSV or delimited text"
+                        "description": "CSV or delimited text (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load CSV content from file"
                     },
                     "operation": {
                         "type": "string",
@@ -1596,6 +1776,10 @@ class ToolRegistry:
                         "type": "string",
                         "description": "Column delimiter",
                         "default": ","
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "operation"]
@@ -1605,7 +1789,13 @@ class ToolRegistry:
     
     def _handle_column_tools(self, args: Dict[str, Any]) -> str:
         """Handle column tools execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.column_tools import ColumnToolsProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         operation = args.get("operation", "extract")
@@ -1614,19 +1804,21 @@ class ToolRegistry:
         column_order = args.get("column_order", "")
         
         if operation == "extract":
-            return ColumnToolsProcessor.extract_column(text, column_index, delimiter)
+            result = ColumnToolsProcessor.extract_column(text, column_index, delimiter)
         elif operation == "reorder":
             if not column_order:
                 return "Error: column_order is required for reorder operation"
-            return ColumnToolsProcessor.reorder_columns(text, column_order, delimiter)
+            result = ColumnToolsProcessor.reorder_columns(text, column_order, delimiter)
         elif operation == "delete":
-            return ColumnToolsProcessor.delete_column(text, column_index, delimiter)
+            result = ColumnToolsProcessor.delete_column(text, column_index, delimiter)
         elif operation == "transpose":
-            return ColumnToolsProcessor.transpose(text, delimiter)
+            result = ColumnToolsProcessor.transpose(text, delimiter)
         elif operation == "to_fixed_width":
-            return ColumnToolsProcessor.to_fixed_width(text, delimiter)
+            result = ColumnToolsProcessor.to_fixed_width(text, delimiter)
         else:
-            return f"Unknown operation: {operation}"
+            result = f"Unknown operation: {operation}"
+        
+        return handle_file_output(args, result)
     
     def _register_generator_tools(self) -> None:
         """Register the Generator Tools."""
@@ -1691,6 +1883,10 @@ class ToolRegistry:
                         "type": "boolean",
                         "description": "For slug: remove common stop words",
                         "default": False
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["generator"]
@@ -1700,6 +1896,7 @@ class ToolRegistry:
     
     def _handle_generators(self, args: Dict[str, Any]) -> str:
         """Handle generator tools execution."""
+        from .file_io_helpers import handle_file_output
         import uuid
         import string
         import random
@@ -1713,7 +1910,7 @@ class ToolRegistry:
             chars = string.ascii_letters + string.digits + string.punctuation
             for _ in range(count):
                 results.append(''.join(random.choices(chars, k=length)))
-            return "\n".join(results)
+            result = "\n".join(results)
         
         elif generator == "uuid":
             version = args.get("uuid_version", 4)
@@ -1723,7 +1920,7 @@ class ToolRegistry:
                     results.append(str(uuid.uuid1()))
                 else:
                     results.append(str(uuid.uuid4()))
-            return "\n".join(results)
+            result = "\n".join(results)
         
         elif generator == "lorem_ipsum":
             lorem_type = args.get("lorem_type", "paragraphs")
@@ -1737,14 +1934,14 @@ class ToolRegistry:
             ]
             
             if lorem_type == "words":
-                return " ".join(random.choices(lorem_words, k=count))
+                result = " ".join(random.choices(lorem_words, k=count))
             elif lorem_type == "sentences":
                 sentences = []
                 for _ in range(count):
                     words = random.choices(lorem_words, k=random.randint(8, 15))
                     words[0] = words[0].capitalize()
                     sentences.append(" ".join(words) + ".")
-                return " ".join(sentences)
+                result = " ".join(sentences)
             else:  # paragraphs
                 paragraphs = []
                 for _ in range(count):
@@ -1754,7 +1951,7 @@ class ToolRegistry:
                         words[0] = words[0].capitalize()
                         sentences.append(" ".join(words) + ".")
                     paragraphs.append(" ".join(sentences))
-                return "\n\n".join(paragraphs)
+                result = "\n\n".join(paragraphs)
         
         elif generator == "random_email":
             domains = ["example.com", "test.org", "sample.net", "demo.io"]
@@ -1763,7 +1960,7 @@ class ToolRegistry:
                 name = ''.join(random.choices(string.ascii_lowercase, k=8))
                 domain = random.choice(domains)
                 results.append(f"{name}@{domain}")
-            return "\n".join(results)
+            result = "\n".join(results)
         
         elif generator == "slug":
             from tools.slug_generator import SlugGeneratorProcessor
@@ -1777,13 +1974,15 @@ class ToolRegistry:
             max_length = args.get("max_length", 0)
             remove_stopwords = args.get("remove_stopwords", False)
             
-            return SlugGeneratorProcessor.generate_slug(
+            result = SlugGeneratorProcessor.generate_slug(
                 text, separator, lowercase, transliterate, 
                 max_length, remove_stopwords
             )
         
         else:
-            return f"Unknown generator: {generator}"
+            result = f"Unknown generator: {generator}"
+        
+        return handle_file_output(args, result)
     
     # =========================================================================
     # Phase 3 Tools - Notes Widget Integration
@@ -2540,7 +2739,13 @@ class ToolRegistry:
     
     def _handle_email_header_analyzer(self, args: Dict[str, Any]) -> str:
         """Handle email header analyzer tool execution."""
+        from .file_io_helpers import process_file_args
         from tools.email_header_analyzer import EmailHeaderAnalyzerProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         show_timestamps = args.get("show_timestamps", True)
@@ -2634,7 +2839,13 @@ class ToolRegistry:
     
     def _handle_html_tool(self, args: Dict[str, Any]) -> str:
         """Handle HTML tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.html_tool import HTMLExtractionTool
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         operation = args.get("operation", "visible_text")
@@ -2658,7 +2869,8 @@ class ToolRegistry:
         }
         
         tool = HTMLExtractionTool()
-        return tool.process_text(text, settings)
+        result = tool.process_text(text, settings)
+        return handle_file_output(args, result)
     
     def _register_list_comparator_tool(self) -> None:
         """Register the List Comparator Tool."""
@@ -2920,7 +3132,7 @@ class ToolRegistry:
             name="pomera_find_replace_diff",
             description="Regex find/replace with diff preview and automatic backup to Notes. "
                        "Designed for AI agent workflows requiring verification and rollback capability. "
-                       "Operations: validate (check regex), preview (show diff), execute (replace+backup), recall (retrieve previous).",
+                       "Operations: validate (check regex), preview (show diff), execute (replace+backup), recall (retrieve previous). Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -2931,7 +3143,12 @@ class ToolRegistry:
                     },
                     "text": {
                         "type": "string",
-                        "description": "Input text to process (for validate/preview/execute)"
+                        "description": "Input text to process (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "find_pattern": {
                         "type": "string",
@@ -2963,6 +3180,14 @@ class ToolRegistry:
                     "note_id": {
                         "type": "integer",
                         "description": "Note ID to recall (for recall operation)"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save replaced text result to this file path"
+                    },
+                    "diff_to_file": {
+                        "type": "string",
+                        "description": "If provided, save diff output to this file path"
                     }
                 },
                 "required": ["operation"]
@@ -2973,9 +3198,16 @@ class ToolRegistry:
     def _handle_find_replace_diff(self, args: Dict[str, Any]) -> str:
         """Handle find/replace diff tool execution."""
         import json
+        from .file_io_helpers import process_file_args, save_file_content
         from core.mcp.find_replace_diff import validate_regex, preview_replace, execute_replace, recall_operation
         
         operation = args.get("operation", "")
+        
+        # Process file input for operations that need text
+        if operation in ["preview", "execute"]:
+            success, args, error = process_file_args(args, {"text": "text_is_file"})
+            if not success:
+                return json.dumps({"success": False, "error": error})
         
         if operation == "validate":
             pattern = args.get("find_pattern", "")
@@ -2989,6 +3221,7 @@ class ToolRegistry:
             replace_pattern = args.get("replace_pattern", "")
             flags = args.get("flags", [])
             context_lines = args.get("context_lines", 2)
+            diff_to_file = args.get("diff_to_file")
             
             if not text:
                 return json.dumps({"success": False, "error": "text is required for preview"})
@@ -2996,6 +3229,12 @@ class ToolRegistry:
                 return json.dumps({"success": False, "error": "find_pattern is required for preview"})
             
             result = preview_replace(text, find_pattern, replace_pattern, flags, context_lines)
+            
+            # Save diff to file if requested
+            if diff_to_file and result.get("success") and result.get("diff"):
+                save_file_content(diff_to_file, result["diff"])
+                result["diff_saved_to"] = diff_to_file
+            
             return json.dumps(result, ensure_ascii=False)
         
         elif operation == "execute":
@@ -3004,6 +3243,8 @@ class ToolRegistry:
             replace_pattern = args.get("replace_pattern", "")
             flags = args.get("flags", [])
             save_to_notes = args.get("save_to_notes", True)
+            output_to_file = args.get("output_to_file")
+            diff_to_file = args.get("diff_to_file")
             
             if not text:
                 return json.dumps({"success": False, "error": "text is required for execute"})
@@ -3016,6 +3257,17 @@ class ToolRegistry:
                 notes_handler = self._create_notes_handler()
             
             result = execute_replace(text, find_pattern, replace_pattern, flags, save_to_notes, notes_handler)
+            
+            # Save replaced text to file if requested
+            if output_to_file and result.get("success") and result.get("replaced_text"):
+                save_file_content(output_to_file, result["replaced_text"])
+                result["result_saved_to"] = output_to_file
+            
+            # Save diff to file if requested
+            if diff_to_file and result.get("success") and result.get("diff"):
+                save_file_content(diff_to_file, result["diff"])
+                result["diff_saved_to"] = diff_to_file
+            
             return json.dumps(result, ensure_ascii=False)
         
         elif operation == "recall":
@@ -3109,6 +3361,10 @@ class ToolRegistry:
                         "default": 5,
                         "minimum": 1,
                         "maximum": 20
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save search results to this file path"
                     }
                 },
                 "required": ["query"]
@@ -3175,6 +3431,15 @@ class ToolRegistry:
                 "count": len(results),
                 "results": results
             }
+            
+            # Save to file if requested
+            output_to_file = args.get("output_to_file")
+            if output_to_file:
+                from .file_io_helpers import save_file_content
+                json_output = json.dumps(output, indent=2, ensure_ascii=False)
+                save_file_content(output_to_file, json_output)
+                output["saved_to"] = output_to_file
+            
             return json.dumps(output, indent=2, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
@@ -3356,7 +3621,7 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_read_url",
             description="Fetch URL content and convert HTML to Markdown. "
-                       "Extracts main content area and outputs clean markdown format.",
+                       "Extracts main content area and outputs clean markdown format. Supports file output.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -3375,6 +3640,10 @@ class ToolRegistry:
                         "type": "boolean",
                         "description": "Try to extract main content area only",
                         "default": True
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save markdown content to this file path"
                     }
                 },
                 "required": ["url"]
@@ -3384,12 +3653,14 @@ class ToolRegistry:
     
     def _handle_read_url(self, args: Dict[str, Any]) -> str:
         """Handle URL content reader tool execution."""
+        from .file_io_helpers import save_file_content
         from tools.url_content_reader import URLContentReader
         import json
         
         url = args.get("url", "")
         timeout = args.get("timeout", 30)
         extract_main = args.get("extract_main_content", True)
+        output_path = args.get("output_to_file")
         
         if not url:
             return json.dumps({"success": False, "error": "URL is required"})
@@ -3397,11 +3668,22 @@ class ToolRegistry:
         try:
             reader = URLContentReader()
             markdown = reader.fetch_and_convert(url, timeout=timeout, extract_main_content=extract_main)
+            
+            # Save to file if requested
+            saved_message = ""
+            if output_path:
+                success, msg = save_file_content(output_path, markdown)
+                if success:
+                    saved_message = f" | Saved to: {output_path}"
+                else:
+                    saved_message = f" | Save failed: {msg}"
+            
             return json.dumps({
                 "success": True,
                 "url": url,
                 "markdown": markdown,
-                "length": len(markdown)
+                "length": len(markdown),
+                "saved_to": output_path if output_path else None
             }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": f"Error fetching URL: {str(e)}"})
@@ -3509,10 +3791,20 @@ class ToolRegistry:
                         "description": "Original content (before changes). Can be JSON, YAML, ENV, or TOML format. "
                                      "For AI agents: If generating config, use json5 format to include helpful comments."
                     },
+                    "before_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'before' as file path and load content from file"
+                    },
                     "after": {
                         "type": "string",
                         "description": "Modified content (after changes). Must be same format as 'before'. "
                                      "For AI agents: Ensure format consistency for accurate comparison."
+                    },
+                    "after_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'after' as file path and load content from file"
                     },
                     "format": {
                         "type": "string",
@@ -3572,9 +3864,18 @@ class ToolRegistry:
     
     def _handle_smart_diff_2way(self, args: Dict[str, Any]) -> str:
         """Handle 2-way semantic diff execution."""
+        from .file_io_helpers import process_file_args
         from core.semantic_diff import SemanticDiffEngine
         import json
         import sys
+        
+        # Process file inputs
+        success, args, error = process_file_args(args, {
+            "before": "before_is_file",
+            "after": "after_is_file"
+        })
+        if not success:
+            return json.dumps({"success": False, "error": error}, ensure_ascii=False)
         
         engine = SemanticDiffEngine()
         
@@ -3748,13 +4049,28 @@ class ToolRegistry:
                         "type": "string",
                         "description": "Base/original version (common ancestor). This is the version both 'yours' and 'theirs' branched from."
                     },
+                    "base_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'base' as file path and load content from file"
+                    },
                     "yours": {
                         "type": "string",
                         "description": "Your version with changes. This should be in the same format as 'base'."
                     },
+                    "yours_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'yours' as file path and load content from file"
+                    },
                     "theirs": {
                         "type": "string",
                         "description": "Their version with changes. This should be in the same format as 'base'."
+                    },
+                    "theirs_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'theirs' as file path and load content from file"
                     },
                     "format": {
                         "type": "string",
@@ -3806,8 +4122,18 @@ class ToolRegistry:
     
     def _handle_smart_diff_3way(self, args: Dict[str, Any]) -> str:
         """Handle 3-way merge execution."""
+        from .file_io_helpers import process_file_args
         from core.semantic_diff import SemanticDiffEngine
         import json
+        
+        # Process file inputs
+        success, args, error = process_file_args(args, {
+            "base": "base_is_file",
+            "yours": "yours_is_file",
+            "theirs": "theirs_is_file"
+        })
+        if not success:
+            return json.dumps({"success": False, "error": error}, ensure_ascii=False)
         
         engine = SemanticDiffEngine()
         
@@ -3873,6 +4199,273 @@ class ToolRegistry:
                 self._logger.warning(f"Failed to save to notes: {e}")
         
         return json.dumps(result_dict, ensure_ascii=False, indent=2)
+
+    # =========================================================================
+    # AI Tools (Phase 8)
+    # =========================================================================
+    
+    def _register_ai_tools_tool(self) -> None:
+        """Register the AI Tools MCP tool."""
+        self.register(MCPToolAdapter(
+            name="pomera_ai_tools",
+            description=(
+                "**AI Tools - Access AI language models via MCP**\\n\\n"
+                "Generate text using various AI providers including Google AI, OpenAI, "
+                "Anthropic, Groq, OpenRouter, Azure AI, Vertex AI, Cohere, HuggingFace, "
+                "LM Studio, and AWS Bedrock.\\n\\n"
+                
+                "**WHEN TO USE THIS TOOL**:\\n"
+                "- Generate, summarize, or transform text using AI\\n"
+                "- Use specific AI providers/models for different tasks\\n"
+                "- Process file content through AI models\\n\\n"
+                
+                "**KEY FEATURES**:\\n"
+                "✅ 11 AI providers supported\\n"
+                "✅ File input/output support\\n"
+                "✅ System prompt configuration\\n"
+                "✅ Sampling parameters (temperature, top_p, top_k)\\n"
+                "✅ Content parameters (max_tokens, stop_sequences)\\n\\n"
+                
+                "**ACTIONS**:\\n"
+                "- list_providers: Get list of available AI providers\\n"
+                "- list_models: Get models for a specific provider\\n"
+                "- generate: Generate text using AI (default action)\\n\\n"
+                
+                "**BEST PRACTICES FOR AI AGENTS**:\\n"
+                "1. Use 'list_providers' to see available providers\\n"
+                "2. Use 'list_models' to see models for a provider\\n"
+                "3. API keys must be configured via Pomera UI (not passed as params)\\n"
+                "4. Use system_prompt for consistent behavior\\n\\n"
+                
+                "**OUTPUT STRUCTURE**:\\n"
+                "{\\n"
+                "  'success': bool,\\n"
+                "  'response': str,\\n"
+                "  'provider': str,\\n"
+                "  'model': str,\\n"
+                "  'error': str or null\\n"
+                "}\\n"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["generate", "list_providers", "list_models"],
+                        "description": "Action to perform. Default: generate",
+                        "default": "generate"
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Text prompt to send to AI (required for 'generate')"
+                    },
+                    "prompt_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'prompt' as file path and load content"
+                    },
+                    "provider": {
+                        "type": "string",
+                        "description": "AI provider name (e.g., 'OpenAI', 'Anthropic AI', 'Google AI')"
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Model name (uses provider default if not specified)"
+                    },
+                    "system_prompt": {
+                        "type": "string",
+                        "description": "System prompt for context/behavior instructions"
+                    },
+                    "temperature": {
+                        "type": "number",
+                        "description": "Sampling temperature (0.0-2.0, varies by provider)"
+                    },
+                    "top_p": {
+                        "type": "number",
+                        "description": "Nucleus sampling threshold (0.0-1.0)"
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Top-k sampling (1-100, varies by provider)"
+                    },
+                    "max_tokens": {
+                        "type": "integer",
+                        "description": "Maximum tokens to generate"
+                    },
+                    "stop_sequences": {
+                        "type": "string",
+                        "description": "Comma-separated list of stop sequences"
+                    },
+                    "seed": {
+                        "type": "integer",
+                        "description": "Random seed for reproducibility (where supported)"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save response to this file path"
+                    }
+                },
+                "required": []
+            },
+            handler=self._handle_ai_tools
+        ))
+    
+    def _handle_ai_tools(self, args: Dict[str, Any]) -> str:
+        """Handle AI Tools execution."""
+        import json
+        import sys
+        from .file_io_helpers import process_file_args, handle_file_output
+        from core.ai_tools_engine import AIToolsEngine
+        from core.mcp_security_manager import get_security_manager
+        
+        action = args.get("action", "generate")
+        
+        # Initialize engine and security
+        # Try to get db_settings_manager from app context
+        db_settings_manager = None
+        try:
+            from core.app_context import get_app
+            app = get_app()
+            if app and hasattr(app, 'db_settings_manager'):
+                db_settings_manager = app.db_settings_manager
+        except Exception:
+            pass
+        
+        engine = AIToolsEngine(db_settings_manager=db_settings_manager)
+        security = get_security_manager(db_settings_manager)
+        
+        # Security check for protected actions
+        if action == "generate":
+            # Check if locked first
+            if security.is_locked():
+                lock_state = security.get_lock_state()
+                return json.dumps({
+                    "success": False,
+                    "error": f"🔒 MCP tools locked: {lock_state.reason}. Unlock via Pomera UI → Settings → MCP Security",
+                    "locked": True,
+                    "lock_reason": lock_state.reason
+                }, ensure_ascii=False)
+            
+            # Estimate tokens for security check (will be done later with actual prompt)
+            prompt = args.get("prompt", "")
+            if security.is_enabled() and prompt:
+                estimated_tokens = security.estimate_tokens(prompt) * 2  # Input + output estimate
+                allowed, error = security.check_and_record("pomera_ai_tools", estimated_tokens)
+                if not allowed:
+                    return json.dumps({
+                        "success": False,
+                        "error": error,
+                        "locked": True
+                    }, ensure_ascii=False)
+        
+        # Handle list_providers action
+        if action == "list_providers":
+            providers = engine.list_providers()
+            return json.dumps({
+                "success": True,
+                "providers": providers,
+                "count": len(providers)
+            }, ensure_ascii=False, indent=2)
+        
+        # Handle list_models action
+        if action == "list_models":
+            provider = args.get("provider", "")
+            if not provider:
+                return json.dumps({
+                    "success": False,
+                    "error": "Provider is required for list_models action"
+                }, ensure_ascii=False)
+            
+            models = engine.list_models(provider)
+            return json.dumps({
+                "success": True,
+                "provider": provider,
+                "models": models,
+                "count": len(models)
+            }, ensure_ascii=False, indent=2)
+        
+        # Handle generate action
+        if action == "generate":
+            # Validate required arguments
+            provider = args.get("provider", "")
+            if not provider:
+                return json.dumps({
+                    "success": False,
+                    "error": "Provider is required for generate action. Use 'list_providers' to see available providers."
+                }, ensure_ascii=False)
+            
+            # Process file input for prompt
+            success, args, error = process_file_args(args, {"prompt": "prompt_is_file"})
+            if not success:
+                return json.dumps({
+                    "success": False,
+                    "error": error
+                }, ensure_ascii=False)
+            
+            prompt = args.get("prompt", "")
+            if not prompt:
+                return json.dumps({
+                    "success": False,
+                    "error": "Prompt is required for generate action"
+                }, ensure_ascii=False)
+            
+            # Estimate complexity for progress logging
+            estimation = engine.estimate_complexity(prompt)
+            
+            # Progress callback for stderr logging
+            def progress_callback(current: int, total: int):
+                if estimation['should_show_progress']:
+                    percent = int((current / total) * 100)
+                    print(f"🔄 AI Tools Progress: {percent}%", file=sys.stderr, flush=True)
+            
+            # Log initial message
+            if estimation['should_show_progress']:
+                print(f"🔍 Starting AI generation with {provider}...", file=sys.stderr, flush=True)
+                print(f"   Estimated time: {estimation['estimated_seconds']:.1f}s", file=sys.stderr, flush=True)
+            
+            # Parse stop sequences
+            stop_sequences = None
+            if args.get("stop_sequences"):
+                stop_sequences = [s.strip() for s in args["stop_sequences"].split(",")]
+            
+            # Execute engine
+            result = engine.generate(
+                prompt=prompt,
+                provider=provider,
+                model=args.get("model"),
+                system_prompt=args.get("system_prompt"),
+                temperature=args.get("temperature"),
+                top_p=args.get("top_p"),
+                top_k=args.get("top_k"),
+                max_tokens=args.get("max_tokens"),
+                stop_sequences=stop_sequences,
+                seed=args.get("seed"),
+                progress_callback=progress_callback
+            )
+            
+            # Log completion
+            if estimation['should_show_progress']:
+                if result.success:
+                    print(f"✅ AI generation complete!", file=sys.stderr, flush=True)
+                else:
+                    print(f"❌ AI generation failed: {result.error}", file=sys.stderr, flush=True)
+            
+            # Handle file output
+            if result.success and args.get("output_to_file"):
+                output_result = handle_file_output(args, result.response)
+                if output_result != result.response:
+                    # File output was handled
+                    result_dict = result.to_dict()
+                    result_dict["file_output"] = args["output_to_file"]
+                    return json.dumps(result_dict, ensure_ascii=False, indent=2)
+            
+            return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        
+        # Unknown action
+        return json.dumps({
+            "success": False,
+            "error": f"Unknown action: {action}. Valid actions: generate, list_providers, list_models"
+        }, ensure_ascii=False)
 
 
 # Singleton instance for convenience
