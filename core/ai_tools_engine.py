@@ -398,6 +398,13 @@ class AIToolsEngine:
         # Return empty settings if no database
         return {}
     
+    def _is_gpt52_model(self, model: str) -> bool:
+        """Check if model is GPT-5.2 which requires Responses API."""
+        if not model:
+            return False
+        model_lower = model.lower()
+        return 'gpt-5.2' in model_lower or 'gpt5.2' in model_lower or model_lower.startswith('gpt-52')
+    
     def _get_api_key(self, provider: str, settings: Dict[str, Any]) -> str:
         """Get decrypted API key for a provider."""
         if provider == "LM Studio":
@@ -680,6 +687,9 @@ class AIToolsEngine:
                 result_text = data['results'][0].get('outputText', result_text)
             elif 'text' in data:
                 result_text = data['text']
+            elif 'item' in data and isinstance(data['item'], dict):
+                # Responses API format (GPT-5.2)
+                result_text = data['item'].get('content', result_text)
             elif 'choices' in data and len(data['choices']) > 0:
                 choice = data['choices'][0]
                 if 'message' in choice and 'content' in choice['message']:
