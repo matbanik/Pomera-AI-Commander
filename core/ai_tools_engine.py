@@ -20,6 +20,22 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+# Import bedrock helper for AWS Bedrock support
+try:
+    from tools.bedrock_helper import process_bedrock_request, BOTO3_AVAILABLE
+    BEDROCK_HELPER_AVAILABLE = True
+except ImportError:
+    BEDROCK_HELPER_AVAILABLE = False
+    BOTO3_AVAILABLE = False
+
+# Import google-auth for Vertex AI OAuth token
+try:
+    from google.oauth2 import service_account
+    from google.auth.transport.requests import Request
+    GOOGLE_AUTH_AVAILABLE = True
+except ImportError:
+    GOOGLE_AUTH_AVAILABLE = False
+
 
 @dataclass
 class AIToolsResult:
@@ -255,6 +271,28 @@ class AIToolsEngine:
             if provider == "HuggingFace AI":
                 return self._call_huggingface(prompt, api_key, settings, progress_callback)
             
+            # Handle AWS Bedrock using boto3 helper for ALL auth methods
+            # boto3 handles both IAM auth AND Bearer token auth correctly
+            if provider == "AWS Bedrock":
+                # Decrypt credentials before passing to bedrock_helper
+                # (matches GUI behavior - bedrock_helper expects decrypted keys)
+                bedrock_settings = dict(settings)
+                auth_method = settings.get("AUTH_METHOD", "api_key")
+                is_api_key_auth = auth_method in ["api_key", "API Key (Bearer Token)"]
+                
+                if is_api_key_auth:
+                    bedrock_settings["API_KEY"] = self._get_api_key(provider, settings)
+                else:
+                    # Decrypt IAM credentials
+                    bedrock_settings["AWS_ACCESS_KEY_ID"] = self._get_api_key(provider, {"API_KEY": settings.get("AWS_ACCESS_KEY_ID", "")})
+                    bedrock_settings["AWS_SECRET_ACCESS_KEY"] = self._get_api_key(provider, {"API_KEY": settings.get("AWS_SECRET_ACCESS_KEY", "")})
+                    if auth_method in ["sessionToken", "Session Token (Temporary Credentials)"]:
+                        bedrock_settings["AWS_SESSION_TOKEN"] = self._get_api_key(provider, {"API_KEY": settings.get("AWS_SESSION_TOKEN", "")})
+                
+                return self._call_bedrock(prompt, bedrock_settings, progress_callback)
+                # No fallback to raw HTTP - boto3 handles everything
+            
+            
             # Build request
             url, payload, headers = self._build_api_request(provider, api_key, prompt, settings)
             
@@ -423,6 +461,87 @@ class AIToolsEngine:
             # Fallback - return as-is if decrypt not available
             return encrypted_key
     
+    def _get_vertex_ai_access_token(self, settings: Dict[str, Any]) -> Optional[str]:
+        """Get OAuth2 access token for Vertex AI using service account credentials."""
+        if not GOOGLE_AUTH_AVAILABLE:
+            self.logger.warning("google-auth library not available for Vertex AI")
+            return None
+        
+        try:
+            credentials_dict = None
+            
+            # First try reading from vertex_ai_json table (how GUI stores it)
+            if self.db_settings_manager:
+                try:
+                    from tools.ai_tools import decrypt_api_key
+                    conn_manager = self.db_settings_manager.connection_manager
+                    with conn_manager.transaction() as conn:
+                        cursor = conn.execute("""
+                            SELECT type, project_id, private_key_id, private_key,
+                                   client_email, client_id, auth_uri, token_uri,
+                                   auth_provider_x509_cert_url, client_x509_cert_url, universe_domain
+                            FROM vertex_ai_json
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                        """)
+                        row = cursor.fetchone()
+                        
+                        if row:
+                            # Decrypt private_key
+                            decrypted_private_key = decrypt_api_key(row[3])
+                            
+                            # Reconstruct JSON structure
+                            credentials_dict = {
+                                'type': row[0],
+                                'project_id': row[1],
+                                'private_key_id': row[2],
+                                'private_key': decrypted_private_key,
+                                'client_email': row[4],
+                                'client_id': row[5],
+                                'auth_uri': row[6],
+                                'token_uri': row[7],
+                                'auth_provider_x509_cert_url': row[8],
+                                'client_x509_cert_url': row[9],
+                                'universe_domain': row[10]
+                            }
+                            self.logger.debug("Loaded Vertex AI credentials from database")
+                except Exception as e:
+                    self.logger.debug(f"Could not load from vertex_ai_json table: {e}")
+            
+            # Fallback to settings (for flexibility)
+            if not credentials_dict:
+                credentials_json = settings.get("SERVICE_ACCOUNT_JSON", "")
+                if credentials_json:
+                    if isinstance(credentials_json, str):
+                        credentials_dict = json.loads(credentials_json)
+                    else:
+                        credentials_dict = credentials_json
+            
+            if not credentials_dict:
+                self.logger.warning("No Vertex AI service account credentials found")
+                return None
+            
+            # Create credentials from service account info
+            credentials = service_account.Credentials.from_service_account_info(
+                credentials_dict,
+                scopes=['https://www.googleapis.com/auth/cloud-platform']
+            )
+            
+            # Refresh token if needed
+            if not credentials.valid:
+                request = Request()
+                credentials.refresh(request)
+            
+            # Get access token
+            access_token = credentials.token
+            self.logger.debug("Vertex AI access token obtained successfully")
+            
+            return access_token
+            
+        except Exception as e:
+            self.logger.error(f"Error getting Vertex AI access token: {e}")
+            return None
+    
     def _build_api_request(
         self, 
         provider: str, 
@@ -438,11 +557,12 @@ class AIToolsEngine:
             project_id = settings.get("PROJECT_ID", "")
             location = settings.get("LOCATION", "us-central1")
             model = settings.get("MODEL", "")
-            url = provider_config["url_template"].format(
-                location=location,
-                project_id=project_id,
-                model=model
-            )
+            
+            # Global endpoint uses different URL format than regional
+            if location == "global":
+                url = f"https://aiplatform.googleapis.com/v1/projects/{project_id}/locations/global/publishers/google/models/{model}:generateContent"
+            else:
+                url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent"
         elif provider == "Azure AI":
             endpoint = settings.get("ENDPOINT", "").strip().rstrip('/')
             model = settings.get("MODEL", "gpt-4.1")
@@ -482,8 +602,13 @@ class AIToolsEngine:
             if "{api_key}" in value:
                 headers[key] = value.format(api_key=api_key)
             elif "{access_token}" in value:
-                # Vertex AI - would need OAuth token (not implemented for MCP)
-                headers[key] = value.format(access_token="")
+                # Vertex AI - get OAuth access token from service account
+                access_token = self._get_vertex_ai_access_token(settings)
+                if access_token:
+                    headers[key] = value.format(access_token=access_token)
+                else:
+                    self.logger.warning("Could not get Vertex AI access token")
+                    headers[key] = value.format(access_token="")
             else:
                 headers[key] = value
         
@@ -532,10 +657,19 @@ class AIToolsEngine:
                 payload['max_tokens'] = int(settings['max_tokens'])
             else:
                 payload['max_tokens'] = 4096  # Required for Anthropic
-            if settings.get('temperature') is not None:
+            
+            # Anthropic API: Some models don't allow both temperature AND top_p
+            # If both are set, prefer temperature and skip top_p to avoid API error:
+            # "temperature and top_p cannot both be specified for this model"
+            has_temperature = settings.get('temperature') is not None
+            has_top_p = settings.get('top_p') is not None
+            
+            if has_temperature:
                 payload['temperature'] = float(settings['temperature'])
-            if settings.get('top_p') is not None:
+                # Skip top_p when temperature is set to avoid conflict
+            elif has_top_p:
                 payload['top_p'] = float(settings['top_p'])
+            
             if settings.get('top_k') is not None:
                 payload['top_k'] = int(settings['top_k'])
         
@@ -655,7 +789,25 @@ class AIToolsEngine:
         result_text = f"Error: Could not parse response from {provider}."
         
         if provider in ["Google AI", "Vertex AI"]:
-            result_text = data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', result_text)
+            # Handle Gemini 2.5+ thinking mode - may have multiple parts (thought + text)
+            try:
+                candidates = data.get('candidates', [])
+                if candidates:
+                    content = candidates[0].get('content', {})
+                    parts = content.get('parts', [])
+                    
+                    # Collect all text parts (skip thought parts for output)
+                    text_parts = []
+                    for part in parts:
+                        if isinstance(part, dict):
+                            # Regular text part
+                            if 'text' in part:
+                                text_parts.append(part['text'])
+                    
+                    if text_parts:
+                        result_text = ''.join(text_parts)
+            except Exception:
+                pass  # Fall through to default error
         elif provider == "Anthropic AI":
             result_text = data.get('content', [{}])[0].get('text', result_text)
         elif provider in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio", "Azure AI"]:
@@ -712,44 +864,98 @@ class AIToolsEngine:
         settings: Dict[str, Any],
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> AIToolsResult:
-        """Call HuggingFace API."""
+        """Call HuggingFace API using the helper module (matches GUI behavior)."""
         model = settings.get("MODEL", "")
         
         try:
-            from huggingface_hub import InferenceClient
+            # Use the huggingface_helper module for proper task detection
+            # This matches GUI behavior with chat_completion fallback for Instruct models
+            from tools.huggingface_helper import process_huggingface_request
             
             if progress_callback:
                 progress_callback(25, 100)
             
-            client = InferenceClient(token=api_key)
+            # Collect response text
+            response_text = []
+            def update_callback(text):
+                response_text.append(text)
             
-            if progress_callback:
-                progress_callback(50, 100)
-            
-            response = client.text_generation(
-                prompt,
-                model=model if model else None,
-                max_new_tokens=settings.get("max_tokens", 512),
-                temperature=settings.get("temperature", 0.7)
-            )
+            # Use the helper which handles task detection and fallbacks
+            process_huggingface_request(api_key, prompt, settings, update_callback, self.logger)
             
             if progress_callback:
                 progress_callback(100, 100)
             
-            return AIToolsResult(
-                success=True,
-                response=response,
-                provider="HuggingFace AI",
-                model=model
-            )
+            final_response = "".join(response_text)
             
-        except ImportError:
-            return AIToolsResult(
-                success=False,
-                error="HuggingFace library not installed. Run: pip install huggingface_hub",
-                provider="HuggingFace AI",
-                model=model
-            )
+            if final_response:
+                return AIToolsResult(
+                    success=True,
+                    response=final_response,
+                    provider="HuggingFace AI",
+                    model=model
+                )
+            else:
+                return AIToolsResult(
+                    success=False,
+                    error="No response received from HuggingFace",
+                    provider="HuggingFace AI",
+                    model=model
+                )
+            
+        except ImportError as e:
+            # Fallback to simple implementation if helper not available
+            try:
+                from huggingface_hub import InferenceClient
+                
+                if progress_callback:
+                    progress_callback(25, 100)
+                
+                client = InferenceClient(token=api_key)
+                
+                if progress_callback:
+                    progress_callback(50, 100)
+                
+                # Try chat completion first for Instruct models
+                try:
+                    messages = [{"role": "user", "content": prompt}]
+                    system_prompt = settings.get("system_prompt", "")
+                    if system_prompt:
+                        messages.insert(0, {"role": "system", "content": system_prompt})
+                    
+                    response = client.chat_completion(
+                        messages=messages,
+                        model=model if model else None,
+                        max_tokens=settings.get("max_tokens", 512),
+                        temperature=settings.get("temperature", 0.7)
+                    )
+                    result = response.choices[0].message.content
+                except Exception:
+                    # Fallback to text generation
+                    result = client.text_generation(
+                        prompt,
+                        model=model if model else None,
+                        max_new_tokens=settings.get("max_tokens", 512),
+                        temperature=settings.get("temperature", 0.7)
+                    )
+                
+                if progress_callback:
+                    progress_callback(100, 100)
+                
+                return AIToolsResult(
+                    success=True,
+                    response=result,
+                    provider="HuggingFace AI",
+                    model=model
+                )
+                
+            except ImportError:
+                return AIToolsResult(
+                    success=False,
+                    error="HuggingFace library not installed. Run: pip install huggingface_hub",
+                    provider="HuggingFace AI",
+                    model=model
+                )
         except Exception as e:
             return AIToolsResult(
                 success=False,
@@ -757,3 +963,59 @@ class AIToolsEngine:
                 provider="HuggingFace AI",
                 model=model
             )
+    
+    def _call_bedrock(
+        self, 
+        prompt: str, 
+        settings: Dict[str, Any],
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> AIToolsResult:
+        """Call AWS Bedrock API using boto3 helper."""
+        model = settings.get("MODEL", "")
+        
+        if not BEDROCK_HELPER_AVAILABLE or not BOTO3_AVAILABLE:
+            return AIToolsResult(
+                success=False,
+                error="AWS Bedrock helper not available. Please ensure boto3 is installed: pip install boto3",
+                provider="AWS Bedrock",
+                model=model
+            )
+        
+        try:
+            if progress_callback:
+                progress_callback(25, 100)
+            
+            # Use the non-streaming version for MCP (simpler result handling)
+            response_text = process_bedrock_request(
+                prompt=prompt,
+                settings=settings,
+                update_callback=None,  # We'll get the response directly
+                logger=self.logger
+            )
+            
+            if progress_callback:
+                progress_callback(100, 100)
+            
+            if response_text:
+                return AIToolsResult(
+                    success=True,
+                    response=response_text,
+                    provider="AWS Bedrock",
+                    model=model
+                )
+            else:
+                return AIToolsResult(
+                    success=False,
+                    error="No response received from AWS Bedrock",
+                    provider="AWS Bedrock",
+                    model=model
+                )
+            
+        except Exception as e:
+            return AIToolsResult(
+                success=False,
+                error=str(e),
+                provider="AWS Bedrock",
+                model=model
+            )
+

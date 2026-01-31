@@ -35,6 +35,14 @@ except ImportError:
     HUGGINGFACE_HELPER_AVAILABLE = False
 
 try:
+    from tools.bedrock_helper import process_bedrock_stream, process_bedrock_request, normalize_model_id, BOTO3_AVAILABLE
+    BEDROCK_HELPER_AVAILABLE = True
+except ImportError:
+    BEDROCK_HELPER_AVAILABLE = False
+    BOTO3_AVAILABLE = False
+    normalize_model_id = None  # Function not available
+
+try:
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -463,9 +471,18 @@ class AIToolsWidget(ttk.Frame):
         # Bind tab selection event
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         
-        # Set initial tab
-        self.notebook.select(0)
-        self.current_provider = list(self.ai_providers.keys())[0]
+        # Set initial tab - restore saved provider if available
+        saved_provider = self.app.settings.get("ai_tools_selected_provider", "")
+        provider_list = list(self.ai_providers.keys())
+        
+        if saved_provider and saved_provider in provider_list:
+            saved_index = provider_list.index(saved_provider)
+            self.notebook.select(saved_index)
+            self.current_provider = saved_provider
+            self.logger.debug(f"Restored saved AI provider tab: {saved_provider}")
+        else:
+            self.notebook.select(0)
+            self.current_provider = provider_list[0]
     
     def on_tab_changed(self, event=None):
         """Handle tab change event."""
@@ -473,6 +490,10 @@ class AIToolsWidget(ttk.Frame):
             selected_tab = self.notebook.select()
             tab_index = self.notebook.index(selected_tab)
             self.current_provider = list(self.ai_providers.keys())[tab_index]
+            
+            # Save selected provider for persistence across restarts
+            self.app.settings["ai_tools_selected_provider"] = self.current_provider
+            self.app.save_settings()
             
             # Ensure AWS Bedrock fields are properly visible when switching to that tab
             if self.current_provider == "AWS Bedrock":
@@ -688,6 +709,7 @@ class AIToolsWidget(ttk.Frame):
             
             location_var = tk.StringVar(value=settings.get("LOCATION", "us-central1"))
             vertex_locations = [
+                "global",  # For models like Gemini 3 Pro only available globally
                 "us-central1", "us-east1", "us-east4", "us-west1", "us-west4",
                 "europe-west1", "europe-west4", "europe-west6", "asia-east1",
                 "asia-northeast1", "asia-southeast1", "asia-south1"
@@ -1129,10 +1151,18 @@ class AIToolsWidget(ttk.Frame):
             # Collect all widget values first
             updated_settings = {}
             for param, widget in self.ai_widgets[provider_name].items():
+                # Skip widgets that don't have a get() method (e.g., Labels)
+                # These are display-only widgets like JSON_STATUS for Vertex AI
+                if isinstance(widget, (ttk.Label, tk.Label)):
+                    continue
+                
                 if isinstance(widget, tk.Text):
                     value = widget.get("1.0", tk.END).strip()
-                else:
+                elif hasattr(widget, 'get'):
                     value = widget.get()
+                else:
+                    # Skip any other widget types without get() method
+                    continue
                 
                 # Encrypt sensitive credentials before saving (except for LM Studio)
                 if provider_name != "LM Studio" and param in ["API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
@@ -1542,68 +1572,45 @@ class AIToolsWidget(ttk.Frame):
         self.app.save_settings()
     
     def sign_aws_request(self, method, url, payload, access_key, secret_key, session_token=None, region="us-west-2", service="bedrock"):
-        """Sign AWS request using Signature Version 4."""
+        """Sign AWS request using Signature Version 4 via botocore."""
         try:
-            # Parse URL
-            parsed_url = urllib.parse.urlparse(url)
-            host = parsed_url.netloc
-            path = parsed_url.path
+            from botocore.auth import SigV4Auth
+            from botocore.awsrequest import AWSRequest
+            from botocore.credentials import Credentials
             
-            # Create timestamp
-            t = datetime.utcnow()
-            amz_date = t.strftime('%Y%m%dT%H%M%SZ')
-            date_stamp = t.strftime('%Y%m%d')
-            
-            # Create canonical request
-            canonical_uri = path
-            canonical_querystring = ''
-            canonical_headers = f'host:{host}\nx-amz-date:{amz_date}\n'
-            signed_headers = 'host;x-amz-date'
-            
+            # Create credentials
             if session_token:
-                canonical_headers += f'x-amz-security-token:{session_token}\n'
-                signed_headers += ';x-amz-security-token'
+                credentials = Credentials(access_key, secret_key, session_token)
+            else:
+                credentials = Credentials(access_key, secret_key)
             
-            payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()
-            canonical_request = f'{method}\n{canonical_uri}\n{canonical_querystring}\n{canonical_headers}\n{signed_headers}\n{payload_hash}'
-            
-            # Create string to sign
-            algorithm = 'AWS4-HMAC-SHA256'
-            credential_scope = f'{date_stamp}/{region}/{service}/aws4_request'
-            string_to_sign = f'{algorithm}\n{amz_date}\n{credential_scope}\n{hashlib.sha256(canonical_request.encode("utf-8")).hexdigest()}'
-            
-            # Calculate signature
-            def sign(key, msg):
-                return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
-            
-            def get_signature_key(key, date_stamp, region_name, service_name):
-                k_date = sign(('AWS4' + key).encode('utf-8'), date_stamp)
-                k_region = sign(k_date, region_name)
-                k_service = sign(k_region, service_name)
-                k_signing = sign(k_service, 'aws4_request')
-                return k_signing
-            
-            signing_key = get_signature_key(secret_key, date_stamp, region, service)
-            signature = hmac.new(signing_key, string_to_sign.encode('utf-8'), hashlib.sha256).hexdigest()
-            
-            # Create authorization header
-            authorization_header = f'{algorithm} Credential={access_key}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}'
-            
-            # Build headers
+            # Create the request
             headers = {
                 'Content-Type': 'application/json',
-                'X-Amz-Date': amz_date,
-                'Authorization': authorization_header,
-                'X-Amz-Content-Sha256': payload_hash
             }
             
-            if session_token:
-                headers['X-Amz-Security-Token'] = session_token
+            request = AWSRequest(method=method, url=url, data=payload, headers=headers)
             
-            return headers
+            # Sign the request
+            SigV4Auth(credentials, service, region).add_auth(request)
             
+            # Extract signed headers
+            signed_headers = dict(request.headers)
+            
+            self.logger.debug(f"SigV4 signed request for {service} in {region}")
+            self.logger.debug(f"SigV4 URL: {url}")
+            self.logger.debug(f"SigV4 Headers: {list(signed_headers.keys())}")
+            
+            return signed_headers
+            
+        except ImportError as e:
+            self.logger.error(f"botocore not available for SigV4 signing: {e}")
+            self.logger.error("Please install botocore: pip install botocore")
+            return {}
         except Exception as e:
             self.logger.error(f"Error signing AWS request: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return {}
     
     def get_current_provider(self):
@@ -1738,6 +1745,52 @@ class AIToolsWidget(ttk.Frame):
                     self.logger.error(error_msg)
                     self.app.after(0, self.app.update_output_text, error_msg)
                     return
+                
+                # Use boto3 helper for ALL AWS Bedrock auth methods
+                # boto3 handles both IAM auth AND Bearer token auth correctly
+                if BEDROCK_HELPER_AVAILABLE and BOTO3_AVAILABLE:
+                    try:
+                        auth_method = settings.get("AUTH_METHOD", "api_key")
+                        self.logger.info(f"Using boto3 bedrock_helper for model: {model_id} (auth: {auth_method})")
+                        
+                        # Create a copy of settings with decrypted credentials
+                        # bedrock_helper expects decrypted keys, but settings stores encrypted
+                        bedrock_settings = dict(settings)
+                        
+                        # Decrypt API key for Bearer token auth
+                        is_api_key_auth = auth_method in ["api_key", "API Key (Bearer Token)"]
+                        if is_api_key_auth:
+                            decrypted_key = self.get_api_key_for_provider(provider_name, settings)
+                            bedrock_settings["API_KEY"] = decrypted_key
+                        else:
+                            # Decrypt IAM credentials
+                            bedrock_settings["AWS_ACCESS_KEY_ID"] = self.get_aws_credential(settings, "AWS_ACCESS_KEY_ID")
+                            bedrock_settings["AWS_SECRET_ACCESS_KEY"] = self.get_aws_credential(settings, "AWS_SECRET_ACCESS_KEY")
+                            if auth_method in ["sessionToken", "Session Token (Temporary Credentials)"]:
+                                bedrock_settings["AWS_SESSION_TOKEN"] = self.get_aws_credential(settings, "AWS_SESSION_TOKEN")
+                        
+                        # Initialize streaming display
+                        self.start_streaming_response(clear_existing=True)
+                        
+                        def update_callback(chunk):
+                            # Stream chunks to the output display using the streaming handler
+                            self.app.after(0, self.add_streaming_chunk, chunk)
+                        
+                        # Use streaming version with decrypted credentials
+                        process_bedrock_stream(prompt, bedrock_settings, update_callback, self.logger)
+                        
+                        # End streaming
+                        self.end_streaming_response()
+                        return
+                        
+                    except Exception as e:
+                        error_msg = f"AWS Bedrock boto3 helper failed: {str(e)}"
+                        self.logger.error(error_msg, exc_info=True)
+                        self.app.after(0, self.app.update_output_text, error_msg)
+                        return
+                else:
+                    # Fallback message if boto3 not available
+                    self.logger.warning(f"boto3 not available, falling back to raw HTTP for AWS Bedrock")
 
             url, payload, headers = self._build_api_request(provider_name, api_key, prompt, settings)
 
@@ -1794,8 +1847,14 @@ class AIToolsWidget(ttk.Frame):
                         # Get full error response
                         try:
                             error_response = e.response.text if hasattr(e, 'response') and e.response else str(e)
-                            error_json = e.response.json() if hasattr(e, 'response') and e.response and e.response.headers.get('content-type', '').startswith('application/json') else None
-                        except:
+                            # Always try to parse as JSON (AWS doesn't always set content-type correctly)
+                            error_json = None
+                            if hasattr(e, 'response') and e.response and e.response.text:
+                                try:
+                                    error_json = json.loads(e.response.text)
+                                except json.JSONDecodeError:
+                                    pass
+                        except Exception:
                             error_response = str(e)
                             error_json = None
                         
@@ -1899,9 +1958,31 @@ class AIToolsWidget(ttk.Frame):
                                 
                                 self.logger.error(error_msg)
                                 self.app.after(0, self.app.update_output_text, error_msg)
+                            elif e.response.status_code == 400:
+                                # Parse AWS error message for detailed info
+                                aws_message = "Unknown error"
+                                if error_json and "message" in error_json:
+                                    aws_message = error_json["message"]
+                                elif error_json and "Message" in error_json:
+                                    aws_message = error_json["Message"]
+                                
+                                error_msg = f"AWS Bedrock 400 Bad Request Error\n\n"
+                                error_msg += f"Model: {model_id}\n"
+                                error_msg += f"Auth Method: {auth_method}\n\n"
+                                error_msg += f"AWS Error Message: {aws_message}\n\n"
+                                error_msg += "Common causes:\n"
+                                error_msg += "1. Model ID format is incorrect\n"
+                                error_msg += "2. Model requires inference profile prefix (us., eu., global.)\n"
+                                error_msg += "3. Payload format doesn't match API endpoint\n"
+                                error_msg += "4. Model not available in your region\n\n"
+                                error_msg += f"Full response: {error_response}"
+                                
+                                self.logger.error(error_msg)
+                                self.app.after(0, self.app.update_output_text, error_msg)
                             else:
-                                self.logger.error(f"AWS Bedrock API Request Error: {e}\nResponse: {error_response}")
-                                self.app.after(0, self.app.update_output_text, f"AWS Bedrock API Request Error: {e}\nResponse: {error_response}")
+                                # Other AWS Bedrock errors
+                                self.logger.error(f"AWS Bedrock API Error ({e.response.status_code}): {e}\nResponse: {error_response}")
+                                self.app.after(0, self.app.update_output_text, f"AWS Bedrock API Error ({e.response.status_code}):\n{error_response}")
                         else:
                             self.logger.error(f"API Request Error: {e}\nResponse: {error_response}")
                             self.app.after(0, self.app.update_output_text, f"API Request Error: {e}\nResponse: {error_response}")
@@ -1932,13 +2013,11 @@ class AIToolsWidget(ttk.Frame):
             location = settings.get("LOCATION", "us-central1")
             model = settings.get("MODEL", "")
             
-            # Note: Project IDs in Google Cloud REST API URLs should be used as-is
-            # If project_id contains colons (like project numbers), they're part of the format
-            url = provider_config["url_template"].format(
-                location=location,
-                project_id=project_id,
-                model=model
-            )
+            # Global endpoint uses different URL format than regional
+            if location == "global":
+                url = f"https://aiplatform.googleapis.com/v1/projects/{project_id}/locations/global/publishers/google/models/{model}:generateContent"
+            else:
+                url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:generateContent"
             
             self.logger.debug(f"Vertex AI URL components - project_id: {project_id}, location: {location}, model: {model}")
         elif provider_name == "Azure AI":
@@ -1985,13 +2064,21 @@ class AIToolsWidget(ttk.Frame):
             # Clean up model ID suffixes that are metadata but not part of the actual model ID for API calls
             # These suffixes are used in the model list for information but need to be removed for API calls
             original_model_id = model_id
+            
+            # Remove known metadata suffixes
             if ":mm" in model_id:  # Multimodal capability indicator
                 model_id = model_id.replace(":mm", "")
                 self.logger.debug(f"Removed multimodal suffix: {original_model_id} -> {model_id}")
-            elif ":8k" in model_id:  # Context length indicator  
-                model_id = model_id.replace(":8k", "")
+            
+            # Remove context length suffixes (:8k, :24k, :128k, :256k, :300k, :1m, etc.)
+            import re
+            context_suffix_pattern = r':\d+[km]$'  # Matches :8k, :24k, :128k, :1m, etc.
+            if re.search(context_suffix_pattern, model_id):
+                model_id = re.sub(context_suffix_pattern, '', model_id)
                 self.logger.debug(f"Removed context length suffix: {original_model_id} -> {model_id}")
-            elif model_id.count(":") > 2:  # Other suffixes (model should have max 2 colons: provider.model-name-version:number)
+            
+            # Handle any remaining extra colons (model should have max 1 colon: provider.model-name-version:number)
+            if model_id.count(":") > 1:
                 # Keep only the first two parts (provider.model:version)
                 parts = model_id.split(":")
                 if len(parts) > 2:
@@ -2007,7 +2094,7 @@ class AIToolsWidget(ttk.Frame):
                 final_model_id = model_id
                 self.logger.debug(f"AWS Bedrock: Model '{model_id}' already has inference profile prefix")
             else:
-                # AWS Bedrock requires inference profiles for newer Claude models
+                # AWS Bedrock requires inference profiles for certain models
                 # Based on AWS documentation and current model availability
                 # Note: Only map base model IDs to inference profiles
                 inference_profile_mapping = {
@@ -2018,14 +2105,47 @@ class AIToolsWidget(ttk.Frame):
                     # Claude 3.5 models (v1)
                     "anthropic.claude-3-5-sonnet-20240620-v1:0": "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
                     
+                    # Claude 3.7 models
+                    "anthropic.claude-3-7-sonnet-20250219-v1:0": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                    
+                    # Claude 4.x models
+                    "anthropic.claude-sonnet-4-20250514-v1:0": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                    "anthropic.claude-opus-4-20250514-v1:0": "us.anthropic.claude-opus-4-20250514-v1:0",
+                    "anthropic.claude-opus-4-1-20250805-v1:0": "us.anthropic.claude-opus-4-1-20250805-v1:0",
+                    
+                    # Claude 4.5 models - REQUIRE GLOBAL inference profiles (cross-region)
+                    "anthropic.claude-sonnet-4-5-20250929-v1:0": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "anthropic.claude-haiku-4-5-20251001-v1:0": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    "anthropic.claude-opus-4-5-20251101-v1:0": "global.anthropic.claude-opus-4-5-20251101-v1:0",
+                    
                     # Claude 3 models (original) - some may work without profiles
                     "anthropic.claude-3-opus-20240229-v1:0": "us.anthropic.claude-3-opus-20240229-v1:0",
                     "anthropic.claude-3-sonnet-20240229-v1:0": "us.anthropic.claude-3-sonnet-20240229-v1:0",
-                    "anthropic.claude-3-haiku-20240307-v1:0": "us.anthropic.claude-3-haiku-20240307-v1:0"
+                    "anthropic.claude-3-haiku-20240307-v1:0": "us.anthropic.claude-3-haiku-20240307-v1:0",
+                    
+                    # DeepSeek models - REQUIRE cross-region inference profiles per AWS docs
+                    # https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-deepseek.html
+                    "deepseek.r1-v1:0": "us.deepseek.r1-v1:0",
+                    "deepseek.deepseek-r1-distill-llama-70b-v1:0": "us.deepseek.deepseek-r1-distill-llama-70b-v1:0",
                 }
                 
-                # Use inference profile if available, otherwise use direct model ID
+                # Use inference profile if available in mapping
                 final_model_id = inference_profile_mapping.get(model_id, model_id)
+                
+                # For models not in mapping, check if they need cross-region inference profiles
+                # These providers require inference profiles for ALL their models:
+                # Anthropic, DeepSeek, Amazon Nova, Meta Llama, Mistral, Qwen (per AWS docs)
+                if final_model_id == model_id:  # No mapping found
+                    requires_inference_profile = any(
+                        model_id.startswith(prefix) for prefix in [
+                            'anthropic.', 'deepseek.', 'amazon.nova-', 'meta.llama', 
+                            'mistral.', 'mixtral.', 'qwen.'
+                        ]
+                    )
+                    if requires_inference_profile:
+                        # Add default US region prefix for cross-region inference
+                        final_model_id = f"us.{model_id}"
+                        self.logger.info(f"AWS Bedrock: Auto-adding cross-region prefix for '{model_id}' -> '{final_model_id}'")
             
             # If we're using an inference profile, log the conversion for debugging
             if final_model_id != model_id:
@@ -2042,11 +2162,61 @@ class AIToolsWidget(ttk.Frame):
                 self.logger.info(f"AWS Bedrock: Using APAC inference profile '{apac_model_id}' for region '{region}'")
                 final_model_id = apac_model_id
             
-            # Always use InvokeModel API - it's more reliable and works with both
-            # inference profiles and base model IDs
-            # The Converse API has compatibility issues with some authentication methods
-            url = provider_config["url_invoke"].format(region=region, model=final_model_id)
-            self.logger.info(f"AWS Bedrock: Using InvokeModel API for model '{final_model_id}'")
+            # Check auth method to determine which endpoint to use
+            # Bearer token auth (Bedrock API keys) REQUIRES the /converse endpoint per AWS docs
+            # IAM auth (SigV4) can use either /invoke or /converse, we use /invoke for model-specific payloads
+            auth_method = settings.get("AUTH_METHOD", "api_key")
+            is_bearer_auth = auth_method in ["api_key", "API Key (Bearer Token)"]
+            
+            # Auto-detect which API endpoint to use based on model
+            # Some models work better with invoke_model vs converse
+            # Opus 4.5 specifically requires invoke_model for new features (effort param, tool search)
+            models_requiring_invoke = [
+                "anthropic.claude-opus-4-5",  # Opus 4.5 - new features require invoke_model
+            ]
+            
+            # Models that work well with Converse API
+            models_preferring_converse = [
+                "anthropic.claude-sonnet-4-5",  # Sonnet 4.5 works with converse
+                "anthropic.claude-haiku-4-5",   # Haiku 4.5 works with converse
+                "anthropic.claude-3",           # Claude 3.x family
+                "amazon.nova",                  # Nova models
+                "meta.llama",                   # Llama models
+                "mistral.",                     # Mistral models
+            ]
+            
+            # Check if model requires invoke_model API
+            base_model_id = final_model_id.replace("global.", "").replace("us.", "").replace("eu.", "").replace("apac.", "")
+            use_invoke_api = any(base_model_id.startswith(m) for m in models_requiring_invoke)
+            
+            # Note: Do NOT URL-encode the model ID - AWS handles this internally
+            # URL encoding colons to %3A causes "model identifier is invalid" errors
+            
+            # Bearer token auth REQUIRES /converse endpoint per AWS documentation
+            # Even for models like Opus 4.5 that work better with invoke_model, 
+            # Bearer auth has no choice but to use Converse
+            if is_bearer_auth:
+                # Bearer token auth requires /converse endpoint with Converse API format
+                # https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html
+                url = provider_config["url"].format(region=region, model=final_model_id)
+                
+                if use_invoke_api:
+                    # Warn that this model may have limited Converse API support
+                    self.logger.warning(f"AWS Bedrock: Model '{final_model_id}' may have limited Converse API support. "
+                                       f"For full features (effort param, tool search), use IAM credentials instead of API Key.")
+                    self.logger.info(f"AWS Bedrock: Using Converse API (Bearer auth) for model '{final_model_id}' - some features may be unavailable")
+                else:
+                    self.logger.info(f"AWS Bedrock: Using Converse API (Bearer auth) for model '{final_model_id}'")
+            elif use_invoke_api:
+                # IAM auth with model that requires InvokeModel API
+                url = provider_config["url_invoke"].format(region=region, model=final_model_id)
+                self.logger.info(f"AWS Bedrock: Using InvokeModel API for model '{final_model_id}' (model requires it)")
+            else:
+                # IAM auth uses InvokeModel API with model-specific payload formats
+                url = provider_config["url_invoke"].format(region=region, model=final_model_id)
+                self.logger.info(f"AWS Bedrock: Using InvokeModel API (IAM auth) for model '{final_model_id}'")
+            
+            self.logger.debug(f"AWS Bedrock URL: {url}")
         elif "url_template" in provider_config:
             url = provider_config["url_template"].format(model=settings.get("MODEL"), api_key=api_key)
         else:
@@ -2091,17 +2261,60 @@ class AIToolsWidget(ttk.Frame):
             is_session_token_auth = auth_method in ["sessionToken", "Session Token (Temporary Credentials)"]
             is_iam_role_auth = auth_method in ["iam_role", "IAM (Implied Credentials)"]
             
-            # Based on Roo Code's implementation, they support API key authentication
-            # Let's add that back and use Bearer token format like they do
+            # IMPORTANT: For Bearer token auth, you need a BEDROCK API KEY generated from
+            # AWS Bedrock Console (not IAM Access Key ID). IAM Access Key IDs (AKIA...)
+            # will NOT work with Bearer auth - use "IAM (Explicit Credentials)" instead.
+            # Bedrock API keys are generated at: AWS Console -> Bedrock -> API keys
+            # https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html
             if is_api_key_auth:
-                # Use API key/token-based authentication (Roo Code style)
+                # Use Bearer token authentication with Bedrock API key
                 api_key_value = self.get_api_key_for_provider(provider_name, settings)
                 self.logger.debug(f"AWS Bedrock API Key auth: key length = {len(api_key_value) if api_key_value else 0}")
+                
+                # Warn if the key looks like an IAM Access Key (starts with AKIA)
+                if api_key_value and api_key_value.startswith('AKIA'):
+                    self.logger.warning("AWS Bedrock: The API key appears to be an IAM Access Key ID (starts with AKIA). "
+                                       "Bearer token auth requires a Bedrock API key from AWS Bedrock Console. "
+                                       "Consider using 'IAM (Explicit Credentials)' auth method instead.")
+                
                 headers.update({
                     "Authorization": f"Bearer {api_key_value}",
                     "Content-Type": "application/json",
                     "Accept": "application/json"
                 })
+                
+                # Override payload to use Converse API format for Bearer auth
+                system_prompt = settings.get("system_prompt", "").strip()
+                payload = {
+                    "messages": [{"role": "user", "content": [{"text": prompt}]}]
+                }
+                if system_prompt:
+                    payload["system"] = [{"text": system_prompt}]
+                
+                # Add inference config if parameters are set
+                inference_config = {}
+                max_tokens = settings.get("MAX_OUTPUT_TOKENS", "4096")
+                try:
+                    inference_config["maxTokens"] = int(max_tokens)
+                except ValueError:
+                    inference_config["maxTokens"] = 4096
+                
+                temp = settings.get("temperature")
+                if temp:
+                    try:
+                        inference_config["temperature"] = float(temp)
+                    except ValueError:
+                        pass
+                
+                top_p = settings.get("top_p")
+                if top_p:
+                    try:
+                        inference_config["topP"] = float(top_p)
+                    except ValueError:
+                        pass
+                
+                if inference_config:
+                    payload["inferenceConfig"] = inference_config
             elif is_iam_auth or is_session_token_auth:
                 # Use AWS SigV4 authentication
                 access_key = self.get_aws_credential(settings, "AWS_ACCESS_KEY_ID")
@@ -2162,8 +2375,19 @@ class AIToolsWidget(ttk.Frame):
                 payload["system"] = settings.get("system")
             
             self._add_param_if_valid(payload, settings, 'max_tokens', int)
-            self._add_param_if_valid(payload, settings, 'temperature', float)
-            self._add_param_if_valid(payload, settings, 'top_p', float)
+            
+            # Anthropic API: Some models don't allow both temperature AND top_p
+            # If both are set, prefer temperature and skip top_p to avoid API error:
+            # "temperature and top_p cannot both be specified for this model"
+            has_temperature = settings.get('temperature') is not None and settings.get('temperature') != ''
+            has_top_p = settings.get('top_p') is not None and settings.get('top_p') != ''
+            
+            if has_temperature:
+                self._add_param_if_valid(payload, settings, 'temperature', float)
+                # Skip top_p when temperature is set to avoid conflict
+            elif has_top_p:
+                self._add_param_if_valid(payload, settings, 'top_p', float)
+            
             self._add_param_if_valid(payload, settings, 'top_k', int)
             
             stop_seq_str = str(settings.get('stop_sequences', '')).strip()
