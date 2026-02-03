@@ -36,6 +36,14 @@ try:
 except ImportError:
     GOOGLE_AUTH_AVAILABLE = False
 
+# Import research engine for research/deepreasoning actions
+try:
+    from core.ai_research_engine import AIResearchEngine, ResearchResult
+    RESEARCH_ENGINE_AVAILABLE = True
+except ImportError:
+    RESEARCH_ENGINE_AVAILABLE = False
+
+
 
 @dataclass
 class AIToolsResult:
@@ -141,6 +149,12 @@ class AIToolsEngine:
         self.logger = logging.getLogger(__name__)
         self.db_settings_manager = db_settings_manager
         self._settings_cache = {}
+        
+        # Initialize research engine if available
+        if RESEARCH_ENGINE_AVAILABLE:
+            self._research_engine = AIResearchEngine(db_settings_manager)
+        else:
+            self._research_engine = None
     
     def list_providers(self) -> List[str]:
         """Get list of supported AI providers."""
@@ -382,6 +396,249 @@ class AIToolsEngine:
                 error=str(e),
                 provider=provider if provider else "",
                 model=model if model else ""
+            )
+    
+    # ========================================================================
+    # Research & Deep Reasoning Methods
+    # ========================================================================
+    
+    def generate_research(
+        self,
+        prompt: str,
+        provider: str,
+        # Model selection
+        model: Optional[str] = None,  # OpenAI: gpt-5.2, Anthropic: claude-opus-4-5-20251101
+        # Research options
+        research_mode: str = "two-stage",
+        reasoning_effort: str = "xhigh",  # OpenAI only
+        thinking_budget: int = 32000,     # Anthropic only
+        style: str = "analytical",
+        # Web search options (native only)
+        search_count: int = 10,           # Anthropic only (max_uses)
+        max_results: int = 10,            # OpenRouter only (web plugin)
+        force_search: bool = False,
+        allowed_domains: Optional[List[str]] = None,  # Anthropic only
+        blocked_domains: Optional[List[str]] = None,  # Anthropic only
+        # Output options
+        max_tokens: int = 64000,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> AIToolsResult:
+        """
+        Execute research query with deep reasoning and native web search.
+        
+        Only supports OpenAI and Anthropic AI providers.
+        Uses provider-native web search (OpenAI web_search, Claude web_search_20250305).
+        
+        Args:
+            prompt: Research query
+            provider: "OpenAI" or "Anthropic AI"
+            research_mode: "two-stage" (search → reason) or "single"
+            reasoning_effort: OpenAI reasoning level (none/low/medium/high/xhigh)
+            thinking_budget: Anthropic thinking token budget
+            style: Output style (analytical/concise/creative/report)
+            search_count: Anthropic max_uses for web search (OpenAI ignores)
+            force_search: Force search before reasoning (tool_choice)
+            allowed_domains: Anthropic native search domain whitelist
+            blocked_domains: Anthropic native search domain blacklist
+            max_tokens: Maximum output tokens
+            progress_callback: Progress notification (current, total)
+            
+        Returns:
+            AIToolsResult with research response
+        """
+        # Validate research engine
+        self.logger.info(f"[TRACE] generate_research called: provider={provider}, mode={research_mode}")
+        if not RESEARCH_ENGINE_AVAILABLE or not self._research_engine:
+            self.logger.error(f"[TRACE] Research engine not available: AVAILABLE={RESEARCH_ENGINE_AVAILABLE}, engine={self._research_engine}")
+            return AIToolsResult(
+                success=False,
+                error="Research engine not available",
+                provider=provider
+            )
+        
+        # Validate provider
+        if provider not in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
+            return AIToolsResult(
+                success=False,
+                error=f"research action only supports OpenAI, Anthropic AI, and OpenRouterAI, got: {provider}",
+                provider=provider
+            )
+        
+        # Get API key
+        settings = self._get_provider_settings(provider)
+        api_key = self._get_api_key(provider, settings)
+        
+        if not api_key or api_key == "putinyourkey":
+            return AIToolsResult(
+                success=False,
+                error=f"API key not configured for {provider}",
+                provider=provider
+            )
+        
+        try:
+            if provider == "OpenAI":
+                # Use provided model or default - always uses native web search
+                openai_model = model or "gpt-5.2"
+                result = self._research_engine.research_openai(
+                    prompt=prompt,
+                    api_key=api_key,
+                    model=openai_model,
+                    research_mode=research_mode,
+                    reasoning_effort=reasoning_effort,
+                    style=style,
+                    force_search=force_search,
+                    max_tokens=max_tokens,
+                    progress_callback=progress_callback
+                )
+            elif provider == "Anthropic AI":
+                # Use provided model or default - always uses Claude native search
+                anthropic_model = model or "claude-opus-4-5-20251101"
+                result = self._research_engine.research_anthropic(
+                    prompt=prompt,
+                    api_key=api_key,
+                    model=anthropic_model,
+                    research_mode=research_mode,
+                    thinking_budget=thinking_budget,
+                    style=style,
+                    search_count=search_count,
+                    force_search=force_search,
+                    allowed_domains=allowed_domains,
+                    blocked_domains=blocked_domains,
+                    max_tokens=max_tokens,
+                    progress_callback=progress_callback
+                )
+            else:  # OpenRouterAI
+                # Use provided model or default - uses OpenRouter web plugin
+                openrouter_model = model or "perplexity/sonar-deep-research"
+                result = self._research_engine.research_openrouter(
+                    prompt=prompt,
+                    api_key=api_key,
+                    model=openrouter_model,
+                    research_mode=research_mode,
+                    reasoning_effort=reasoning_effort,
+                    reasoning_max_tokens=thinking_budget,  # For Claude models via OpenRouter
+                    style=style,
+                    max_results=max_results,  # Use dedicated max_results param
+                    max_tokens=max_tokens,
+                    progress_callback=progress_callback
+                )
+
+            
+            # Convert ResearchResult to AIToolsResult
+            return AIToolsResult(
+                success=result.success,
+                response=result.response,
+                error=result.error,
+                provider=result.provider,
+                model=result.model,
+                usage=result.usage,
+                warnings=result.warnings
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Research error: {e}", exc_info=True)
+            return AIToolsResult(
+                success=False,
+                error=str(e),
+                provider=provider
+            )
+    
+    def generate_deep_reasoning(
+        self,
+        prompt: str,
+        # Model selection
+        model: Optional[str] = None,  # Default: claude-opus-4-5-20251101
+        # Thinking options
+        thinking_budget: int = 32000,
+        # Web search options
+        enable_search: bool = False,
+        search_engine: str = "tavily",
+        search_count: int = 5,
+        search_depth: str = "basic",
+        # Output options
+        max_tokens: int = 64000,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> AIToolsResult:
+        """
+        Execute deep reasoning with Claude Extended Thinking.
+        
+        Only supports Anthropic AI.
+        
+        Uses the Deep Think 6-step protocol:
+        1. DECOMPOSE - Break problem into components
+        2. SEARCH - Identify candidates and gaps
+        3. DECIDE - Evaluate with probability scoring
+        4. ANALYZE - Deep processing
+        5. VERIFY - Revision and confidence
+        6. SYNTHESIZE - Final conclusions
+        
+        Args:
+            prompt: Research question
+            thinking_budget: Extended thinking token budget (1000-128000)
+            enable_search: Allow web search during reasoning
+            search_engine: Pomera search engine
+            search_count: Max search calls (1-10)
+            search_depth: Tavily depth (basic/advanced)
+            max_tokens: Maximum output tokens
+            progress_callback: Progress notification
+            
+        Returns:
+            AIToolsResult with deep reasoning response
+        """
+        provider = "Anthropic AI"
+        
+        # Validate research engine
+        if not RESEARCH_ENGINE_AVAILABLE or not self._research_engine:
+            return AIToolsResult(
+                success=False,
+                error="Research engine not available",
+                provider=provider
+            )
+        
+        # Get API key
+        settings = self._get_provider_settings(provider)
+        api_key = self._get_api_key(provider, settings)
+        
+        if not api_key or api_key == "putinyourkey":
+            return AIToolsResult(
+                success=False,
+                error=f"API key not configured for {provider}",
+                provider=provider
+            )
+        
+        try:
+            # Use provided model or default
+            anthropic_model = model or "claude-opus-4-5-20251101"
+            result = self._research_engine.deep_reasoning_anthropic(
+                prompt=prompt,
+                api_key=api_key,
+                model=anthropic_model,
+                thinking_budget=thinking_budget,
+                enable_search=enable_search,
+                search_engine=search_engine,
+                search_count=search_count,
+                search_depth=search_depth,
+                max_tokens=max_tokens,
+                progress_callback=progress_callback
+            )
+            
+            # Convert ResearchResult to AIToolsResult
+            return AIToolsResult(
+                success=result.success,
+                response=result.response,
+                error=result.error,
+                provider=result.provider,
+                model=result.model,
+                usage=result.usage,
+                warnings=result.warnings
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Deep reasoning error: {e}", exc_info=True)
+            return AIToolsResult(
+                success=False,
+                error=str(e),
+                provider=provider
             )
     
     def estimate_complexity(self, prompt: str) -> Dict[str, Any]:

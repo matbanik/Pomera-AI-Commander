@@ -264,23 +264,33 @@ def search_serper(query: str, count: int = 5) -> List[Dict]:
         return []
 
 
-def search_tavily(query: str, count: int = 5) -> List[Dict]:
+def search_tavily(query: str, count: int = 5, search_depth: str = "basic") -> List[Dict]:
     """
     Search using Tavily AI-optimized search API.
     Designed for AI agents. 1000 free calls/month.
+    
+    Args:
+        query: Search query string
+        count: Number of results (max 20)
+        search_depth: "basic" (1 credit, balanced) or "advanced" (2 credits, highest relevance)
+                      Advanced mode returns multiple semantic snippets per source.
     """
     api_key = get_encrypted_api_key("tavily")
 
     if not api_key:
         print("[ERROR] Tavily API key not configured. Add in Pomera Web Search settings.")
         return []
+    
+    # Validate search_depth
+    if search_depth not in ("basic", "advanced"):
+        search_depth = "basic"
 
     try:
         data = json.dumps({
             "api_key": api_key,
             "query": query,
             "max_results": min(count, 20),
-            "search_depth": "basic"
+            "search_depth": search_depth
         }).encode('utf-8')
 
         req = urllib.request.Request(
@@ -358,7 +368,7 @@ def search_serpapi(query: str, count: int = 5) -> List[Dict]:
         return []
 
 
-def search(query: str, engine: str = "duckduckgo", count: int = 5) -> List[Dict]:
+def search(query: str, engine: str = "duckduckgo", count: int = 5, search_depth: str = "basic") -> List[Dict]:
     """
     Search the web using the specified engine.
 
@@ -366,6 +376,7 @@ def search(query: str, engine: str = "duckduckgo", count: int = 5) -> List[Dict]
         query: Search query string
         engine: Engine name (default: duckduckgo)
         count: Number of results (default: 5)
+        search_depth: For Tavily only: "basic" or "advanced" (default: basic)
 
     Returns:
         List of result dicts with title, snippet, url, source
@@ -378,7 +389,7 @@ def search(query: str, engine: str = "duckduckgo", count: int = 5) -> List[Dict]
     elif engine == "serper":
         return search_serper(query, count)
     elif engine == "tavily":
-        return search_tavily(query, count)
+        return search_tavily(query, count, search_depth)
     elif engine == "serpapi":
         return search_serpapi(query, count)
     elif engine == "brave":
@@ -489,6 +500,10 @@ Configure keys in Pomera UI: Select "Web Search" tool and enter API keys.
                         help="Search engine to use (default: duckduckgo)")
     parser.add_argument("--count", "-c", type=int, default=5,
                         help="Number of results (default: 5)")
+    parser.add_argument("--depth", "-d",
+                        choices=["basic", "advanced"],
+                        default="basic",
+                        help="Tavily only: search depth (basic=1 credit, advanced=2 credits with higher relevance)")
     parser.add_argument("--json", "-j", action="store_true",
                         help="Output raw JSON to console")
     parser.add_argument("--output", "-o", type=str, metavar="DIR",
@@ -498,7 +513,7 @@ Configure keys in Pomera UI: Select "Web Search" tool and enter API keys.
 
     args = parser.parse_args()
 
-    results = search(args.query, args.engine, args.count)
+    results = search(args.query, args.engine, args.count, args.depth)
 
     if args.output:
         filepath = save_results(

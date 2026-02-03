@@ -17,12 +17,14 @@ Author: Pomera AI Commander
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, scrolledtext, filedialog
 import sqlite3
 import logging
 import threading
+import subprocess
+import platform
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple, Generator
+from typing import Optional, List, Dict, Any, Tuple, Generator, Callable
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, Future
 import os
@@ -32,7 +34,9 @@ import re
 class NotesWidget:
     """Notes widget for saving and managing INPUT/OUTPUT tab content."""
     
-    def __init__(self, parent, logger=None, send_to_input_callback=None, dialog_manager=None):
+    def __init__(self, parent, logger=None, send_to_input_callback=None, dialog_manager=None,
+                 get_export_path_callback: Optional[Callable[[], str]] = None,
+                 browse_export_path_callback: Optional[Callable[[], None]] = None):
         """
         Initialize the Notes widget.
         
@@ -41,11 +45,15 @@ class NotesWidget:
             logger: Logger instance for debugging
             send_to_input_callback: Callback function to send content to input tabs
             dialog_manager: DialogManager instance for configurable dialogs
+            get_export_path_callback: Callback to get current export path from settings
+            browse_export_path_callback: Callback to open export path browse dialog
         """
         self.parent = parent
         self.logger = logger or logging.getLogger(__name__)
         self.send_to_input_callback = send_to_input_callback
         self.dialog_manager = dialog_manager
+        self.get_export_path_callback = get_export_path_callback
+        self.browse_export_path_callback = browse_export_path_callback
         
         # Database path - use platform-appropriate data directory
         try:
@@ -240,6 +248,7 @@ class NotesWidget:
         self.btn_frame = ttk.Frame(right_frame)
         self.btn_frame.pack(fill=tk.X, pady=(0, 10))
         
+        self.download_btn = ttk.Button(self.btn_frame, text="Download", command=self.download_note)
         self.new_btn = ttk.Button(self.btn_frame, text="New Note", command=self.new_note)
         self.duplicate_btn = ttk.Button(self.btn_frame, text="Duplicate", command=self.duplicate_note)
         self.change_btn = ttk.Button(self.btn_frame, text="Change", command=self.change_note)
@@ -798,16 +807,19 @@ class NotesWidget:
     
     def update_action_buttons(self) -> None:
         """Centralized state machine for managing action buttons."""
-        for btn in [self.new_btn, self.duplicate_btn, self.change_btn, self.delete_btn, self.save_btn, self.cancel_btn]:
+        for btn in [self.download_btn, self.new_btn, self.duplicate_btn, self.change_btn, self.delete_btn, self.save_btn, self.cancel_btn]:
             btn.pack_forget()
         
         if self.editing_mode:
             self.save_btn.pack(side=tk.LEFT, padx=(0, 5))
             self.cancel_btn.pack(side=tk.LEFT, padx=5)
         else:
-            self.new_btn.pack(side=tk.LEFT, padx=(0, 5))
-            
+            # Download button - only enabled when a single note is selected
             num_selected = len(self.selected_items)
+            self.download_btn.config(state='normal' if num_selected == 1 else 'disabled')
+            self.download_btn.pack(side=tk.LEFT, padx=(0, 5))
+            
+            self.new_btn.pack(side=tk.LEFT, padx=5)
             
             self.duplicate_btn.config(state='normal' if num_selected == 1 else 'disabled')
             self.change_btn.config(state='normal' if num_selected == 1 else 'disabled')
@@ -1018,3 +1030,205 @@ class NotesWidget:
         except Exception as e:
             self.logger.error(f"Error saving note: {e}")
             return None
+    
+    def download_note(self) -> None:
+        """Download the currently selected note as a text file."""
+        if not self.current_item:
+            if self.dialog_manager:
+                self.dialog_manager.show_warning("Warning", "Please select a note to download.")
+            else:
+                messagebox.showwarning("Warning", "Please select a note to download.", parent=self.parent)
+            return
+        
+        try:
+            # Get note data
+            with self.get_db_connection() as conn:
+                row = conn.execute('SELECT * FROM notes WHERE id = ?', (self.current_item,)).fetchone()
+                if not row:
+                    if self.dialog_manager:
+                        self.dialog_manager.show_error("Error", "Note not found.")
+                    else:
+                        messagebox.showerror("Error", "Note not found.", parent=self.parent)
+                    return
+            
+            # Get export path
+            export_path = ""
+            if self.get_export_path_callback:
+                export_path = self.get_export_path_callback()
+            
+            if not export_path or not os.path.isdir(export_path):
+                # Use Downloads folder as default
+                export_path = os.path.join(os.path.expanduser("~"), "Downloads")
+            
+            # Generate slug-style filename from title (up to 100 chars)
+            # - Replace spaces with hyphens
+            # - Remove characters not safe for Windows/macOS/Linux filesystems
+            # - Collapse multiple hyphens
+            # - Strip leading/trailing hyphens
+            title = row['Title'] or "Untitled"
+            slug_title = title.lower()
+            slug_title = re.sub(r'\s+', '-', slug_title)  # Replace whitespace with hyphens
+            slug_title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', slug_title)  # Remove Windows-invalid chars
+            slug_title = re.sub(r'[^\w\-]', '', slug_title, flags=re.ASCII)  # Keep only alphanumeric, underscore, hyphen
+            slug_title = re.sub(r'-+', '-', slug_title)  # Collapse multiple hyphens
+            slug_title = slug_title.strip('-_')  # Strip leading/trailing hyphens and underscores
+            slug_title = slug_title[:100]  # Limit to 100 chars
+            if not slug_title:
+                slug_title = "note"
+            filename = f"{slug_title}.txt"
+            
+            # Create full file path
+            filepath = os.path.join(export_path, filename)
+            
+            # Handle duplicate filenames
+            counter = 1
+            original_filepath = filepath
+            while os.path.exists(filepath):
+                base_name = f"{slug_title}_{counter}.txt"
+                filepath = os.path.join(export_path, base_name)
+                counter += 1
+            
+            # Create file content: INPUT first, then separator, then OUTPUT
+            input_content = row['Input'] or ""
+            output_content = row['Output'] or ""
+            
+            file_content = f"{input_content}\n===\n{output_content}"
+            
+            # Write to file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(file_content)
+            
+            self.logger.info(f"Downloaded note {self.current_item} to {filepath}")
+            
+            # Show download complete dialog
+            self._show_download_complete_dialog(filepath)
+            
+        except Exception as e:
+            self.logger.error(f"Error downloading note: {e}")
+            if self.dialog_manager:
+                self.dialog_manager.show_error("Download Error", f"Failed to download note: {e}")
+            else:
+                messagebox.showerror("Download Error", f"Failed to download note: {e}", parent=self.parent)
+    
+    def _show_download_complete_dialog(self, filepath: str) -> None:
+        """
+        Show a dialog after download completes with options to:
+        - Open the file
+        - Open the containing folder
+        - Change the export location
+        - Close
+        
+        Args:
+            filepath: Path to the downloaded file
+        """
+        dialog = tk.Toplevel(self.parent)
+        dialog.title("Download Complete")
+        dialog.geometry("400x180")
+        dialog.resizable(False, False)
+        
+        # Make dialog modal
+        dialog.transient(self.parent)
+        dialog.grab_set()
+        
+        # Center on parent
+        dialog.update_idletasks()
+        parent_x = self.parent.winfo_rootx()
+        parent_y = self.parent.winfo_rooty()
+        parent_width = self.parent.winfo_width()
+        parent_height = self.parent.winfo_height()
+        dialog_width = dialog.winfo_width()
+        dialog_height = dialog.winfo_height()
+        x = parent_x + (parent_width - dialog_width) // 2
+        y = parent_y + (parent_height - dialog_height) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Content frame
+        content_frame = ttk.Frame(dialog, padding="20")
+        content_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Success message
+        filename = os.path.basename(filepath)
+        folder = os.path.dirname(filepath)
+        
+        msg_label = ttk.Label(
+            content_frame, 
+            text=f"Note downloaded successfully!\n\nFile: {filename}\nLocation: {folder}",
+            wraplength=350,
+            justify=tk.LEFT
+        )
+        msg_label.pack(pady=(0, 15))
+        
+        # Button frame
+        btn_frame = ttk.Frame(content_frame)
+        btn_frame.pack(fill=tk.X)
+        
+        def open_file():
+            """Open the downloaded file with the default application."""
+            try:
+                if platform.system() == 'Windows':
+                    os.startfile(filepath)
+                elif platform.system() == 'Darwin':  # macOS
+                    subprocess.run(['open', filepath], check=True)
+                else:  # Linux and others
+                    subprocess.run(['xdg-open', filepath], check=True)
+            except Exception as e:
+                self.logger.error(f"Error opening file: {e}")
+                if self.dialog_manager:
+                    self.dialog_manager.show_error("Error", f"Could not open file: {e}")
+                else:
+                    messagebox.showerror("Error", f"Could not open file: {e}", parent=dialog)
+        
+        def open_folder():
+            """Open the folder containing the downloaded file."""
+            try:
+                folder_path = os.path.dirname(filepath)
+                if platform.system() == 'Windows':
+                    # Windows: explorer /select, requires comma directly attached to path
+                    # Use os.path.normpath to ensure proper Windows path separators
+                    normalized_path = os.path.normpath(filepath)
+                    subprocess.Popen(f'explorer /select,"{normalized_path}"', shell=True)
+                elif platform.system() == 'Darwin':  # macOS
+                    subprocess.run(['open', '-R', filepath], check=False)
+                else:  # Linux and others
+                    subprocess.run(['xdg-open', folder_path], check=False)
+            except Exception as e:
+                self.logger.error(f"Error opening folder: {e}")
+                if self.dialog_manager:
+                    self.dialog_manager.show_error("Error", f"Could not open folder: {e}")
+                else:
+                    messagebox.showerror("Error", f"Could not open folder: {e}", parent=dialog)
+        
+        def change_location():
+            """Open the export location browser dialog."""
+            if self.browse_export_path_callback:
+                self.browse_export_path_callback()
+                dialog.destroy()
+            else:
+                # Fallback: open folder dialog directly
+                new_path = filedialog.askdirectory(initialdir=os.path.dirname(filepath), parent=dialog)
+                if new_path:
+                    # Can't update settings without callback, just inform user
+                    if self.dialog_manager:
+                        self.dialog_manager.show_info("Info", f"Next download will use: {new_path}")
+                    else:
+                        messagebox.showinfo("Info", f"Next download will use: {new_path}", parent=dialog)
+                    dialog.destroy()
+        
+        # Create buttons
+        open_file_btn = ttk.Button(btn_frame, text="Open File", command=open_file)
+        open_file_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        open_folder_btn = ttk.Button(btn_frame, text="Open Folder", command=open_folder)
+        open_folder_btn.pack(side=tk.LEFT, padx=5)
+        
+        change_loc_btn = ttk.Button(btn_frame, text="Change Location", command=change_location)
+        change_loc_btn.pack(side=tk.LEFT, padx=5)
+        
+        close_btn = ttk.Button(btn_frame, text="Close", command=dialog.destroy)
+        close_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Focus on Close button
+        close_btn.focus_set()
+        
+        # Bind Escape key to close
+        dialog.bind('<Escape>', lambda e: dialog.destroy())

@@ -126,6 +126,113 @@ def decrypt_api_key(encrypted_key):
     except Exception:
         return encrypted_key  # Fallback to encrypted value if decryption fails
 
+
+class ResearchProgressDialog:
+    """Modal dialog shown during Research/DeepReasoning operations.
+    
+    - Blocks user from interacting with main app
+    - Shows progress messages  
+    - Has Cancel button to interrupt research
+    - Auto-closes on completion or cancellation
+    """
+    
+    def __init__(self, parent, title="Research in Progress", mode="research"):
+        """
+        Args:
+            parent: Parent window
+            title: Dialog title
+            mode: "research" or "deepreasoning"
+        """
+        self.parent = parent
+        self.cancelled = False
+        self.completed = False
+        self.mode = mode
+        
+        # Create modal dialog
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title(title)
+        self.dialog.geometry("400x200")
+        self.dialog.resizable(False, False)
+        
+        # Center on parent
+        self.dialog.transient(parent)
+        self.dialog.update_idletasks()
+        x = parent.winfo_rootx() + (parent.winfo_width() - 400) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - 200) // 2
+        self.dialog.geometry(f"+{x}+{y}")
+        
+        # Make modal (block parent interaction)
+        self.dialog.grab_set()
+        
+        # Prevent closing via X button
+        self.dialog.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        
+        # Main frame with padding
+        main_frame = ttk.Frame(self.dialog, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Mode icon and title
+        mode_text = "🔍 Research" if mode == "research" else "🧠 Deep Reasoning"
+        title_label = ttk.Label(main_frame, text=mode_text, font=("Segoe UI", 14, "bold"))
+        title_label.pack(pady=(0, 15))
+        
+        # Progress message
+        self.progress_var = tk.StringVar(value="Initializing...")
+        self.progress_label = ttk.Label(main_frame, textvariable=self.progress_var, wraplength=350)
+        self.progress_label.pack(pady=(0, 10))
+        
+        # Stage indicator
+        self.stage_var = tk.StringVar(value="")
+        self.stage_label = ttk.Label(main_frame, textvariable=self.stage_var, font=("Segoe UI", 9))
+        self.stage_label.pack(pady=(0, 15))
+        
+        # Warning message
+        warning_label = ttk.Label(
+            main_frame, 
+            text="⚠️ Please wait. Do not close or modify the application.",
+            font=("Segoe UI", 9),
+            foreground="orange"
+        )
+        warning_label.pack(pady=(0, 10))
+        
+        # Cancel button
+        self.cancel_btn = ttk.Button(main_frame, text="Cancel Research", command=self._on_cancel)
+        self.cancel_btn.pack()
+        
+    def update_progress(self, message: str, stage: str = ""):
+        """Update progress message (thread-safe via after())."""
+        if not self.completed and not self.cancelled:
+            try:
+                self.dialog.after(0, lambda: self.progress_var.set(message))
+                if stage:
+                    self.dialog.after(0, lambda: self.stage_var.set(stage))
+            except tk.TclError:
+                pass  # Dialog already closed
+                
+    def _on_cancel(self):
+        """Handle cancel button click."""
+        self.cancelled = True
+        self.progress_var.set("Cancelling...")
+        self.cancel_btn.configure(state="disabled")
+        
+    def is_cancelled(self) -> bool:
+        """Check if user requested cancellation."""
+        return self.cancelled
+        
+    def close(self, success: bool = True):
+        """Close the dialog."""
+        self.completed = True
+        try:
+            self.dialog.grab_release()
+            self.dialog.destroy()
+        except tk.TclError:
+            pass  # Already closed
+            
+    def wait_for_close(self):
+        """Block until dialog is closed (for synchronous use)."""
+        self.dialog.wait_window()
+
+
 class AIToolsWidget(ttk.Frame):
     """A tabbed interface for all AI tools."""
     
@@ -204,6 +311,7 @@ class AIToolsWidget(ttk.Frame):
         
         self.current_provider = "Google AI"
         self.ai_widgets = {}
+        self.param_notebooks = {}  # Store parameter notebooks per provider for tab detection
         self._ai_thread = None
         
         # Streaming support - enabled by default when available
@@ -960,6 +1068,9 @@ class AIToolsWidget(ttk.Frame):
             params_notebook.pack(fill=tk.X, pady=(5, 0))
             params_notebook.configure(height=120)  # Significantly reduced height
             
+            # Store notebook reference for active tab detection
+            self.param_notebooks[provider_name] = params_notebook
+            
             # Create parameter tabs
             self.create_parameter_tabs(params_notebook, provider_name, settings)
         
@@ -980,10 +1091,25 @@ class AIToolsWidget(ttk.Frame):
                 tabs_data[tab_name] = {}
             tabs_data[tab_name][param] = config
         
-        # Create tabs
+        # Define tab order (Research first, DeepReasoning second, then Content, Sampling)
+        tab_order = ["research", "deepreasoning", "content", "sampling", "general"]
+        ordered_tabs = []
+        for tab_name in tab_order:
+            if tab_name in tabs_data:
+                ordered_tabs.append((tab_name, tabs_data[tab_name]))
+        # Add any tabs not in the predefined order
         for tab_name, params in tabs_data.items():
+            if tab_name not in tab_order:
+                ordered_tabs.append((tab_name, params))
+        
+        # Create tabs in order
+        for tab_name, params in ordered_tabs:
             tab_frame = ttk.Frame(notebook)
-            notebook.add(tab_frame, text=tab_name.title())
+            # Fix tab name capitalization (DeepReasoning not Deepreasoning)
+            display_name = tab_name.replace("deepreasoning", "DeepReasoning").title()
+            if tab_name == "deepreasoning":
+                display_name = "DeepReasoning"
+            notebook.add(tab_frame, text=display_name)
             
             # Create scrollable frame with improved scrolling
             canvas = tk.Canvas(tab_frame, highlightthickness=0)
@@ -1034,44 +1160,110 @@ class AIToolsWidget(ttk.Frame):
             canvas._bind_mousewheel_to_children = bind_mousewheel_to_children
             
             # Add parameters to scrollable frame
+            # Use 3-column layout for Research and DeepReasoning tabs
+            use_multi_columns = tab_name in ("research", "deepreasoning")
+            num_columns = 3 if use_multi_columns else 1
             row = 0
-            for param, config in params.items():
-                self.create_parameter_widget(scrollable_frame, provider_name, param, config, settings, row)
-                row += 1
+            col_offset = 0
+            
+            # Track widgets for conditional visibility
+            conditional_widgets = {}
+            
+            for i, (param, config) in enumerate(params.items()):
+                if use_multi_columns:
+                    # 3-column grid: cycle through columns 0, 2, 4 (each param takes 2 cols)
+                    col_offset = (i % num_columns) * 2
+                    row = i // num_columns
+                widget_info = self.create_parameter_widget(scrollable_frame, provider_name, param, config, settings, row, col_offset, tab_name)
+                if widget_info:
+                    conditional_widgets[param] = widget_info
+                if not use_multi_columns:
+                    row += 1
+            
+            # Set up conditional visibility for search_depth (only show when pomera-tavily selected)
+            if "research_web_search_source" in self.ai_widgets.get(provider_name, {}):
+                source_var = self.ai_widgets[provider_name]["research_web_search_source"]
+                depth_key = "research_search_depth"
+                if depth_key in conditional_widgets:
+                    depth_widgets = conditional_widgets[depth_key]
+                    
+                    def update_depth_visibility(*args, src_var=source_var, widgets=depth_widgets):
+                        current_source = src_var.get()
+                        show = current_source == "pomera-tavily"
+                        for widget in widgets:
+                            if show:
+                                widget.grid()
+                            else:
+                                widget.grid_remove()
+                    
+                    source_var.trace_add("write", update_depth_visibility)
+                    # Initial update
+                    update_depth_visibility()
             
             # Bind mouse wheel to all child widgets after they're created
             canvas._bind_mousewheel_to_children(scrollable_frame)
     
-    def create_parameter_widget(self, parent, provider_name, param, config, settings, row):
-        """Create a widget for a specific parameter."""
-        # Label
-        ttk.Label(parent, text=param.replace("_", " ").title() + ":").grid(row=row, column=0, sticky="w", padx=(5, 10), pady=2)
+    def create_parameter_widget(self, parent, provider_name, param, config, settings, row, col_offset=0, tab_name=""):
+        """Create a widget for a specific parameter. Returns list of widgets for conditional visibility."""
+        # Label - use 'label' field from config if present, otherwise format from param key
+        label_text = config.get("label", param.replace("_", " ").title())
+        label = ttk.Label(parent, text=label_text + ":")
+        label.grid(row=row, column=col_offset, sticky="w", padx=(5, 5), pady=2)
         
-        # Get current value
+        # Get current value, with config default fallback
         current_value = settings.get(param, "")
+        default_value = config.get("default", "")
+        if current_value == "" and default_value != "":
+            current_value = default_value
+        
+        created_widgets = [label]  # Track widgets for conditional visibility
         
         # Create appropriate widget based on type
         if config["type"] == "scale":
-            var = tk.DoubleVar(value=float(current_value) if current_value else config["range"][0])
-            scale = ttk.Scale(parent, from_=config["range"][0], to=config["range"][1], 
-                            variable=var, orient=tk.HORIZONTAL, length=200)
-            scale.grid(row=row, column=1, sticky="ew", padx=(0, 10), pady=2)
+            # Replace scale with Spinbox for better UX
+            min_val = config["range"][0]
+            max_val = config["range"][1]
             
-            # Value label
-            value_label = ttk.Label(parent, text=f"{var.get():.2f}")
-            value_label.grid(row=row, column=2, padx=(0, 5), pady=2)
+            # Get initial value
+            if current_value != "":
+                try:
+                    init_val = float(current_value)
+                except (ValueError, TypeError):
+                    init_val = float(config.get("default", min_val))
+            else:
+                init_val = float(config.get("default", min_val))
             
-            # Update label when scale changes
-            def update_label(*args):
-                value_label.config(text=f"{var.get():.2f}")
-                self.on_setting_change(provider_name)
+            # Determine if integer or float
+            is_integer = isinstance(min_val, int) and isinstance(max_val, int)
+            if is_integer:
+                init_val = int(init_val)
+                var = tk.IntVar(value=init_val)
+                increment = 1
+            else:
+                var = tk.DoubleVar(value=init_val)
+                increment = 0.1
             
-            var.trace_add("write", update_label)
+            # Create frame for spinbox + range label
+            spin_frame = ttk.Frame(parent)
+            spin_frame.grid(row=row, column=col_offset + 1, sticky="w", padx=(0, 5), pady=2)
+            
+            spinbox = ttk.Spinbox(spin_frame, from_=min_val, to=max_val, 
+                                  textvariable=var, width=8, increment=increment)
+            spinbox.pack(side="left")
+            
+            # Min-Max label
+            range_label = ttk.Label(spin_frame, text=f"({min_val}-{max_val})", foreground="gray")
+            range_label.pack(side="left", padx=(3, 0))
+            
+            created_widgets.append(spin_frame)
+            var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
             
         elif config["type"] == "combo":
             var = tk.StringVar(value=current_value)
-            combo = ttk.Combobox(parent, textvariable=var, values=config["values"], width=20)
-            combo.grid(row=row, column=1, sticky="ew", padx=(0, 10), pady=2)
+            combo_width = 12 if col_offset > 0 else 15
+            combo = ttk.Combobox(parent, textvariable=var, values=config["values"], width=combo_width)
+            combo.grid(row=row, column=col_offset + 1, sticky="w", padx=(0, 5), pady=2)
+            created_widgets.append(combo)
             var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
             
         elif config["type"] == "checkbox":
@@ -1083,13 +1275,37 @@ class AIToolsWidget(ttk.Frame):
             
             var = tk.BooleanVar(value=checkbox_value)
             checkbox = ttk.Checkbutton(parent, variable=var)
-            checkbox.grid(row=row, column=1, sticky="w", padx=(0, 10), pady=2)
+            checkbox.grid(row=row, column=col_offset + 1, sticky="w", padx=(0, 5), pady=2)
+            created_widgets.append(checkbox)
+            var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
+            
+        elif config["type"] == "combo_editable":
+            # Editable combobox with edit button - allows selection, custom text, and model list editing
+            var = tk.StringVar(value=current_value if current_value else config.get("default", ""))
+            
+            # Create frame to hold combobox and edit button
+            combo_frame = ttk.Frame(parent)
+            combo_frame.grid(row=row, column=col_offset + 1, sticky="w", padx=(0, 5), pady=2)
+            
+            combo_width = 28 if col_offset == 0 else 23  # Slightly narrower to fit edit button
+            combo = ttk.Combobox(combo_frame, textvariable=var, values=config["values"], width=combo_width)
+            combo.pack(side=tk.LEFT)
+            
+            # Edit button (pencil icon) - opens model list editor for this specific param
+            edit_btn = ttk.Button(combo_frame, text="\u270E", width=3,
+                                  command=lambda p=provider_name, prm=param, cmb=combo, cfg=config: 
+                                      self.open_research_model_editor(p, prm, cmb, cfg))
+            edit_btn.pack(side=tk.LEFT, padx=(2, 0))
+            
+            created_widgets.append(combo_frame)
             var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
             
         else:  # entry
             var = tk.StringVar(value=current_value)
-            entry = ttk.Entry(parent, textvariable=var, width=30)
-            entry.grid(row=row, column=1, sticky="ew", padx=(0, 10), pady=2)
+            entry_width = 15 if col_offset > 0 else 20
+            entry = ttk.Entry(parent, textvariable=var, width=entry_width)
+            entry.grid(row=row, column=col_offset + 1, sticky="w", padx=(0, 5), pady=2)
+            created_widgets.append(entry)
             var.trace_add("write", lambda *args: self.on_setting_change(provider_name))
         
         # Store widget reference
@@ -1097,10 +1313,20 @@ class AIToolsWidget(ttk.Frame):
         
         # Tooltip
         if "tip" in config:
-            self.create_tooltip(parent.grid_slaves(row=row, column=1)[0], config["tip"])
+            try:
+                self.create_tooltip(created_widgets[-1], config["tip"])
+            except:
+                pass
         
-        # Configure column weights
+        # Configure column weights for 3-column layout
         parent.columnconfigure(1, weight=1)
+        parent.columnconfigure(3, weight=1)
+        parent.columnconfigure(5, weight=1)
+        
+        # Return widgets for conditional visibility (search_depth needs this)
+        if param == "research_search_depth":
+            return created_widgets
+        return None
     
     def create_tooltip(self, widget, text):
         """Create a tooltip for a widget with proper delay."""
@@ -1156,12 +1382,16 @@ class AIToolsWidget(ttk.Frame):
                 if isinstance(widget, (ttk.Label, tk.Label)):
                     continue
                 
-                if isinstance(widget, tk.Text):
-                    value = widget.get("1.0", tk.END).strip()
-                elif hasattr(widget, 'get'):
-                    value = widget.get()
-                else:
-                    # Skip any other widget types without get() method
+                try:
+                    if isinstance(widget, tk.Text):
+                        value = widget.get("1.0", tk.END).strip()
+                    elif hasattr(widget, 'get'):
+                        value = widget.get()
+                    else:
+                        # Skip any other widget types without get() method
+                        continue
+                except tk.TclError:
+                    # Skip if value is temporarily invalid (e.g., empty spinbox during editing)
                     continue
                 
                 # Encrypt sensitive credentials before saving (except for LM Studio)
@@ -1791,6 +2021,329 @@ class AIToolsWidget(ttk.Frame):
                 else:
                     # Fallback message if boto3 not available
                     self.logger.warning(f"boto3 not available, falling back to raw HTTP for AWS Bedrock")
+
+            # Detect active parameter tab for Research/DeepReasoning routing
+            active_tab_name = None
+            if provider_name in self.param_notebooks:
+                try:
+                    notebook = self.param_notebooks[provider_name]
+                    selected_tab_id = notebook.select()
+                    if selected_tab_id:
+                        # Get tab text (display name)
+                        tab_index = notebook.index(selected_tab_id)
+                        active_tab_name = notebook.tab(tab_index, "text").lower().replace(" ", "")
+                        self.logger.info(f"Active parameter tab: {active_tab_name}")
+                except Exception as e:
+                    self.logger.debug(f"Could not detect active tab: {e}")
+            
+            # Route based on active tab (Research tab, DeepReasoning tab, or normal API)
+            if active_tab_name == "research" and provider_name in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
+                self.logger.info(f"Research Mode enabled for {provider_name} - using research engine")
+                
+                # Get research settings from GUI BEFORE showing dialog
+                research_model = settings.get("research_model", "")
+                research_mode = settings.get("research_mode", "two-stage")
+                research_style = settings.get("research_style", "analytical")
+                reasoning_effort = settings.get("reasoning_effort", "xhigh")  # OpenAI/OpenRouter
+                thinking_budget = settings.get("research_thinking_budget", 32000)  # Anthropic
+                search_count = settings.get("research_search_count", 10)  # Anthropic
+                max_results = settings.get("research_max_results", 10)  # OpenRouter
+                force_search = settings.get("research_force_search", False)
+                max_tokens = settings.get("research_max_tokens", 64000)
+                
+                # Convert types
+                if isinstance(search_count, str):
+                    try:
+                        search_count = int(search_count)
+                    except:
+                        search_count = 10
+                if isinstance(max_results, str):
+                    try:
+                        max_results = int(max_results)
+                    except:
+                        max_results = 10
+                if isinstance(thinking_budget, str):
+                    try:
+                        thinking_budget = int(thinking_budget)
+                    except:
+                        thinking_budget = 32000
+                if isinstance(max_tokens, str):
+                    try:
+                        max_tokens = int(max_tokens)
+                    except:
+                        max_tokens = 64000
+                if isinstance(force_search, str):
+                    force_search = force_search.lower() in ('true', '1', 'yes', 'on')
+                
+                # Log research settings
+                self.logger.info(f"Research settings: model={research_model}, mode={research_mode}, effort={reasoning_effort}")
+                
+                # Show modal dialog - this blocks main app interaction
+                progress_dialog = ResearchProgressDialog(
+                    self.app, 
+                    title=f"Research - {provider_name}",
+                    mode="research"
+                )
+                progress_dialog.update_progress(
+                    f"Starting {research_mode} research...",
+                    f"Model: {research_model or 'default'}"
+                )
+                
+                # Store dialog reference for thread access
+                self._research_dialog = progress_dialog
+                self._research_result = None
+                self._research_error = None
+                
+                def run_research():
+                    """Background thread for research execution."""
+                    try:
+                        from core.ai_tools_engine import AIToolsEngine
+                        
+                        # Get db_settings_manager if available
+                        db_manager = getattr(self.app, 'db_settings_manager', None)
+                        engine = AIToolsEngine(db_settings_manager=db_manager)
+                        
+                        # Check cancellation before starting
+                        if progress_dialog.is_cancelled():
+                            return
+                        
+                        progress_dialog.update_progress(
+                            "Connecting to API...",
+                            "Stage 1: Web Search"
+                        )
+                        
+                        # Progress callback for research engine
+                        def research_progress(current, total):
+                            if progress_dialog.is_cancelled():
+                                raise InterruptedError("Research cancelled by user")
+                            stage = "Stage 1: Web Search" if current < total else "Stage 2: Analysis"
+                            progress_dialog.update_progress(
+                                f"Progress: {current}/{total}",
+                                stage
+                            )
+                        
+                        self.logger.info(f"[TRACE] Calling engine.generate_research()")
+                        print(f"[TRACE] Calling engine.generate_research() -- provider={provider_name}")
+                        
+                        result = engine.generate_research(
+                            prompt=prompt,
+                            provider=provider_name,
+                            model=research_model if research_model else None,
+                            research_mode=research_mode,
+                            reasoning_effort=reasoning_effort,  # OpenAI/OpenRouter
+                            thinking_budget=thinking_budget,    # Anthropic
+                            style=research_style,
+                            search_count=search_count,          # Anthropic
+                            force_search=force_search,
+                            max_tokens=max_tokens,
+                            progress_callback=research_progress
+                        )
+                        
+                        # Check cancellation after completion
+                        if progress_dialog.is_cancelled():
+                            return
+                        
+                        self._research_result = result
+                        
+                    except InterruptedError as e:
+                        self._research_error = "Cancelled by user"
+                    except ImportError as e:
+                        self._research_error = f"Research engine not available: {e}"
+                    except Exception as e:
+                        self.logger.error(f"Research failed: {e}", exc_info=True)
+                        self._research_error = str(e)
+                    finally:
+                        # Close dialog from main thread
+                        self.app.after(0, self._finish_research)
+                
+                def _finish_research_impl():
+                    """Handle research completion in main thread."""
+                    # Close dialog
+                    progress_dialog.close()
+                    
+                    if progress_dialog.is_cancelled():
+                        self.app.update_output_text("Research cancelled by user.")
+                        return
+                    
+                    if self._research_error:
+                        self.app.update_output_text(f"Error: {self._research_error}")
+                        return
+                    
+                    result = self._research_result
+                    if result and result.success:
+                        # Display research result
+                        self.start_streaming_response(clear_existing=True)
+                        response_text = result.response or ""
+                        
+                        # Add thinking blocks if available (Anthropic)
+                        if hasattr(result, 'thinking') and result.thinking:
+                            thinking_text = "\n\n---\n**Thinking Process:**\n"
+                            for thought in result.thinking:
+                                thinking_text += f"\n{thought[:500]}..." if len(thought) > 500 else f"\n{thought}"
+                            response_text += thinking_text
+                        
+                        self.add_streaming_chunk(response_text)
+                        self.end_streaming_response()
+                        
+                        # Log usage if available
+                        if result.usage:
+                            self.logger.info(f"Research usage: {result.usage}")
+                    elif result:
+                        self.app.update_output_text(f"Research error: {result.error}")
+                    else:
+                        self.app.update_output_text("Research returned no result.")
+                
+                # Store finish callback
+                self._finish_research = _finish_research_impl
+                
+                # Start research thread
+                research_thread = threading.Thread(target=run_research, daemon=True)
+                research_thread.start()
+                
+                # Wait for dialog to close (modal wait)
+                progress_dialog.wait_for_close()
+                return
+
+            # Route to DeepReasoning if that tab is active
+            if active_tab_name == "deepreasoning" and provider_name == "Anthropic AI":
+                self.logger.info(f"DeepReasoning Mode - {provider_name} deep reasoning engine")
+                
+                # Get deepreasoning settings from GUI BEFORE showing dialog
+                dr_model = settings.get("deepreasoning_model", "claude-opus-4-5-20251101")
+                dr_thinking_budget = settings.get("deepreasoning_thinking_budget", 32000)
+                dr_max_tokens = settings.get("deepreasoning_max_tokens", 64000)
+                
+                # Convert types
+                if isinstance(dr_thinking_budget, str):
+                    try:
+                        dr_thinking_budget = int(dr_thinking_budget)
+                    except:
+                        dr_thinking_budget = 32000
+                if isinstance(dr_max_tokens, str):
+                    try:
+                        dr_max_tokens = int(dr_max_tokens)
+                    except:
+                        dr_max_tokens = 64000
+                
+                self.logger.info(f"DeepReasoning settings: model={dr_model}, thinking_budget={dr_thinking_budget}, max_tokens={dr_max_tokens}")
+                
+                # Show modal dialog - this blocks main app interaction
+                progress_dialog = ResearchProgressDialog(
+                    self.app,
+                    title=f"Deep Reasoning - {provider_name}",
+                    mode="deepreasoning"
+                )
+                progress_dialog.update_progress(
+                    f"Starting deep reasoning...",
+                    f"Thinking budget: {dr_thinking_budget:,} tokens"
+                )
+                
+                # Store dialog reference for thread access
+                self._research_dialog = progress_dialog
+                self._research_result = None
+                self._research_error = None
+                
+                def run_deepreasoning():
+                    """Background thread for deep reasoning execution."""
+                    try:
+                        from core.ai_research_engine import AIResearchEngine
+                        
+                        research_engine = AIResearchEngine()
+                        
+                        # Check cancellation before starting
+                        if progress_dialog.is_cancelled():
+                            return
+                        
+                        progress_dialog.update_progress(
+                            "Connecting to API...",
+                            "Extended Thinking Mode"
+                        )
+                        
+                        # Progress callback for research engine
+                        def dr_progress(current, total):
+                            if progress_dialog.is_cancelled():
+                                raise InterruptedError("Deep reasoning cancelled by user")
+                            progress_dialog.update_progress(
+                                f"Progress: {current}/{total}",
+                                "Extended Thinking Mode"
+                            )
+                        
+                        self.logger.info(f"[TRACE] Calling deep_reasoning_anthropic()")
+                        print(f"[TRACE] Calling deep_reasoning_anthropic() -- model={dr_model}")
+                        
+                        result = research_engine.deep_reasoning_anthropic(
+                            prompt=prompt,
+                            api_key=api_key,
+                            model=dr_model,
+                            thinking_budget=dr_thinking_budget,
+                            max_tokens=dr_max_tokens,
+                            progress_callback=dr_progress
+                        )
+                        
+                        # Check cancellation after completion
+                        if progress_dialog.is_cancelled():
+                            return
+                        
+                        self._research_result = result
+                        
+                    except InterruptedError as e:
+                        self._research_error = "Cancelled by user"
+                    except ImportError as e:
+                        self._research_error = f"DeepReasoning engine not available: {e}"
+                    except Exception as e:
+                        self.logger.error(f"DeepReasoning failed: {e}", exc_info=True)
+                        self._research_error = str(e)
+                    finally:
+                        # Close dialog from main thread
+                        self.app.after(0, self._finish_deepreasoning)
+                
+                def _finish_deepreasoning_impl():
+                    """Handle deep reasoning completion in main thread."""
+                    # Close dialog
+                    progress_dialog.close()
+                    
+                    if progress_dialog.is_cancelled():
+                        self.app.update_output_text("Deep reasoning cancelled by user.")
+                        return
+                    
+                    if self._research_error:
+                        self.app.update_output_text(f"Error: {self._research_error}")
+                        return
+                    
+                    result = self._research_result
+                    if result and result.success:
+                        # Display deep reasoning result
+                        self.start_streaming_response(clear_existing=True)
+                        response_text = result.response or ""
+                        
+                        # Add thinking blocks if available
+                        if hasattr(result, 'thinking') and result.thinking:
+                            thinking_text = "\n\n---\n**Thinking Process:**\n"
+                            for thought in result.thinking:
+                                thinking_text += f"\n{thought[:500]}..." if len(thought) > 500 else f"\n{thought}"
+                            response_text += thinking_text
+                        
+                        self.add_streaming_chunk(response_text)
+                        self.end_streaming_response()
+                        
+                        # Log usage if available
+                        if result.usage:
+                            self.logger.info(f"DeepReasoning usage: {result.usage}")
+                    elif result:
+                        self.app.update_output_text(f"DeepReasoning error: {result.error}")
+                    else:
+                        self.app.update_output_text("DeepReasoning returned no result.")
+                
+                # Store finish callback
+                self._finish_deepreasoning = _finish_deepreasoning_impl
+                
+                # Start deep reasoning thread
+                dr_thread = threading.Thread(target=run_deepreasoning, daemon=True)
+                dr_thread.start()
+                
+                # Wait for dialog to close (modal wait)
+                progress_dialog.wait_for_close()
+                return
 
             url, payload, headers = self._build_api_request(provider_name, api_key, prompt, settings)
 
@@ -2881,6 +3434,54 @@ class AIToolsWidget(ttk.Frame):
         self.app.save_settings()
         dialog.destroy()
 
+    def open_research_model_editor(self, provider_name, param_name, combobox, config):
+        """Opens a dialog to edit the research model list for combo_editable widgets."""
+        dialog = tk.Toplevel(self.app)
+        dialog.title(f"Edit Research Models - {provider_name}")
+        
+        # Center dialog on main window
+        dialog_width, dialog_height = 450, 300
+        main_x = self.app.winfo_x()
+        main_y = self.app.winfo_y()
+        main_width = self.app.winfo_width()
+        main_height = self.app.winfo_height()
+        pos_x = main_x + (main_width // 2) - (dialog_width // 2)
+        pos_y = main_y + (main_height // 2) - (dialog_height // 2)
+        dialog.geometry(f"{dialog_width}x{dialog_height}+{pos_x}+{pos_y}")
+        dialog.transient(self.app)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="One model per line. First line is default. You can add custom models.").pack(pady=(10, 2))
+        
+        text_area = tk.Text(dialog, height=10, width=55, undo=True)
+        text_area.pack(pady=5, padx=10)
+        
+        # Get current values from combobox
+        current_models = list(combobox['values'])
+        text_area.insert("1.0", "\n".join(current_models))
+        
+        def save_research_models():
+            """Save the edited model list to combobox."""
+            content = text_area.get("1.0", tk.END)
+            new_list = [line.strip() for line in content.splitlines() if line.strip()]
+            
+            if not new_list:
+                self._show_warning("No Models", "Model list cannot be empty.")
+                return
+            
+            # Update combobox values
+            combobox['values'] = new_list
+            
+            # Set first model as default if current value not in new list
+            current_val = combobox.get()
+            if current_val not in new_list:
+                combobox.set(new_list[0])
+                self.on_setting_change(provider_name)
+            
+            dialog.destroy()
+        
+        ttk.Button(dialog, text="Save Changes", command=save_research_models).pack(pady=5)
+
     def _get_ai_params_config(self, provider_name):
         """Get parameter configuration for AI provider."""
         configs = {
@@ -2901,21 +3502,47 @@ class AIToolsWidget(ttk.Frame):
                 "stopSequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
             },
             "Anthropic AI": {
+                # Research tab (first) - uses Claude native web search only
+                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with Claude Opus 4.5 (overrides other tabs)."},
+                "research_model": {"tab": "research", "type": "entry", "default": "claude-opus-4-5-20251101", "label": "model", "tip": "Research model (recommended: claude-opus-4-5-20251101)."},
+                "research_mode": {"tab": "research", "type": "combo", "values": ["two-stage", "single"], "default": "two-stage", "label": "mode", "tip": "two-stage: search first then reason. single: combined."},
+                "research_thinking_budget": {"tab": "research", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget."},
+                "research_style": {"tab": "research", "type": "combo", "values": ["analytical", "concise", "creative", "report"], "default": "analytical", "label": "style", "tip": "Output style preset."},
+                "research_search_count": {"tab": "research", "type": "scale", "range": (1, 20), "res": 1, "default": 20, "label": "max_uses", "tip": "Maximum web search uses (Anthropic native)."},
+                "research_force_search": {"tab": "research", "type": "checkbox", "default": False, "label": "force_search", "tip": "Force web search before answering (tool_choice: any)."},
+                "research_max_tokens": {"tab": "research", "type": "entry", "default": "64000", "label": "max_tokens", "tip": "Maximum output tokens."},
+                # DeepReasoning tab (second) - 6-step reasoning protocol
+                "deepreasoning_enabled": {"tab": "deepreasoning", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Deep Reasoning with 6-step protocol (overrides other tabs)."},
+                "deepreasoning_model": {"tab": "deepreasoning", "type": "entry", "default": "claude-opus-4-5-20251101", "label": "model", "tip": "DeepReasoning model (recommended: claude-opus-4-5-20251101)."},
+                "deepreasoning_thinking_budget": {"tab": "deepreasoning", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (1K-128K)."},
+                "deepreasoning_max_tokens": {"tab": "deepreasoning", "type": "entry", "default": "64000", "label": "max_tokens", "tip": "Maximum output tokens."},
+                # Content tab
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
+                "stop_sequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},
+                # Sampling tab
                 "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
                 "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Cumulative probability threshold for token selection."},
-                "top_k": {"tab": "sampling", "type": "scale", "range": (1, 200), "res": 1, "tip": "Limits token selection to top K candidates."},
-                "stop_sequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+                "top_k": {"tab": "sampling", "type": "scale", "range": (1, 200), "res": 1, "tip": "Limits token selection to top K candidates."}
             },
             "OpenAI": {
+                # Research tab (first tab) - uses OpenAI native web search only
+                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with GPT-5.2 (overrides other tabs)."},
+                "research_model": {"tab": "research", "type": "entry", "default": "gpt-5.2", "label": "model", "tip": "Research model (recommended: gpt-5.2)."},
+                "research_mode": {"tab": "research", "type": "combo", "values": ["two-stage", "single"], "default": "two-stage", "label": "mode", "tip": "two-stage: search first then reason. single: combined."},
+                "reasoning_effort": {"tab": "research", "type": "combo", "values": ["none", "low", "medium", "high", "xhigh"], "default": "xhigh", "label": "reasoning_effort", "tip": "Reasoning effort level."},
+                "research_style": {"tab": "research", "type": "combo", "values": ["analytical", "concise", "creative", "report"], "default": "analytical", "label": "style", "tip": "Output style preset."},
+                "research_force_search": {"tab": "research", "type": "checkbox", "default": False, "label": "force_search", "tip": "Force web search before answering (tool_choice: required)."},
+                "research_max_tokens": {"tab": "research", "type": "entry", "default": "64000", "label": "max_tokens", "tip": "Maximum output tokens."},
+                # Content tab
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
+                "seed": {"tab": "content", "type": "entry", "tip": "Random seed for reproducible outputs."},
+                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},
+                "response_format": {"tab": "content", "type": "combo", "values": ["text", "json_object"], "tip": "Force JSON output."},
+                # Sampling tab
                 "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
                 "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Nucleus sampling threshold."},
                 "frequency_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes frequent tokens."},
-                "presence_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes tokens that have appeared."},
-                "seed": {"tab": "content", "type": "entry", "tip": "Random seed for reproducible outputs."},
-                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},
-                "response_format": {"tab": "content", "type": "combo", "values": ["text", "json_object"], "tip": "Force JSON output."}
+                "presence_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes tokens that have appeared."}
             },
             "Cohere AI": {
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
@@ -2945,15 +3572,25 @@ class AIToolsWidget(ttk.Frame):
                 "response_format": {"tab": "content", "type": "combo", "values": ["text", "json_object"], "tip": "Force JSON output."}
             },
             "OpenRouterAI": {
+                # Research tab (first) - uses OpenRouter deep research models
+                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with deep research models (overrides other tabs)."},
+                "research_model": {"tab": "research", "type": "combo_editable", "values": ["perplexity/sonar-deep-research", "x-ai/grok-4.1-fast", "x-ai/grok-4.1-fast:free", "google/gemini-3-pro-preview", "google/gemini-3-flash-preview", "openai/chatgpt-4o-latest"], "default": "perplexity/sonar-deep-research", "label": "model", "tip": "Research model (editable dropdown - type custom or select)."},
+                "research_mode": {"tab": "research", "type": "combo", "values": ["two-stage", "single"], "default": "two-stage", "label": "mode", "tip": "two-stage: search first then reason. single: combined."},
+                "reasoning_effort": {"tab": "research", "type": "combo", "values": ["none", "low", "medium", "high", "xhigh"], "default": "high", "label": "reasoning.effort", "tip": "Reasoning effort level (OpenRouter unified param)."},
+                "research_style": {"tab": "research", "type": "combo", "values": ["analytical", "concise", "creative", "report"], "default": "analytical", "label": "style", "tip": "Output style preset."},
+                "research_max_results": {"tab": "research", "type": "scale", "range": (1, 20), "res": 1, "default": 10, "label": "max_results", "tip": "Maximum web search results."},
+                "research_max_tokens": {"tab": "research", "type": "entry", "default": "64000", "label": "max_tokens", "tip": "Maximum output tokens."},
+                # Content tab
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
+                "seed": {"tab": "content", "type": "entry", "tip": "Random seed for reproducible outputs."},
+                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},
+                # Sampling tab
                 "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
                 "top_p": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Nucleus sampling threshold."},
                 "top_k": {"tab": "sampling", "type": "scale", "range": (1, 100), "res": 1, "tip": "Limits token selection to top K candidates."},
                 "frequency_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes frequent tokens."},
                 "presence_penalty": {"tab": "sampling", "type": "scale", "range": (-2.0, 2.0), "res": 0.1, "tip": "Penalizes tokens that have appeared."},
-                "repetition_penalty": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Penalizes repetitive text."},
-                "seed": {"tab": "content", "type": "entry", "tip": "Random seed for reproducible outputs."},
-                "stop": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}
+                "repetition_penalty": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Penalizes repetitive text."}
             },
             "Azure AI": {
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},

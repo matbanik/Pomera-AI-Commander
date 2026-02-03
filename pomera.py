@@ -4530,7 +4530,9 @@ class PromeraAIApp(tk.Tk):
                 self.notes_window,
                 logger=self.logger,
                 send_to_input_callback=self.send_content_to_input_tab,
-                dialog_manager=self.dialog_manager
+                dialog_manager=self.dialog_manager,
+                get_export_path_callback=lambda: self.export_path_var.get(),
+                browse_export_path_callback=self.browse_export_path
             )
             
             # Add context menus to Notes widget if available
@@ -4584,7 +4586,9 @@ class PromeraAIApp(tk.Tk):
                 temp_window,
                 logger=self.logger,
                 send_to_input_callback=self.send_content_to_input_tab,
-                dialog_manager=self.dialog_manager
+                dialog_manager=self.dialog_manager,
+                get_export_path_callback=lambda: self.export_path_var.get(),
+                browse_export_path_callback=self.browse_export_path
             )
             
             # Save the note
@@ -5578,6 +5582,7 @@ class PromeraAIApp(tk.Tk):
         self.web_search_api_vars = {}
         self.web_search_cse_vars = {}  # For Google CSE ID
         self.web_search_count_vars = {}
+        self.web_search_depth_vars = {}  # For Tavily advanced search
         
         for display_name, engine_key, api_url, needs_api_key, needs_cse_id in self.web_search_engines:
             tab = ttk.Frame(self.web_search_notebook)
@@ -5648,6 +5653,21 @@ class PromeraAIApp(tk.Tk):
             count_spinbox.pack(side=tk.LEFT, padx=5)
             count_spinbox.bind("<FocusOut>", lambda e, k=engine_key, v=count_var: self._save_web_search_setting(k, "count", int(v.get())))
             self.web_search_count_vars[engine_key] = count_var
+            
+            # Advanced Search checkbox for Tavily only
+            if engine_key == "tavily":
+                saved_depth = self._get_web_search_setting(engine_key, "search_depth", "basic")
+                depth_var = tk.BooleanVar(value=(saved_depth == "advanced"))
+                depth_check = ttk.Checkbutton(
+                    config_frame, 
+                    text="Advanced Search (2x credits, higher relevance)",
+                    variable=depth_var,
+                    command=lambda k=engine_key, v=depth_var: self._save_web_search_setting(
+                        k, "search_depth", "advanced" if v.get() else "basic"
+                    )
+                )
+                depth_check.pack(side=tk.LEFT, padx=15)
+                self.web_search_depth_vars[engine_key] = depth_var
             
             # Search button
             search_btn = ttk.Button(
@@ -5792,6 +5812,9 @@ class PromeraAIApp(tk.Tk):
         if not api_key:
             return [{"title": "Error", "snippet": "Tavily API key required. Enter in API Configuration.", "url": ""}]
         
+        # Get search depth setting (basic or advanced)
+        search_depth = self._get_web_search_setting("tavily", "search_depth", "basic")
+        
         try:
             import urllib.request
             import json
@@ -5800,7 +5823,7 @@ class PromeraAIApp(tk.Tk):
             data = json.dumps({
                 "api_key": api_key,
                 "query": query,
-                "search_depth": "basic",
+                "search_depth": search_depth,
                 "max_results": count
             }).encode()
             
@@ -6095,6 +6118,9 @@ class PromeraAIApp(tk.Tk):
     def _update_url_reader_html_settings_visibility(self):
         """Show or hide HTML extraction settings based on selected format."""
         if not hasattr(self, 'url_reader_html_settings_frame'):
+            return
+        # Guard: url_fetch_btn may not exist yet during initialization
+        if not hasattr(self, 'url_fetch_btn'):
             return
         
         format_value = self.url_reader_format_var.get()

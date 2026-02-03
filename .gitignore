@@ -43,6 +43,7 @@ temp/
 # Historical
 archive/
 backups/
+content-docs/
 
 # IDE
 .kiro/

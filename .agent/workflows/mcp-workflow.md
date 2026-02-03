@@ -12,6 +12,11 @@ description: How to develop MCP Tools for Pomera AI Commander (CLI/API layer)
 
 **This workflow is for MCP Tools only.** For Widgets, see `/widget-workflow`.
 
+**For testing MCP code prior to git commit, copy pending changed files to**
+%APPDATA%\npm\node_modules\pomera-ai-commander\
+
+Restart Antigravity to reload MCP server files
+
 ---
 
 ## 1. MCP Tool vs Widget Decision Tree

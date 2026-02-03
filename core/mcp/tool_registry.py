@@ -3369,9 +3369,34 @@ class ToolRegistry:
         """Register the Web Search Tool."""
         self.register(MCPToolAdapter(
             name="pomera_web_search",
-            description="Search the web using multiple engines. Engines: tavily (AI-optimized, recommended), "
-                       "google (100/day free), brave (2000/month free), duckduckgo (free, no key), "
-                       "serpapi (100 total free), serper (2500 total free).",
+            description=(
+                "Search the web using multiple engines. Engines: tavily (AI-optimized, recommended), "
+                "google (100/day free), brave (2000/month free), duckduckgo (free, no key), "
+                "serpapi (100 total free), serper (2500 total free).\n\n"
+                
+                "**TAVILY SEARCH DEPTH OPTIONS**:\n"
+                "- `basic` (default): 1 API credit, balanced relevance/speed, single NLP summary per URL\n"
+                "- `advanced`: 2 API credits, highest relevance, multiple semantic snippets per source\n\n"
+                
+                "**WHEN TO USE ADVANCED SEARCH**:\n"
+                "Use `search_depth: 'advanced'` for:\n"
+                "- Complex research queries requiring high precision\n"
+                "- RAG (Retrieval-Augmented Generation) applications\n"
+                "- Specialized or technical topic searches\n"
+                "- When you need multiple relevant excerpts from each source\n"
+                "- Deep-dive research where accuracy outweighs speed/cost\n\n"
+                
+                "**WHEN TO USE BASIC SEARCH**:\n"
+                "Use `search_depth: 'basic'` (default) for:\n"
+                "- General web searches and quick lookups\n"
+                "- Simple factual queries\n"
+                "- Cost-conscious searches (half the credits)\n"
+                "- When speed is more important than depth\n\n"
+                
+                "**COST CONSIDERATION**:\n"
+                "Advanced search uses 2x the API credits. Use sparingly for complex queries "
+                "where precision matters most."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -3392,6 +3417,12 @@ class ToolRegistry:
                         "minimum": 1,
                         "maximum": 20
                     },
+                    "search_depth": {
+                        "type": "string",
+                        "enum": ["basic", "advanced"],
+                        "description": "Tavily only: 'basic' (1 credit, faster) or 'advanced' (2 credits, semantic snippets, highest relevance). Use advanced for complex research, RAG, or specialized queries.",
+                        "default": "basic"
+                    },
                     "output_to_file": {
                         "type": "string",
                         "description": "If provided, save search results to this file path"
@@ -3409,8 +3440,9 @@ class ToolRegistry:
         import urllib.parse
         
         query = args.get("query", "").strip()
-        engine = args.get("engine", "duckduckgo").lower()
+        engine = args.get("engine", "tavily").lower()
         count = args.get("count", 5)
+        search_depth = args.get("search_depth", "basic").lower()
         
         # Validate inputs
         if not query:
@@ -3434,7 +3466,7 @@ class ToolRegistry:
             elif engine == "tavily":
                 if not api_key:
                     return json.dumps({"success": False, "error": "Tavily API key required. Configure in Web Search settings."})
-                results = self._mcp_search_tavily(query, count, api_key)
+                results = self._mcp_search_tavily(query, count, api_key, search_depth)
             elif engine == "google":
                 if not api_key or not cse_id:
                     return json.dumps({"success": False, "error": "Google API key and CSE ID required. Configure in Web Search settings."})
@@ -3461,6 +3493,11 @@ class ToolRegistry:
                 "count": len(results),
                 "results": results
             }
+            
+            # Add search_depth info for Tavily
+            if engine == "tavily":
+                output["search_depth"] = search_depth
+                output["credits_used"] = 2 if search_depth == "advanced" else 1
             
             # Save to file if requested
             output_to_file = args.get("output_to_file")
@@ -3555,16 +3592,27 @@ class ToolRegistry:
         except Exception as e:
             return [{"title": "Error", "snippet": str(e), "url": ""}]
     
-    def _mcp_search_tavily(self, query: str, count: int, api_key: str) -> list:
-        """Search using Tavily API."""
+    def _mcp_search_tavily(self, query: str, count: int, api_key: str, search_depth: str = "basic") -> list:
+        """Search using Tavily API.
+        
+        Args:
+            query: Search query
+            count: Number of results
+            api_key: Tavily API key
+            search_depth: 'basic' (1 credit) or 'advanced' (2 credits, semantic snippets)
+        """
         import urllib.request
         import json
+        
+        # Validate search_depth
+        if search_depth not in ("basic", "advanced"):
+            search_depth = "basic"
         
         url = "https://api.tavily.com/search"
         data = json.dumps({
             "api_key": api_key,
             "query": query,
-            "search_depth": "basic",
+            "search_depth": search_depth,
             "max_results": count
         }).encode()
         
@@ -4257,25 +4305,46 @@ class ToolRegistry:
                 "**WHEN TO USE THIS TOOL**:\\n"
                 "- Generate, summarize, or transform text using AI\\n"
                 "- Use specific AI providers/models for different tasks\\n"
-                "- Process file content through AI models\\n\\n"
+                "- Process file content through AI models\\n"
+                "- Execute research queries with deep reasoning and web search\\n"
+                "- Run structured deep reasoning analysis\\n\\n"
                 
                 "**KEY FEATURES**:\\n"
                 "✅ 11 AI providers supported\\n"
                 "✅ File input/output support\\n"
                 "✅ System prompt configuration\\n"
                 "✅ Sampling parameters (temperature, top_p, top_k)\\n"
-                "✅ Content parameters (max_tokens, stop_sequences)\\n\\n"
+                "✅ Content parameters (max_tokens, stop_sequences)\\n"
+                "✅ Research mode with extended reasoning + web search\\n"
+                "✅ Deep reasoning with 6-step protocol\\n\\n"
                 
                 "**ACTIONS**:\\n"
                 "- list_providers: Get list of available AI providers\\n"
                 "- list_models: Get models for a specific provider\\n"
-                "- generate: Generate text using AI (default action)\\n\\n"
+                "- generate: Generate text using AI (default action)\\n"
+                "- research: Research with deep reasoning + web search (OpenAI/Anthropic/OpenRouter)\\n"
+                "- deepreasoning: Extended thinking with 6-step protocol (Anthropic only)\\n\\n"
+                
+                "**RESEARCH ACTION** (OpenAI, Anthropic AI & OpenRouterAI):\\n"
+                "- OpenAI: GPT-5.2 with reasoning_effort (xhigh)\\n"
+                "- Anthropic: Claude Opus 4.5 with thinking_budget and search_count\\n"
+                "- OpenRouter: Various models (gemini-3-flash, sonar-deep-research) with max_results\\n"
+                "- Mode: two-stage (search → reason) or single (combined)\\n"
+                "- Style presets: analytical, concise, creative, report\\n\\n"
+                
+                "**DEEPREASONING ACTION** (Anthropic AI only):\\n"
+                "- Uses Claude Opus 4.5 Extended Thinking\\n"
+                "- 6-step protocol: Decompose → Search → Decide → Analyze → Verify → Synthesize\\n"
+                "- Optional web search during reasoning\\n"
+                "- Thinking budget control (1K-128K tokens)\\n\\n"
                 
                 "**BEST PRACTICES FOR AI AGENTS**:\\n"
                 "1. Use 'list_providers' to see available providers\\n"
                 "2. Use 'list_models' to see models for a provider\\n"
                 "3. API keys must be configured via Pomera UI (not passed as params)\\n"
-                "4. Use system_prompt for consistent behavior\\n\\n"
+                "4. Use system_prompt for consistent behavior\\n"
+                "5. Use 'research' for complex queries needing web data\\n"
+                "6. Use 'deepreasoning' for structured analysis problems\\n\\n"
                 
                 "**OUTPUT STRUCTURE**:\\n"
                 "{\\n"
@@ -4291,13 +4360,13 @@ class ToolRegistry:
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["generate", "list_providers", "list_models"],
+                        "enum": ["generate", "list_providers", "list_models", "research", "deepreasoning"],
                         "description": "Action to perform. Default: generate",
                         "default": "generate"
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "Text prompt to send to AI (required for 'generate')"
+                        "description": "Text prompt to send to AI (required for 'generate', 'research', 'deepreasoning')"
                     },
                     "prompt_is_file": {
                         "type": "boolean",
@@ -4306,11 +4375,14 @@ class ToolRegistry:
                     },
                     "provider": {
                         "type": "string",
-                        "description": "AI provider name (e.g., 'OpenAI', 'Anthropic AI', 'Google AI')"
+                        "description": "AI provider name (e.g., 'OpenAI', 'Anthropic AI', 'Google AI'). "
+                                     "For 'research': OpenAI, Anthropic AI, or OpenRouterAI. "
+                                     "For 'deepreasoning': Anthropic AI only."
                     },
                     "model": {
                         "type": "string",
-                        "description": "Model name (uses provider default if not specified)"
+                        "description": "Model name (uses provider default if not specified). "
+                                     "Ignored for research/deepreasoning (uses enforced models)."
                     },
                     "system_prompt": {
                         "type": "string",
@@ -4343,6 +4415,62 @@ class ToolRegistry:
                     "output_to_file": {
                         "type": "string",
                         "description": "If provided, save response to this file path"
+                    },
+                    # Research-specific parameters
+                    "research_model": {
+                        "type": "string",
+                        "description": "Model for research/deepreasoning. OpenAI: gpt-5.2, Anthropic: claude-opus-4-5-20251101, OpenRouter: perplexity/sonar-deep-research"
+                    },
+                    "research_mode": {
+                        "type": "string",
+                        "enum": ["two-stage", "single"],
+                        "description": "Research mode: 'two-stage' (search then reason) or 'single' (combined). Default: two-stage",
+                        "default": "two-stage"
+                    },
+                    "reasoning_effort": {
+                        "type": "string",
+                        "enum": ["none", "low", "medium", "high", "xhigh"],
+                        "description": "OpenAI/OpenRouter reasoning effort level. Default: xhigh",
+                        "default": "xhigh"
+                    },
+                    "thinking_budget": {
+                        "type": "integer",
+                        "description": "Anthropic thinking token budget (1000-128000). Default: 32000",
+                        "default": 32000
+                    },
+                    "style": {
+                        "type": "string",
+                        "enum": ["analytical", "concise", "creative", "report"],
+                        "description": "Output style preset. Default: analytical",
+                        "default": "analytical"
+                    },
+                    # Note: search_count only applies to Anthropic (max_uses). OpenAI doesn't support limiting searches.
+                    "search_count": {
+                        "type": "integer",
+                        "description": "Anthropic only: Number of web search uses (max_uses). OpenAI ignores this. Default: 10",
+                        "default": 10
+                    },
+                    "force_search": {
+                        "type": "boolean",
+                        "description": "Force web search before reasoning (tool_choice: any/required). Default: false",
+                        "default": False
+                    },
+                    "allowed_domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Anthropic only: Domain whitelist for web search"
+                    },
+                    "blocked_domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Anthropic only: Domain blacklist for web search"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "OpenRouter only: Max web search results (1-20). Default: 10",
+                        "default": 10,
+                        "minimum": 1,
+                        "maximum": 20
                     }
                 },
                 "required": []
@@ -4494,10 +4622,244 @@ class ToolRegistry:
             
             return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
         
+        # Handle research action (OpenAI, Anthropic AI, and OpenRouterAI)
+        if action == "research":
+            # Validate provider
+            provider = args.get("provider", "")
+            if provider not in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
+                return json.dumps({
+                    "success": False,
+                    "error": f"research action only supports OpenAI, Anthropic AI, and OpenRouterAI, got: '{provider}'"
+                }, ensure_ascii=False)
+            
+            # Process file input for prompt
+            success, args, error = process_file_args(args, {"prompt": "prompt_is_file"})
+            if not success:
+                return json.dumps({
+                    "success": False,
+                    "error": error
+                }, ensure_ascii=False)
+            
+            prompt = args.get("prompt", "")
+            if not prompt:
+                return json.dumps({
+                    "success": False,
+                    "error": "Prompt is required for research action"
+                }, ensure_ascii=False)
+            
+            # Read GUI-configured defaults from database
+            gui_settings = {}
+            if db_settings_manager:
+                try:
+                    gui_settings = db_settings_manager.get_setting(f"tool_settings.{provider}") or {}
+                except Exception:
+                    gui_settings = {}
+            
+            # Helper to get value: MCP arg > GUI setting > hardcoded default
+            def get_setting(mcp_key, gui_key, default):
+                if mcp_key in args and args[mcp_key] is not None:
+                    return args[mcp_key]
+                if gui_key in gui_settings and gui_settings[gui_key]:
+                    val = gui_settings[gui_key]
+                    # Convert string booleans
+                    if isinstance(default, bool) and isinstance(val, str):
+                        return val.lower() in ('true', '1', 'yes', 'on')
+                    # Convert string ints/floats
+                    if isinstance(default, int) and isinstance(val, str):
+                        try:
+                            return int(float(val))
+                        except ValueError:
+                            return default
+                    return val
+                return default
+            
+            # Get settings with GUI defaults (MCP args override)
+            research_mode = get_setting("research_mode", "research_mode", "two-stage")
+            style = get_setting("style", "research_style", "analytical")
+            max_tokens = get_setting("max_tokens", "research_max_tokens", 64000)
+            force_search = get_setting("force_search", "research_force_search", False)
+            
+            if provider == "OpenAI":
+                # OpenAI-specific settings - always uses native search
+                research_model = get_setting("research_model", "research_model", "gpt-5.2")
+                reasoning_effort = get_setting("reasoning_effort", "reasoning_effort", "xhigh")
+                thinking_budget = 0  # Not used for OpenAI
+                search_count = 0  # OpenAI doesn't support search count
+                max_results = 0  # OpenAI doesn't use max_results
+            elif provider == "OpenRouterAI":
+                # OpenRouter-specific settings - uses plugins for web search
+                research_model = get_setting("research_model", "research_model", "perplexity/sonar-deep-research")
+                reasoning_effort = get_setting("reasoning_effort", "reasoning_effort", "high")
+                max_results = get_setting("max_results", "research_max_results", 10)
+                thinking_budget = get_setting("thinking_budget", "research_thinking_budget", 32000)  # For Claude models via OpenRouter
+                search_count = 0  # OpenRouter uses max_results instead
+            else:  # Anthropic AI
+                # Anthropic-specific settings - always uses Claude native search
+                research_model = get_setting("research_model", "research_model", "claude-opus-4-5-20251101")
+                thinking_budget = get_setting("thinking_budget", "research_thinking_budget", 32000)
+                search_count = get_setting("search_count", "research_search_count", 20)
+                reasoning_effort = "xhigh"  # Not used for Anthropic
+                max_results = 0  # Anthropic uses search_count instead
+            
+            # Progress callback for research
+            def research_progress(current: int, total: int):
+                percent = int((current / total) * 100)
+                print(f"🔬 Research Progress: {percent}%", file=sys.stderr, flush=True)
+            
+            # Detailed logging
+            print(f"🔬 Starting Research with {provider}...", file=sys.stderr, flush=True)
+            print(f"   Model: {research_model}", file=sys.stderr, flush=True)
+            print(f"   Mode: {research_mode}", file=sys.stderr, flush=True)
+            print(f"   Search: Native (provider built-in)", file=sys.stderr, flush=True)
+            if provider == "Anthropic AI":
+                print(f"   Search Count (max_uses): {search_count}", file=sys.stderr, flush=True)
+            elif provider == "OpenRouterAI":
+                print(f"   Max Results: {max_results}", file=sys.stderr, flush=True)
+                print(f"   Reasoning Effort: {reasoning_effort}", file=sys.stderr, flush=True)
+            print(f"   Force Search: {force_search}", file=sys.stderr, flush=True)
+            if gui_settings:
+                print(f"   (Using GUI defaults from settings)", file=sys.stderr, flush=True)
+
+            
+            # Execute research - always use native search
+            result = engine.generate_research(
+                prompt=prompt,
+                provider=provider,
+                model=research_model,
+                research_mode=research_mode,
+                reasoning_effort=reasoning_effort,
+                thinking_budget=thinking_budget,
+                style=style,
+                search_count=search_count,
+                max_results=max_results,  # OpenRouter only
+                force_search=force_search,
+                allowed_domains=args.get("allowed_domains"),
+                blocked_domains=args.get("blocked_domains"),
+                max_tokens=max_tokens,
+                progress_callback=research_progress
+            )
+            
+            if result.success:
+                print(f"✅ Research complete!", file=sys.stderr, flush=True)
+            else:
+                print(f"❌ Research failed: {result.error}", file=sys.stderr, flush=True)
+            
+            # Handle file output
+            if result.success and args.get("output_to_file"):
+                output_result = handle_file_output(args, result.response)
+                if output_result != result.response:
+                    result_dict = result.to_dict()
+                    result_dict["file_output"] = args["output_to_file"]
+                    return json.dumps(result_dict, ensure_ascii=False, indent=2)
+            
+            return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        
+        # Handle deepreasoning action (Anthropic only)
+        if action == "deepreasoning":
+            # Validate provider (implicit Anthropic)
+            provider = args.get("provider", "Anthropic AI")
+            if provider != "Anthropic AI":
+                return json.dumps({
+                    "success": False,
+                    "error": f"deepreasoning action only supports Anthropic AI, got: '{provider}'"
+                }, ensure_ascii=False)
+            
+            # Process file input for prompt
+            success, args, error = process_file_args(args, {"prompt": "prompt_is_file"})
+            if not success:
+                return json.dumps({
+                    "success": False,
+                    "error": error
+                }, ensure_ascii=False)
+            
+            prompt = args.get("prompt", "")
+            if not prompt:
+                return json.dumps({
+                    "success": False,
+                    "error": "Prompt is required for deepreasoning action"
+                }, ensure_ascii=False)
+            
+            # Read GUI-configured defaults from database
+            gui_settings = {}
+            if db_settings_manager:
+                try:
+                    gui_settings = db_settings_manager.get_setting(f"tool_settings.{provider}") or {}
+                except Exception:
+                    gui_settings = {}
+            
+            # Helper to get value: MCP arg > GUI setting > hardcoded default
+            def get_dr_setting(mcp_key, gui_key, default):
+                if mcp_key in args and args[mcp_key] is not None:
+                    return args[mcp_key]
+                if gui_key in gui_settings and gui_settings[gui_key]:
+                    val = gui_settings[gui_key]
+                    # Convert string booleans
+                    if isinstance(default, bool) and isinstance(val, str):
+                        return val.lower() in ('true', '1', 'yes', 'on')
+                    # Convert string ints/floats
+                    if isinstance(default, int) and isinstance(val, str):
+                        try:
+                            return int(float(val))
+                        except ValueError:
+                            return default
+                    return val
+                return default
+            
+            # Get settings with GUI defaults (MCP args override)
+            deepreasoning_model = get_dr_setting("research_model", "deepreasoning_model", "claude-opus-4-5-20251101")
+            thinking_budget = get_dr_setting("thinking_budget", "deepreasoning_thinking_budget", 32000)
+            enable_search = get_dr_setting("enable_search", "deepreasoning_enable_search", False)
+            search_engine = get_dr_setting("web_search_engine", "deepreasoning_search_engine", "tavily")
+            search_count = get_dr_setting("search_count", "deepreasoning_search_count", 5)
+            search_depth = get_dr_setting("search_depth", "deepreasoning_search_depth", "basic")
+            max_tokens = get_dr_setting("max_tokens", "deepreasoning_max_tokens", 64000)
+            
+            # Progress callback for deep reasoning
+            def reasoning_progress(current: int, total: int):
+                percent = int((current / total) * 100)
+                print(f"🧠 Deep Reasoning Progress: {percent}%", file=sys.stderr, flush=True)
+            
+            # Detailed logging
+            print(f"🧠 Starting Deep Reasoning with {deepreasoning_model}...", file=sys.stderr, flush=True)
+            print(f"   Model: {deepreasoning_model}", file=sys.stderr, flush=True)
+            print(f"   Thinking Budget: {thinking_budget:,} tokens", file=sys.stderr, flush=True)
+            print(f"   Max Tokens: {max_tokens}", file=sys.stderr, flush=True)
+            print(f"   Search: {'enabled (' + search_engine + ')' if enable_search else 'disabled'}", file=sys.stderr, flush=True)
+            if gui_settings:
+                print(f"   (Using GUI defaults from settings)", file=sys.stderr, flush=True)
+            
+            # Execute deep reasoning
+            result = engine.generate_deep_reasoning(
+                prompt=prompt,
+                model=deepreasoning_model,
+                thinking_budget=thinking_budget,
+                enable_search=enable_search,
+                search_engine=search_engine,
+                search_count=search_count,
+                search_depth=search_depth,
+                max_tokens=max_tokens,
+                progress_callback=reasoning_progress
+            )
+            
+            if result.success:
+                print(f"✅ Deep Reasoning complete!", file=sys.stderr, flush=True)
+            else:
+                print(f"❌ Deep Reasoning failed: {result.error}", file=sys.stderr, flush=True)
+            
+            # Handle file output
+            if result.success and args.get("output_to_file"):
+                output_result = handle_file_output(args, result.response)
+                if output_result != result.response:
+                    result_dict = result.to_dict()
+                    result_dict["file_output"] = args["output_to_file"]
+                    return json.dumps(result_dict, ensure_ascii=False, indent=2)
+            
+            return json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        
         # Unknown action
         return json.dumps({
             "success": False,
-            "error": f"Unknown action: {action}. Valid actions: generate, list_providers, list_models"
+            "error": f"Unknown action: {action}. Valid actions: generate, list_providers, list_models, research, deepreasoning"
         }, ensure_ascii=False)
 
 
