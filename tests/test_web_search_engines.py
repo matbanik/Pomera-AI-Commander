@@ -1,7 +1,8 @@
 """
 Web Search Engine Tests
 =======================
-Tests all 6 search engines using encrypted API keys from database settings.
+Tests all 7 search engines using encrypted API keys from database settings.
+Includes Exa (neural AI search), Tavily, Google, Brave, DuckDuckGo, SerpApi, and Serper.
 If an API key is not configured, provides instructions for the user.
 
 Run: python tests/test_web_search_engines.py
@@ -65,6 +66,7 @@ def run_all_tests():
     
     engines = [
         ("duckduckgo", False),   # No API key required
+        ("exa", True),           # API key required (neural AI search)
         ("tavily", True),        # API key required
         ("google", True),        # API key + CSE ID required
         ("brave", True),         # API key required

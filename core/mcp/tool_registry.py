@@ -3371,8 +3371,8 @@ class ToolRegistry:
             name="pomera_web_search",
             description=(
                 "Search the web using multiple engines. Engines: tavily (AI-optimized, recommended), "
-                "google (100/day free), brave (2000/month free), duckduckgo (free, no key), "
-                "serpapi (100 total free), serper (2500 total free).\n\n"
+                "exa (neural AI search, fast/deep modes), google (100/day free), brave (2000/month free), "
+                "duckduckgo (free, no key), serpapi (100 total free), serper (2500 total free).\n\n"
                 
                 "**TAVILY SEARCH DEPTH OPTIONS**:\n"
                 "- `basic` (default): 1 API credit, balanced relevance/speed, single NLP summary per URL\n"
@@ -3395,7 +3395,35 @@ class ToolRegistry:
                 
                 "**COST CONSIDERATION**:\n"
                 "Advanced search uses 2x the API credits. Use sparingly for complex queries "
-                "where precision matters most."
+                "where precision matters most.\n\n"
+                
+                "**EXA AI NEURAL SEARCH** (Recommended for AI agents):\n"
+                "Exa uses neural search built specifically for AI, providing higher relevance than traditional search.\n\n"
+                
+                "**EXA SEARCH TYPE OPTIONS**:\n"
+                "- `auto` (default): Balanced relevance and speed\n"
+                "- `fast`: Fastest, basic keyword matching\n"
+                "- `neural`: Deepest semantic understanding, highest relevance\n\n"
+                
+                "**EXA CATEGORIES** (specialized indexes):\n"
+                "- Empty string (default): General web search\n"
+                "- `news`: News articles\n"
+                "- `research paper`: Academic papers, arxiv, etc.\n"
+                "- `company`: Company information\n"
+                "- `tweet`: Twitter/X posts\n\n"
+                
+                "**EXA CONTENT OPTIONS**:\n"
+                "- `exa_content_type`: 'highlights' (token efficient, default) or 'text' (full webpage)\n"
+                "- `exa_max_characters`: Max characters to return (100-20000, default 2000)\n\n"
+                
+                "**EXA FRESHNESS**:\n"
+                "- `exa_max_age_hours`: Content age limit. 0=livecrawl (real-time), 24=daily, -1=cache only (default)\n\n"
+                
+                "**WHEN TO USE EXA**:\n"
+                "- For AI agent workflows requiring high semantic relevance\n"
+                "- Academic research (use category='research paper')\n"
+                "- News monitoring (use category='news' with max_age_hours=24)\n"
+                "- When you need specific phrase matching (use exa_include_text filter)"
             ),
             input_schema={
                 "type": "object",
@@ -3406,7 +3434,7 @@ class ToolRegistry:
                     },
                     "engine": {
                         "type": "string",
-                        "enum": ["tavily", "google", "brave", "duckduckgo", "serpapi", "serper"],
+                        "enum": ["tavily", "exa", "google", "brave", "duckduckgo", "serpapi", "serper"],
                         "description": "Search engine to use",
                         "default": "tavily"
                     },
@@ -3422,6 +3450,41 @@ class ToolRegistry:
                         "enum": ["basic", "advanced"],
                         "description": "Tavily only: 'basic' (1 credit, faster) or 'advanced' (2 credits, semantic snippets, highest relevance). Use advanced for complex research, RAG, or specialized queries.",
                         "default": "basic"
+                    },
+                    "exa_search_type": {
+                        "type": "string",
+                        "enum": ["auto", "fast", "neural"],
+                        "description": "Exa only: 'auto' (balanced), 'fast' (speed), or 'neural' (deep semantic relevance)",
+                        "default": "auto"
+                    },
+                    "exa_category": {
+                        "type": "string",
+                        "enum": ["", "news", "research paper", "company", "tweet"],
+                        "description": "Exa only: Specialized content category. Empty for general search.",
+                        "default": ""
+                    },
+                    "exa_content_type": {
+                        "type": "string",
+                        "enum": ["highlights", "text"],
+                        "description": "Exa only: 'highlights' (token efficient excerpts) or 'text' (full webpage)",
+                        "default": "highlights"
+                    },
+                    "exa_max_characters": {
+                        "type": "integer",
+                        "description": "Exa only: Max characters for content (100-20000)",
+                        "default": 2000,
+                        "minimum": 100,
+                        "maximum": 20000
+                    },
+                    "exa_max_age_hours": {
+                        "type": "integer",
+                        "description": "Exa only: Max content age in hours. 0=livecrawl (real-time), 24=daily fresh, -1=cache only (default)",
+                        "default": -1
+                    },
+                    "exa_include_text": {
+                        "type": "string",
+                        "description": "Exa only: Only return results containing this phrase",
+                        "default": ""
                     },
                     "output_to_file": {
                         "type": "string",
@@ -3448,7 +3511,7 @@ class ToolRegistry:
         if not query:
             return json.dumps({"success": False, "error": "Query is required"})
         
-        valid_engines = ["duckduckgo", "tavily", "google", "brave", "serpapi", "serper"]
+        valid_engines = ["duckduckgo", "tavily", "exa", "google", "brave", "serpapi", "serper"]
         if engine not in valid_engines:
             return json.dumps({
                 "success": False, 
@@ -3467,6 +3530,19 @@ class ToolRegistry:
                 if not api_key:
                     return json.dumps({"success": False, "error": "Tavily API key required. Configure in Web Search settings."})
                 results = self._mcp_search_tavily(query, count, api_key, search_depth)
+            elif engine == "exa":
+                if not api_key:
+                    return json.dumps({"success": False, "error": "Exa API key required. Configure in Web Search settings."})
+                # Get Exa-specific options from args
+                exa_options = {
+                    "search_type": args.get("exa_search_type", "auto"),
+                    "category": args.get("exa_category", ""),
+                    "content_type": args.get("exa_content_type", "highlights"),
+                    "max_characters": args.get("exa_max_characters", 2000),
+                    "max_age_hours": args.get("exa_max_age_hours", -1),
+                    "include_text": args.get("exa_include_text", "")
+                }
+                results = self._mcp_search_exa(query, count, api_key, exa_options)
             elif engine == "google":
                 if not api_key or not cse_id:
                     return json.dumps({"success": False, "error": "Google API key and CSE ID required. Configure in Web Search settings."})
@@ -3703,6 +3779,99 @@ class ToolRegistry:
              "url": item.get("link", ""), "source": "serper"}
             for item in result.get("organic", [])
         ]
+    
+    def _mcp_search_exa(self, query: str, count: int, api_key: str, options: dict) -> list:
+        """Search using Exa AI neural search API with advanced options.
+        
+        Args:
+            query: Search query
+            count: Number of results
+            api_key: Exa API key
+            options: Dict with exa-specific options:
+                - search_type: 'auto', 'fast', or 'neural'
+                - category: '', 'news', 'research paper', 'company', 'tweet'
+                - content_type: 'highlights' or 'text'
+                - max_characters: int (100-20000)
+                - max_age_hours: int (-1 for cache, 0 for livecrawl, positive for age limit)
+                - include_text: str (phrase filter)
+        """
+        import requests
+        
+        # Build request payload
+        payload = {
+            "query": query,
+            "numResults": min(count, 20),
+        }
+        
+        # Search type
+        search_type = options.get("search_type", "auto")
+        if search_type in ("auto", "fast", "neural"):
+            payload["type"] = search_type
+        else:
+            payload["type"] = "auto"
+        
+        # Category
+        category = options.get("category", "")
+        if category and category in ("news", "research paper", "company", "tweet"):
+            payload["category"] = category
+        
+        # Max age hours
+        max_age_hours = options.get("max_age_hours", -1)
+        if isinstance(max_age_hours, int) and max_age_hours >= 0:
+            payload["maxAgeHours"] = max_age_hours
+        
+        # Include text filter
+        include_text = options.get("include_text", "")
+        if include_text:
+            payload["includeText"] = [include_text]
+        
+        # Content configuration
+        content_type = options.get("content_type", "highlights")
+        max_chars = max(100, min(int(options.get("max_characters", 2000)), 20000))
+        
+        if content_type == "text":
+            payload["contents"] = {
+                "text": {
+                    "maxCharacters": max_chars
+                }
+            }
+        else:
+            payload["contents"] = {
+                "highlights": {
+                    "numSentences": 5,
+                    "highlightsPerUrl": 3
+                }
+            }
+        
+        # Use requests library (urllib has issues with Exa API headers)
+        response = requests.post(
+            "https://api.exa.ai/search",
+            json=payload,
+            headers={"x-api-key": api_key},
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        results = []
+        for item in result.get("results", [])[:count]:
+            # Extract snippet based on content type
+            if content_type == "text":
+                snippet = item.get("text", "")[:max_chars]
+            else:
+                highlights = item.get("highlights", [])
+                snippet = " ".join(highlights) if highlights else item.get("text", "")[:500]
+            
+            results.append({
+                "title": item.get("title", ""),
+                "snippet": snippet,
+                "url": item.get("url", ""),
+                "source": "exa",
+                "score": item.get("score"),
+                "published_date": item.get("publishedDate")
+            })
+        
+        return results
     
     def _register_read_url_tool(self) -> None:
         """Register the URL Content Reader Tool."""

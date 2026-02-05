@@ -502,11 +502,22 @@ Web-based content retrieval and search capabilities:
 
 - **Web Search**: Multi-engine web search with tabbed interface
   - **Implementation**: Inline in `pomera.py` with database-backed API key storage
-  - **Engines**: DuckDuckGo (free, no key), Tavily (AI-optimized), Google Custom Search, Brave, SerpApi, Serper
+  - **Engines**: DuckDuckGo (free), Tavily (AI-optimized), Exa (neural AI search), Google Custom Search, Brave, SerpApi, Serper
   - **Features**: Configurable results count, encrypted API key storage, per-engine settings
   - **API Key Management**: Keys stored encrypted in database, configured via Tool Options panel
   - **Usage**: Enter query in Input panel, select engine tab, click Search
   - **Availability**: Always available (some engines require API keys)
+  
+  **Exa AI Neural Search** (Recommended for AI workflows):
+  - **Search Types**: `auto` (balanced), `fast` (speed), `neural` (deep semantic relevance)
+  - **Categories**: General, `news`, `research paper`, `company`, `tweet`
+  - **Content Types**: `highlights` (token efficient), `text` (full webpage)
+  - **Max Characters**: 100-20,000 for content extraction
+  - **Freshness**: `max_age_hours` (-1=cache, 0=livecrawl, 24=daily, 720=monthly)
+  - **Phrase Filter**: `include_text` for results containing specific phrase
+  
+  **Tavily Search** (AI-Optimized):
+  - **Search Depth**: `basic` (1 credit, faster) or `advanced` (2 credits, semantic snippets)
 
 - **URL Content Reader**: Fetch and convert web pages to markdown
   - **Implementation**: `tools/url_content_reader.py`
@@ -2129,6 +2140,36 @@ The AI Tools Widget is a comprehensive multi-provider AI interface that integrat
 - **Local AI Support**: LM Studio integration for running local models without API keys
 - **AWS Integration**: Full AWS Bedrock support with multiple authentication methods and intelligent model filtering
 - **Security**: Encryption at rest for API keys using cryptography library (optional but recommended)
+- **AI Research Mode**: Deep research with extended reasoning + web search (OpenAI GPT-5.2, Anthropic Claude Opus 4.5, OpenRouter)
+- **Deepreasoning Mode**: 6-step structured reasoning protocol with Claude Opus 4.5 Extended Thinking
+
+#### AI Research Action (New)
+
+The AI Tools Widget now supports advanced research capabilities through the `research` action:
+
+| Provider | Model | Features |
+|----------|-------|----------|
+| OpenAI | GPT-5.2 | `reasoning_effort` (xhigh), deep reasoning |
+| Anthropic AI | Claude Opus 4.5 | `thinking_budget`, `search_count`, web search |
+| OpenRouterAI | Various (gemini-3-flash, sonar-deep-research) | `max_results`, web search |
+
+**Research Parameters:**
+- `research_mode`: `two-stage` (search→reason) or `single` (combined)
+- `reasoning_effort`: OpenAI effort level (none/low/medium/high/xhigh)
+- `thinking_budget`: Anthropic thinking tokens (1000-128000)
+- `search_count`: Anthropic web search uses
+- `max_results`: OpenRouter web search results (1-20)
+- `style`: Output format (analytical/concise/creative/report)
+
+#### Deepreasoning Action (New - Anthropic Only)
+
+6-step structured reasoning protocol using Claude Opus 4.5 Extended Thinking:
+1. **Decompose** - Break down complex queries
+2. **Search** - Optional web search during reasoning
+3. **Decide** - Make key determinations
+4. **Analyze** - Deep analysis
+5. **Verify** - Check conclusions
+6. **Synthesize** - Compile final answer
 
 #### Supported AI Providers
 

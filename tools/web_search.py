@@ -367,6 +367,119 @@ def search_serpapi(query: str, count: int = 5) -> List[Dict]:
         print(f"[ERROR] SerpApi: {e}")
         return []
 
+def search_exa(
+    query: str,
+    count: int = 10,
+    search_type: str = "auto",
+    content_type: str = "highlights",
+    max_characters: int = 2000,
+    category: str = "",
+    max_age_hours: int = -1,
+    include_text: str = ""
+) -> List[Dict]:
+    """
+    Search using Exa AI-powered neural search API.
+    
+    Args:
+        query: Search query string
+        count: Number of results (default 10, max 20)
+        search_type: "auto" (balanced), "fast" (speed), or "neural" (deep relevance)
+        content_type: "highlights" (token efficient, default) or "text" (full webpage)
+        max_characters: Max characters for content (default 2000, range 100-20000)
+        category: Specialized index - "news", "research paper", "company", "tweet", or "" for general
+        max_age_hours: Content freshness - 0=livecrawl, 24=daily, -1=cache only (default)
+        include_text: Only return results containing this phrase (optional)
+    
+    Returns:
+        List of result dicts with title, snippet, url, source, score
+    """
+    api_key = get_encrypted_api_key("exa")
+
+    if not api_key:
+        print("[ERROR] Exa API key not configured. Add in Pomera Web Search settings.")
+        return []
+    
+    # Validate search_type
+    if search_type not in ("auto", "fast", "neural"):
+        search_type = "auto"
+    
+    # Build request payload
+    payload = {
+        "query": query,
+        "type": search_type,
+        "numResults": min(count, 20),
+    }
+    
+    # Add category if specified
+    if category and category in ("news", "research paper", "company", "tweet"):
+        payload["category"] = category
+    
+    # Add content freshness if specified
+    if max_age_hours >= 0:
+        payload["maxAgeHours"] = max_age_hours
+    
+    # Add text filter if specified
+    if include_text:
+        payload["includeText"] = [include_text]
+    
+    # Configure content retrieval
+    max_chars = max(100, min(max_characters, 20000))
+    if content_type == "text":
+        payload["contents"] = {
+            "text": {
+                "maxCharacters": max_chars
+            }
+        }
+    else:
+        # Default to highlights (token efficient)
+        payload["contents"] = {
+            "highlights": {
+                "numSentences": 5,
+                "highlightsPerUrl": 3
+            }
+        }
+
+    try:
+        import requests
+        
+        # Use requests library (urllib has issues with Exa API headers)
+        response = requests.post(
+            "https://api.exa.ai/search",
+            json=payload,
+            headers={"x-api-key": api_key},
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        results = []
+        for i, item in enumerate(result.get("results", [])[:count], 1):
+            # Extract snippet based on content type
+            if content_type == "text":
+                snippet = item.get("text", "")[:max_chars]
+            else:
+                highlights = item.get("highlights", [])
+                snippet = " ".join(highlights) if highlights else item.get("text", "")[:500]
+            
+            results.append({
+                "title": item.get("title", ""),
+                "snippet": snippet,
+                "url": item.get("url", ""),
+                "source": "exa",
+                "position": i,
+                "score": item.get("score", None),
+                "published_date": item.get("publishedDate", None)
+            })
+
+        return results
+
+    except requests.exceptions.HTTPError as e:
+        print(f"[ERROR] Exa HTTP {e.response.status_code}: {e.response.reason}")
+        return []
+    except Exception as e:
+        print(f"[ERROR] Exa: {e}")
+        return []
+
 
 def search(query: str, engine: str = "duckduckgo", count: int = 5, search_depth: str = "basic") -> List[Dict]:
     """
@@ -394,6 +507,8 @@ def search(query: str, engine: str = "duckduckgo", count: int = 5, search_depth:
         return search_serpapi(query, count)
     elif engine == "brave":
         return search_brave(query, count)
+    elif engine == "exa":
+        return search_exa(query, count)
     else:
         print(f"[ERROR] Unknown engine: {engine}")
         return []

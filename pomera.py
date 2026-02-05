@@ -5567,6 +5567,7 @@ class PromeraAIApp(tk.Tk):
         # Engine configuration: (display_name, engine_key, api_key_url, needs_api_key, needs_cse_id)
         self.web_search_engines = [
             ("DuckDuckGo", "duckduckgo", None, False, False),  # Free, no API key
+            ("Exa", "exa", "https://exa.ai/", True, False),  # AI-powered neural search
             ("Tavily", "tavily", "https://tavily.com/", True, False),
             ("Google", "google", "https://programmablesearchengine.google.com/", True, True),  # Needs CSE ID
             ("Brave", "brave", "https://brave.com/search/api/", True, False),
@@ -5583,6 +5584,14 @@ class PromeraAIApp(tk.Tk):
         self.web_search_cse_vars = {}  # For Google CSE ID
         self.web_search_count_vars = {}
         self.web_search_depth_vars = {}  # For Tavily advanced search
+        
+        # Exa-specific settings
+        self.exa_search_type_var = None
+        self.exa_content_type_var = None
+        self.exa_max_chars_var = None
+        self.exa_category_var = None
+        self.exa_max_age_var = None
+        self.exa_include_text_var = None
         
         for display_name, engine_key, api_url, needs_api_key, needs_cse_id in self.web_search_engines:
             tab = ttk.Frame(self.web_search_notebook)
@@ -5668,6 +5677,88 @@ class PromeraAIApp(tk.Tk):
                 )
                 depth_check.pack(side=tk.LEFT, padx=15)
                 self.web_search_depth_vars[engine_key] = depth_var
+            
+            # Exa-specific options with 3-column layout
+            if engine_key == "exa":
+                exa_options_frame = ttk.LabelFrame(tab, text="Exa Options", padding=5)
+                exa_options_frame.pack(fill=tk.X, padx=5, pady=5)
+                
+                # Row 1 - 3 columns
+                row1 = ttk.Frame(exa_options_frame)
+                row1.pack(fill=tk.X, pady=2)
+                row1.columnconfigure(0, weight=1)
+                row1.columnconfigure(1, weight=1)
+                row1.columnconfigure(2, weight=1)
+                
+                # Column 1: Search Type
+                col1_r1 = ttk.Frame(row1)
+                col1_r1.grid(row=0, column=0, sticky="w", padx=5)
+                ttk.Label(col1_r1, text="Search Type:").pack(side=tk.LEFT)
+                saved_type = self._get_web_search_setting("exa", "search_type", "auto")
+                self.exa_search_type_var = tk.StringVar(value=saved_type)
+                type_combo = ttk.Combobox(col1_r1, textvariable=self.exa_search_type_var, 
+                                          values=["auto", "fast", "neural"], width=10, state="readonly")
+                type_combo.pack(side=tk.LEFT, padx=5)
+                type_combo.bind("<<ComboboxSelected>>", lambda e: self._save_web_search_setting("exa", "search_type", self.exa_search_type_var.get()))
+                
+                # Column 2: Content Type
+                col2_r1 = ttk.Frame(row1)
+                col2_r1.grid(row=0, column=1, sticky="w", padx=5)
+                ttk.Label(col2_r1, text="Content:").pack(side=tk.LEFT)
+                saved_content = self._get_web_search_setting("exa", "content_type", "highlights")
+                self.exa_content_type_var = tk.StringVar(value=saved_content)
+                content_combo = ttk.Combobox(col2_r1, textvariable=self.exa_content_type_var,
+                                             values=["highlights", "text"], width=10, state="readonly")
+                content_combo.pack(side=tk.LEFT, padx=5)
+                content_combo.bind("<<ComboboxSelected>>", lambda e: self._save_web_search_setting("exa", "content_type", self.exa_content_type_var.get()))
+                
+                # Column 3: Max Characters
+                col3_r1 = ttk.Frame(row1)
+                col3_r1.grid(row=0, column=2, sticky="w", padx=5)
+                ttk.Label(col3_r1, text="Max Chars (100-20000):").pack(side=tk.LEFT)
+                saved_chars = self._get_web_search_setting("exa", "max_characters", 2000)
+                self.exa_max_chars_var = tk.StringVar(value=str(saved_chars))
+                chars_entry = ttk.Entry(col3_r1, textvariable=self.exa_max_chars_var, width=8)
+                chars_entry.pack(side=tk.LEFT, padx=5)
+                chars_entry.bind("<FocusOut>", lambda e: self._save_web_search_setting("exa", "max_characters", int(self.exa_max_chars_var.get() or 2000)))
+                
+                # Row 2 - 3 columns
+                row2 = ttk.Frame(exa_options_frame)
+                row2.pack(fill=tk.X, pady=2)
+                row2.columnconfigure(0, weight=1)
+                row2.columnconfigure(1, weight=1)
+                row2.columnconfigure(2, weight=1)
+                
+                # Column 1: Category
+                col1_r2 = ttk.Frame(row2)
+                col1_r2.grid(row=0, column=0, sticky="w", padx=5)
+                ttk.Label(col1_r2, text="Category:").pack(side=tk.LEFT)
+                saved_cat = self._get_web_search_setting("exa", "category", "")
+                self.exa_category_var = tk.StringVar(value=saved_cat)
+                cat_combo = ttk.Combobox(col1_r2, textvariable=self.exa_category_var,
+                                         values=["", "news", "research paper", "company", "tweet"], width=14, state="readonly")
+                cat_combo.pack(side=tk.LEFT, padx=5)
+                cat_combo.bind("<<ComboboxSelected>>", lambda e: self._save_web_search_setting("exa", "category", self.exa_category_var.get()))
+                
+                # Column 2: Max Age Hours
+                col2_r2 = ttk.Frame(row2)
+                col2_r2.grid(row=0, column=1, sticky="w", padx=5)
+                ttk.Label(col2_r2, text="Max Age (hrs, -1=cache):").pack(side=tk.LEFT)
+                saved_age = self._get_web_search_setting("exa", "max_age_hours", -1)
+                self.exa_max_age_var = tk.StringVar(value=str(saved_age))
+                age_entry = ttk.Entry(col2_r2, textvariable=self.exa_max_age_var, width=6)
+                age_entry.pack(side=tk.LEFT, padx=5)
+                age_entry.bind("<FocusOut>", lambda e: self._save_web_search_setting("exa", "max_age_hours", int(self.exa_max_age_var.get() or -1)))
+                
+                # Column 3: Include Text
+                col3_r2 = ttk.Frame(row2)
+                col3_r2.grid(row=0, column=2, sticky="w", padx=5)
+                ttk.Label(col3_r2, text="Must contain:").pack(side=tk.LEFT)
+                saved_text = self._get_web_search_setting("exa", "include_text", "")
+                self.exa_include_text_var = tk.StringVar(value=saved_text)
+                text_entry = ttk.Entry(col3_r2, textvariable=self.exa_include_text_var, width=15)
+                text_entry.pack(side=tk.LEFT, padx=5)
+                text_entry.bind("<FocusOut>", lambda e: self._save_web_search_setting("exa", "include_text", self.exa_include_text_var.get()))
             
             # Search button
             search_btn = ttk.Button(
@@ -5762,6 +5853,8 @@ class PromeraAIApp(tk.Tk):
                 results = self._search_serpapi(query, count)
             elif engine_key == "serper":
                 results = self._search_serper(query, count)
+            elif engine_key == "exa":
+                results = self._search_exa(query, count)
             else:
                 self.update_output_text(f"Unknown search engine: {engine_key}")
                 return
@@ -5970,6 +6063,98 @@ class PromeraAIApp(tk.Tk):
             return results
         except Exception as e:
             self.logger.error(f"Serper search failed: {e}")
+            return [{"title": "Error", "snippet": str(e), "url": ""}]
+    
+    def _search_exa(self, query: str, count: int) -> list:
+        """Search using Exa AI-powered neural search API with all configured options."""
+        api_key = self._load_web_search_api_key("exa")
+        
+        # Debug: log key status (without exposing actual key)
+        if api_key:
+            self.logger.debug(f"Exa API key loaded, length: {len(api_key)}, starts with: {api_key[:4]}...")
+        else:
+            self.logger.debug("Exa API key NOT loaded (empty)")
+        
+        if not api_key:
+            return [{"title": "Error", "snippet": "Exa API key required. Enter in API Configuration.", "url": ""}]
+        
+        try:
+            import requests
+            import json
+            
+            # Get Exa-specific settings from GUI
+            search_type = self._get_web_search_setting("exa", "search_type", "auto")
+            content_type = self._get_web_search_setting("exa", "content_type", "highlights")
+            max_chars = self._get_web_search_setting("exa", "max_characters", 2000)
+            category = self._get_web_search_setting("exa", "category", "")
+            max_age_hours = self._get_web_search_setting("exa", "max_age_hours", -1)
+            include_text = self._get_web_search_setting("exa", "include_text", "")
+            
+            # Build request payload
+            payload = {
+                "query": query,
+                "type": search_type if search_type in ("auto", "fast", "neural") else "auto",
+                "numResults": min(count, 20),
+            }
+            
+            # Add category if specified
+            if category and category in ("news", "research paper", "company", "tweet"):
+                payload["category"] = category
+            
+            # Add content freshness if specified
+            if isinstance(max_age_hours, int) and max_age_hours >= 0:
+                payload["maxAgeHours"] = max_age_hours
+            
+            # Add text filter if specified
+            if include_text:
+                payload["includeText"] = [include_text]
+            
+            # Configure content retrieval
+            max_chars = max(100, min(int(max_chars) if max_chars else 2000, 20000))
+            if content_type == "text":
+                payload["contents"] = {
+                    "text": {
+                        "maxCharacters": max_chars
+                    }
+                }
+            else:
+                payload["contents"] = {
+                    "highlights": {
+                        "numSentences": 5,
+                        "highlightsPerUrl": 3
+                    }
+                }
+            
+            # Use requests library (urllib has issues with Exa API headers)
+            response = requests.post(
+                "https://api.exa.ai/search",
+                json=payload,
+                headers={"x-api-key": api_key},
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            results = []
+            for item in result.get("results", [])[:count]:
+                # Extract snippet based on content type
+                if content_type == "text":
+                    snippet = item.get("text", "")[:max_chars]
+                else:
+                    highlights = item.get("highlights", [])
+                    snippet = " ".join(highlights) if highlights else item.get("text", "")[:500]
+                
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": snippet,
+                    "url": item.get("url", ""),
+                    "score": item.get("score", None),
+                    "published_date": item.get("publishedDate", None)
+                })
+            
+            return results
+        except Exception as e:
+            self.logger.error(f"Exa search failed: {e}")
             return [{"title": "Error", "snippet": str(e), "url": ""}]
     
     def create_url_reader_options(self, parent):

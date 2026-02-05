@@ -439,7 +439,21 @@ class SettingsDefaultsRegistry:
                 "temperature": 0.7,
                 "top_p": 0.9,
                 "top_k": 40,
-                "stop_sequences": ""
+                "stop_sequences": "",
+                # Research tab defaults
+                "research_mode_enabled": False,
+                "research_model": "claude-opus-4-5-20251101",
+                "research_mode": "two-stage",
+                "research_thinking_budget": 32000,
+                "research_style": "analytical",
+                "research_search_count": 20,
+                "research_force_search": False,
+                "research_max_tokens": "64000",
+                # DeepReasoning tab defaults
+                "deepreasoning_enabled": False,
+                "deepreasoning_model": "claude-opus-4-5-20251101",
+                "deepreasoning_thinking_budget": 32000,
+                "deepreasoning_max_tokens": "64000"
             },
             required_keys={"API_KEY", "MODEL"},
             description="Anthropic Claude AI integration"
@@ -474,7 +488,15 @@ class SettingsDefaultsRegistry:
                 "presence_penalty": 0.0,
                 "seed": "",
                 "response_format": "text",
-                "stop": ""
+                "stop": "",
+                # Research tab defaults
+                "research_mode_enabled": False,
+                "research_model": "gpt-5.2",
+                "research_mode": "two-stage",
+                "reasoning_effort": "xhigh",
+                "research_style": "analytical",
+                "research_force_search": False,
+                "research_max_tokens": "64000"
             },
             required_keys={"API_KEY", "MODEL"},
             description="OpenAI GPT integration"
@@ -604,7 +626,15 @@ class SettingsDefaultsRegistry:
                 "presence_penalty": 0.0,
                 "repetition_penalty": 1.0,
                 "seed": "",
-                "stop": ""
+                "stop": "",
+                # Research tab defaults
+                "research_mode_enabled": False,
+                "research_model": "perplexity/sonar-deep-research",
+                "research_mode": "two-stage",
+                "reasoning_effort": "high",
+                "research_style": "analytical",
+                "research_max_results": 10,
+                "research_max_tokens": "64000"
             },
             required_keys={"API_KEY", "MODEL"},
             description="OpenRouter AI integration (includes free models)"

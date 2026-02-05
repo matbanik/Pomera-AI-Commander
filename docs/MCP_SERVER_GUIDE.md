@@ -254,16 +254,19 @@ When security is enabled and you encounter a locked error:
 |-----------|-------------|
 | `pomera_ai_tools` | Access 11 AI providers (Google AI, OpenAI, Anthropic, Groq, OpenRouter, Azure, Vertex, Cohere, HuggingFace, LM Studio, AWS Bedrock) via MCP |
 
-#### AI Tools Usage
+#### AI Tools Actions
+
+| Action | Description | Providers |
+|--------|-------------|-----------|
+| `list_providers` | List available AI providers | All |
+| `list_models` | List models for a specific provider | All |
+| `generate` | Generate text using AI | All 11 providers |
+| `research` | Deep research with extended reasoning + web search | OpenAI, Anthropic, OpenRouter |
+| `deepreasoning` | 6-step structured reasoning protocol | Anthropic only |
+
+#### Generate Action (Standard)
 
 ```bash
-# List available providers
-pomera_ai_tools action=list_providers
-
-# List models for a provider
-pomera_ai_tools action=list_models provider="OpenAI"
-
-# Generate text
 pomera_ai_tools action=generate \
   provider="OpenAI" \
   model="gpt-4o-mini" \
@@ -273,12 +276,76 @@ pomera_ai_tools action=generate \
   max_tokens=500
 ```
 
-**Parameters:**
+#### Research Action (Deep Research with Web Search)
+
+**Supported Providers and Models:**
+
+| Provider | Model | Features |
+|----------|-------|----------|
+| OpenAI | GPT-5.2 | `reasoning_effort` (xhigh), deep reasoning |
+| Anthropic AI | Claude Opus 4.5 | `thinking_budget`, `search_count`, web search |
+| OpenRouterAI | Various (gemini-3-flash, sonar-deep-research) | `max_results`, web search |
+
+```bash
+# OpenAI Research
+pomera_ai_tools action=research \
+  provider="OpenAI" \
+  prompt="Research current trends in..." \
+  reasoning_effort="xhigh" \
+  max_tokens=16000
+
+# Anthropic Research (with web search)
+pomera_ai_tools action=research \
+  provider="Anthropic AI" \
+  prompt="Analyze the impact of..." \
+  thinking_budget=32000 \
+  search_count=10
+
+# OpenRouter Research
+pomera_ai_tools action=research \
+  provider="OpenRouterAI" \
+  research_model="perplexity/sonar-deep-research" \
+  prompt="Find the latest data on..." \
+  max_results=10
+```
+
+**Research Parameters:**
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|  
+| `research_mode` | string | `two-stage` (search→reason) or `single` (combined) | two-stage |
+| `reasoning_effort` | string | OpenAI: `none`, `low`, `medium`, `high`, `xhigh` | xhigh |
+| `thinking_budget` | integer | Anthropic thinking tokens (1000-128000) | 32000 |
+| `search_count` | integer | Anthropic web search uses | 10 |
+| `max_results` | integer | OpenRouter web search results (1-20) | 10 |
+| `style` | string | Output format: `analytical`, `concise`, `creative`, `report` | analytical |
+| `force_search` | boolean | Force web search before reasoning | false |
+
+#### Deepreasoning Action (Anthropic Only)
+
+Uses Claude Opus 4.5 Extended Thinking with 6-step protocol:
+1. **Decompose** - Break down complex queries
+2. **Search** - Optional web search during reasoning
+3. **Decide** - Make key determinations
+4. **Analyze** - Deep analysis
+5. **Verify** - Check conclusions
+6. **Synthesize** - Compile final answer
+
+```bash
+pomera_ai_tools action=deepreasoning \
+  provider="Anthropic AI" \
+  prompt="Analyze the architectural implications..." \
+  thinking_budget=64000 \
+  force_search=true \
+  style="report"
+```
+
+**Standard Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `action` | string | `list_providers`, `list_models`, or `generate` |
-| `provider` | string | AI provider name (required for generate) |
+| `action` | string | `list_providers`, `list_models`, `generate`, `research`, `deepreasoning` |
+| `provider` | string | AI provider name (required for generate/research) |
 | `model` | string | Model name (uses default if not specified) |
 | `prompt` | string | Input text to send to AI |
 | `prompt_is_file` | boolean | If true, load prompt from file path |
@@ -323,8 +390,66 @@ pomera_ai_tools action=generate \
 
 | Tool Name | Description |
 |-----------|-------------|
-| `pomera_web_search` | Search the web using multiple engines (Tavily, Google, Brave, DuckDuckGo, SerpApi, Serper). API keys loaded from Pomera UI settings. |
+| `pomera_web_search` | Search the web using 7 engines (Tavily, Exa, Google, Brave, DuckDuckGo, SerpApi, Serper). API keys loaded from Pomera UI settings. |
 | `pomera_read_url` | Fetch URL content and convert HTML to clean Markdown. Extracts main content area. |
+
+#### Web Search Engines
+
+| Engine | API Key | Free Tier | Best For |
+|--------|---------|-----------|----------|
+| `tavily` | Required | 1000/month | AI-optimized, default choice |
+| `exa` | Required | 1000/month | Neural AI search, highest semantic relevance |
+| `google` | Required | 100/day | Complex queries, local/commercial intent |
+| `brave` | Required | 2000/month | General fallback |
+| `duckduckgo` | None | Unlimited | Quick, privacy-focused |
+| `serpapi` | Required | 100 total | Google SERP parsing |
+| `serper` | Required | 2500 total | Google SERP API |
+
+#### Exa AI Neural Search (Recommended for AI Agents)
+
+Exa uses neural search built specifically for AI, providing higher semantic relevance than traditional keyword search.
+
+```bash
+pomera_web_search \
+  query="Python machine learning best practices" \
+  engine="exa" \
+  count=5 \
+  exa_search_type="neural" \
+  exa_category="research paper" \
+  exa_content_type="highlights" \
+  exa_max_age_hours=720
+```
+
+**Exa Parameters:**
+
+| Parameter | Type | Values | Description |
+|-----------|------|--------|-------------|
+| `exa_search_type` | string | `auto`, `fast`, `neural` | `auto` (balanced), `fast` (speed), `neural` (deep semantic) |
+| `exa_category` | string | `news`, `research paper`, `company`, `tweet`, `` | Specialized content index (empty for general) |
+| `exa_content_type` | string | `highlights`, `text` | `highlights` (token efficient), `text` (full webpage) |
+| `exa_max_characters` | integer | 100-20000 | Max characters for content (default: 2000) |
+| `exa_max_age_hours` | integer | -1, 0, 24, 720+ | Content freshness: -1=cache, 0=livecrawl, 24=daily |
+| `exa_include_text` | string | phrase | Only return results containing this phrase |
+
+**When to Use Exa:**
+- For AI agent workflows requiring high semantic relevance
+- Academic research (use `exa_category="research paper"`)
+- News monitoring (use `exa_category="news"` with `exa_max_age_hours=24`)
+- When you need specific phrase matching (use `exa_include_text` filter)
+
+#### Tavily Search (AI-Optimized)
+
+```bash
+# Basic search (1 credit)
+pomera_web_search query="topic" engine="tavily" count=5
+
+# Advanced search (2 credits, higher relevance)
+pomera_web_search query="topic" engine="tavily" search_depth="advanced"
+```
+
+| Parameter | Values | Description |
+|-----------|--------|-------------|
+| `search_depth` | `basic`, `advanced` | `basic` (1 credit), `advanced` (2 credits, semantic snippets) |
 
 ### Notes Management (1)
 
@@ -568,28 +693,60 @@ AI uses: pomera_generators(type="uuid")
 Result: "550e8400-e29b-41d4-a716-446655440000"
 ```
 
-### Example 4: Web Search
+### Example 4: Web Search (Exa Neural Search)
 
 ```
-User: Search for Python documentation
+User: Find recent research on transformer architectures
 
-AI uses: pomera_web_search(query="Python documentation", engine="duckduckgo", count=5)
+AI uses: pomera_web_search(
+  query="transformer architecture deep learning",
+  engine="exa",
+  count=5,
+  exa_search_type="neural",
+  exa_category="research paper",
+  exa_max_age_hours=720
+)
 
 Result: {
   "success": true,
-  "engine": "duckduckgo",
+  "engine": "exa",
   "results": [
-    {"title": "Welcome to Python.org", "snippet": "...", "url": "https://python.org"},
+    {
+      "title": "Transformer (deep learning)",
+      "snippet": "Multi-head attention mechanism...",
+      "url": "https://en.wikipedia.org/wiki/Transformer_(deep_learning)",
+      "score": 0.89,
+      "published_date": "2024-12-15"
+    },
     ...
   ]
 }
 ```
 
-> **Note:** API keys for Tavily, Google, Brave, SerpApi, and Serper must be configured in the Pomera UI (Web Search tool settings). DuckDuckGo requires no API key.
+> **Note:** API keys for Tavily, Exa, Google, Brave, SerpApi, and Serper must be configured in the Pomera UI (Web Search tool settings). DuckDuckGo requires no API key.
 
-### Example 5: Read URL Content
+### Example 5: AI Research with Web Search
 
 ```
+User: Research the latest developments in quantum computing
+
+AI uses: pomera_ai_tools(
+  action="research",
+  provider="OpenAI",
+  prompt="What are the most significant quantum computing breakthroughs in the past 6 months?",
+  reasoning_effort="xhigh",
+  max_tokens=8000
+)
+
+Result: {
+  "success": true,
+  "provider": "OpenAI",
+  "model": "gpt-5.2",
+  "response": "Based on my research..."
+}
+```
+
+### Example 6: Read URL Content\n\n```
 User: Summarize this article: https://example.com/article
 
 AI uses: pomera_read_url(url="https://example.com/article")
