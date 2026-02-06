@@ -94,8 +94,26 @@ def main():
         default="{}",
         help="JSON arguments for --call (default: {})"
     )
+    parser.add_argument(
+        "--data-dir",
+        metavar="PATH",
+        help="Explicit data directory path (overrides config). Sets POMERA_DATA_DIR env var."
+    )
+    parser.add_argument(
+        "--config-dir",
+        metavar="PATH",
+        help="Explicit config directory path. Sets POMERA_CONFIG_DIR env var."
+    )
     
     args = parser.parse_args()
+    
+    # Set environment variables from CLI arguments BEFORE importing modules
+    if args.data_dir:
+        os.environ["POMERA_DATA_DIR"] = args.data_dir
+        logger.info(f"Using explicit data directory: {args.data_dir}")
+    if args.config_dir:
+        os.environ["POMERA_CONFIG_DIR"] = args.config_dir
+        logger.info(f"Using explicit config directory: {args.config_dir}")
     
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)

@@ -784,6 +784,65 @@ If using the executable, ensure it's not blocked:
 2. Check "Unblock" if present
 3. Click Apply
 
+### Cross-IDE Database Discovery (API Keys Not Found)
+
+When using Pomera MCP from multiple IDEs (Claude Desktop, Cursor, Cline, Antigravity), they may resolve database paths differently. If one IDE works but another can't find your API keys:
+
+**Option 1: Use environment variable (recommended for cross-IDE deployment)**
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "pomera-ai-commander",
+      "env": {
+        "POMERA_DATA_DIR": "C:/path/to/your/data"
+      }
+    }
+  }
+}
+```
+
+**Option 2: Use CLI argument**
+
+```json
+{
+  "mcpServers": {
+    "pomera": {
+      "command": "pomera-ai-commander",
+      "args": ["--data-dir", "C:/path/to/your/data"]
+    }
+  }
+}
+```
+
+**Option 3: Diagnose path resolution**
+
+Call the `pomera_diagnose` MCP tool to see exactly where each IDE is looking:
+
+```bash
+# Via CLI
+pomera-ai-commander --call pomera_diagnose --args '{}'
+
+# Via MCP (in your AI assistant)
+pomera_diagnose(verbose=true)
+```
+
+**Output includes:**
+- Current data directory
+- Config file location
+- Environment variables (POMERA_DATA_DIR, POMERA_CONFIG_DIR)
+- Database file existence and sizes
+- Recommendations if databases are missing
+
+**Environment Variables:**
+
+| Variable | Purpose |
+|----------|---------|
+| `POMERA_DATA_DIR` | Override data directory (highest priority) |
+| `POMERA_CONFIG_DIR` | Override config file location |
+| `POMERA_PORTABLE` | Enable portable mode (data in installation dir) |
+
 ---
 
 ## Resources

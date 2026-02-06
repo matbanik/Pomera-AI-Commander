@@ -40,6 +40,11 @@ APP_NAME = "Pomera-AI-Commander"
 APP_AUTHOR = "PomeraAI"
 CONFIG_FILENAME = "config.json"
 
+# Environment variables for explicit path override (cross-IDE compatibility)
+# These take highest priority when set, enabling MCP clients to specify paths
+POMERA_DATA_DIR_ENV = "POMERA_DATA_DIR"
+POMERA_CONFIG_DIR_ENV = "POMERA_CONFIG_DIR"
+
 # Global portable mode flag (set via CLI --portable or environment variable)
 _portable_mode: Optional[bool] = None
 
@@ -66,19 +71,29 @@ def _get_config_dir() -> Path:
     """
     Get platform-specific config directory.
     
-    This is separate from data directory and stores only the path preference.
+    Priority order:
+    1. POMERA_CONFIG_DIR environment variable (for cross-IDE compatibility)
+    2. platformdirs user_config_dir
+    3. Manual platform-specific fallback
     
     Returns:
         Path to config directory
     """
+    # 1. Check environment variable first (cross-IDE support)
+    env_config_dir = os.environ.get(POMERA_CONFIG_DIR_ENV)
+    if env_config_dir:
+        return Path(env_config_dir)
+    
     system = platform.system()
     
+    # 2. Try platformdirs
     if PLATFORMDIRS_AVAILABLE:
         try:
             return Path(user_config_dir(APP_NAME, APP_AUTHOR))
         except Exception:
             pass  # Fall through to manual detection
     
+    # 3. Manual platform-specific fallback
     if system == "Windows":
         base = os.environ.get("APPDATA", os.path.expanduser("~"))
         return Path(base) / APP_NAME
@@ -342,21 +357,30 @@ def get_user_data_dir() -> Path:
     Get the platform-appropriate user data directory.
     
     Priority order:
-    1. Custom directory from config file
-    2. Portable mode (installation directory)
-    3. Platform default from platformdirs
-    4. Fallback platform-specific path
+    1. POMERA_DATA_DIR environment variable (for cross-IDE compatibility)
+    2. Custom directory from config file
+    3. Portable mode (installation directory)
+    4. Platform default from platformdirs
+    5. Fallback platform-specific path
     
     Returns:
         Path to user data directory (created if doesn't exist)
     """
-    # Check for custom directory in config
+    # 1. Check POMERA_DATA_DIR environment variable first (cross-IDE support)
+    env_data_dir = os.environ.get(POMERA_DATA_DIR_ENV)
+    if env_data_dir:
+        data_dir = Path(env_data_dir)
+        _get_logger().debug(f"Using {POMERA_DATA_DIR_ENV} environment variable: {data_dir}")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return data_dir
+    
+    # 2. Check for custom directory in config
     config = load_config()
     custom_dir = config.get("data_directory")
     
     if custom_dir:
         data_dir = Path(custom_dir)
-        _get_logger().debug(f"Using custom data directory: {data_dir}")
+        _get_logger().debug(f"Using custom data directory from config: {data_dir}")
     elif is_portable_mode():
         data_dir = _get_installation_dir()
         _get_logger().debug(f"Using portable data directory: {data_dir}")
@@ -476,10 +500,17 @@ def get_data_directory_info() -> dict:
     """
     return {
         'user_data_dir': str(get_user_data_dir()),
+        'config_dir': str(_get_config_dir()),
+        'config_file': str(_get_config_path()),
         'backup_dir': str(get_backup_dir()),
         'portable_mode': is_portable_mode(),
         'platformdirs_available': PLATFORMDIRS_AVAILABLE,
         'installation_dir': str(_get_installation_dir()),
+        'environment_variables': {
+            POMERA_DATA_DIR_ENV: os.environ.get(POMERA_DATA_DIR_ENV),
+            POMERA_CONFIG_DIR_ENV: os.environ.get(POMERA_CONFIG_DIR_ENV),
+            'POMERA_PORTABLE': os.environ.get('POMERA_PORTABLE'),
+        },
     }
 
 

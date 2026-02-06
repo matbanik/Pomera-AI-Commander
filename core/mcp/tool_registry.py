@@ -243,6 +243,9 @@ class ToolRegistry:
         # AI Tools (Phase 8) - AI model access via MCP
         self._register_ai_tools_tool()
         
+        # Diagnostic Tool (Phase 9) - Cross-IDE path troubleshooting
+        self._register_diagnose_tool()
+        
         self._logger.info(f"Registered {len(self._tools)} built-in MCP tools")
 
     
@@ -5030,6 +5033,117 @@ class ToolRegistry:
             "success": False,
             "error": f"Unknown action: {action}. Valid actions: generate, list_providers, list_models, research, deepreasoning"
         }, ensure_ascii=False)
+    
+    # =========================================================================
+    # Diagnostic Tool (Phase 9) - Cross-IDE Path Troubleshooting
+    # =========================================================================
+    
+    def _register_diagnose_tool(self) -> None:
+        """Register diagnostic tool for path troubleshooting."""
+        self.register(MCPToolAdapter(
+            name="pomera_diagnose",
+            description="Diagnose Pomera MCP configuration for cross-IDE compatibility. "
+                       "Returns database paths, config file locations, environment variable status, "
+                       "and file existence. Use this to troubleshoot when API keys or settings are not found.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "verbose": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Include detailed search path information and all config values"
+                    }
+                }
+            },
+            handler=self._handle_diagnose
+        ))
+    
+    def _handle_diagnose(self, args: Dict[str, Any]) -> str:
+        """Handle diagnostic tool execution."""
+        import json
+        import os
+        from pathlib import Path
+        
+        verbose = args.get("verbose", False)
+        
+        try:
+            from core.data_directory import (
+                get_database_path, get_data_directory_info, load_config,
+                POMERA_DATA_DIR_ENV, POMERA_CONFIG_DIR_ENV
+            )
+            
+            # Get directory info
+            dir_info = get_data_directory_info()
+            config = load_config()
+            
+            # Check database files
+            data_dir = Path(dir_info['user_data_dir'])
+            databases = {}
+            for db_name in ['settings.db', 'notes.db', 'settings.json']:
+                db_path = data_dir / db_name
+                if db_path.exists():
+                    databases[db_name] = {
+                        "exists": True,
+                        "path": str(db_path),
+                        "size_bytes": db_path.stat().st_size
+                    }
+                else:
+                    databases[db_name] = {
+                        "exists": False,
+                        "expected_path": str(db_path)
+                    }
+            
+            # Determine config source
+            env_data_dir = os.environ.get(POMERA_DATA_DIR_ENV)
+            env_config_dir = os.environ.get(POMERA_CONFIG_DIR_ENV)
+            
+            if env_data_dir:
+                config_source = f"POMERA_DATA_DIR environment variable: {env_data_dir}"
+            elif config.get("data_directory"):
+                config_source = f"config file ({dir_info['config_file']}): data_directory={config['data_directory']}"
+            elif dir_info.get("portable_mode"):
+                config_source = "portable mode (installation directory)"
+            else:
+                config_source = "platform default (platformdirs)"
+            
+            result = {
+                "status": "ok",
+                "data_directory": dir_info['user_data_dir'],
+                "config_file": dir_info.get('config_file', 'unknown'),
+                "config_source": config_source,
+                "databases": databases,
+                "environment": {
+                    POMERA_DATA_DIR_ENV: env_data_dir,
+                    POMERA_CONFIG_DIR_ENV: env_config_dir,
+                    "POMERA_PORTABLE": os.environ.get("POMERA_PORTABLE"),
+                },
+                "portable_mode": dir_info.get("portable_mode", False),
+                "platformdirs_available": dir_info.get("platformdirs_available", False),
+            }
+            
+            if verbose:
+                result["config_values"] = config
+                result["installation_dir"] = dir_info.get("installation_dir")
+                result["backup_dir"] = dir_info.get("backup_dir")
+            
+            # Add recommendations if issues detected
+            missing_dbs = [k for k, v in databases.items() if not v.get("exists")]
+            if missing_dbs:
+                result["warning"] = f"Missing database files: {', '.join(missing_dbs)}"
+                result["recommendations"] = [
+                    f"Set {POMERA_DATA_DIR_ENV} environment variable to the directory containing your databases",
+                    "Or use --data-dir argument when starting the MCP server",
+                    "Or ensure config.json has correct 'data_directory' value"
+                ]
+            
+            return json.dumps(result, indent=2, ensure_ascii=False)
+            
+        except Exception as e:
+            self._logger.exception("Diagnostic tool failed")
+            return json.dumps({
+                "status": "error",
+                "error": str(e)
+            }, indent=2)
 
 
 # Singleton instance for convenience
