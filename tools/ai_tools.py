@@ -67,10 +67,13 @@ def get_system_encryption_key():
         return None
     
     try:
-        # Use machine-specific data as salt
-        machine_id = os.environ.get('COMPUTERNAME', '') + os.environ.get('USERNAME', '')
-        if not machine_id:
-            machine_id = os.environ.get('HOSTNAME', '') + os.environ.get('USER', '')
+        import platform
+        import getpass
+        
+        # Use platform-native methods instead of env vars (works in MCP context)
+        # platform.node() returns hostname (same as COMPUTERNAME on Windows)
+        # getpass.getuser() returns current user (same as USERNAME on Windows)
+        machine_id = platform.node() + getpass.getuser()
         
         salt = machine_id.encode()[:16].ljust(16, b'0')
         
