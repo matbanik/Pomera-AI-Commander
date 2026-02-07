@@ -1,12 +1,12 @@
 ---
-description: How to develop Tools and Gadgets in Pomera AI Commander
+description: How to develop Tools and Widgets in Pomera AI Commander
 ---
 
 # Tool Development Workflow
 
-Complete guide for developing **Tools** and **Gadgets** in Pomera AI Commander, based on URL Reader HTML Extraction implementation and codebase patterns.
+Complete guide for developing **Tools** and **Widgets** in Pomera AI Commander, based on URL Reader HTML Extraction implementation and codebase patterns.
 
-## Tool vs Gadget: Critical Distinction
+## Tool vs Widget: Critical Distinction
 
 ### **Tool** = Text Processing
 - Processes text from Input tabs → outputs to Output tabs
@@ -15,7 +15,7 @@ Complete guide for developing **Tools** and **Gadgets** in Pomera AI Commander, 
 - Appears in MCP registry for AI agent access
 - **Examples**: Case Tool, URL Reader, HTML Tool, JSON/XML Tool
 
-### **Gadget** = Standalone Widget  
+### **Widget** = Standalone Widget  
 - Opens in separate window (not tied to Input/Output)
 - Self-contained functionality
 - Excluded from tool search (`is_widget=True`)
@@ -50,7 +50,7 @@ Complete guide for developing **Tools** and **Gadgets** in Pomera AI Commander, 
 - `GENERATORS` - Password, UUID, Lorem Ipsum, ASCII Art
 - `ANALYSIS` - Text Statistics, Cron Tool
 - `UTILITY` - Web Search, URL Reader, cURL Tool
-- `MCP` - MCP Manager (gadget)
+- `MCP` - MCP Manager (widget)
 
 **Parent-Child Tools** (tabs within single tool):
 ```python
@@ -354,7 +354,7 @@ PARENT_TOOLS = {
 }
 ```
 
-### Pattern 3: Standalone Gadgets
+### Pattern 3: Standalone Widgets
 
 **Key differences**:
 - Set `is_widget=True` in ToolSpec
@@ -363,10 +363,10 @@ PARENT_TOOLS = {
 - Has own UI, not tied to Input/Output
 
 ```python
-"Your Gadget": ToolSpec(
-    name="Your Gadget",
-    module_path="tools.your_gadget",
-    class_name="YourGadgetClass",
+"Your Widget": ToolSpec(
+    name="Your Widget",
+    module_path="tools.your_widget",
+    class_name="YourWidgetClass",
     category=ToolCategory.UTILITY,
     is_widget=True,  # 🔑 Excludes from tool search & MCP
     description="Standalone functionality"
@@ -557,7 +557,7 @@ Total: **3 files** minimum, **4 files** for MCP support.
 - **One registration** per tool in `TOOL_SPECS`
 - **Settings in tk.Var** with trace callbacks for auto-persistence
 - **Reuse existing tools** when possible (import + call)
-- **Tools process text**, **Gadgets are standalone**
+- **Tools process text**, **Widgets are standalone**
 - **MCP for AI agents**, UI for humans
 
 ### Pro Tips

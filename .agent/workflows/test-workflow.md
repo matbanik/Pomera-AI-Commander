@@ -34,7 +34,7 @@ python tests/analyze_coverage.py
 
 Pomera has 3 types of components to test:
 
-1. **Tools** (47 registered + ~50 sub-tools)
+1. **Tools** (verify current count via `tools/tool_loader.py` TOOL_SPECS + PARENT_TOOLS)
    - Text processing in options panel
    - Many have sub-tools in tabs
    - Most exposed via MCP
@@ -566,7 +566,7 @@ python tests/test_registry.py
 python tests/analyze_coverage.py
 
 # Output:
-# Tools: 6/47 (12.8% coverage)
+# Tools: 6/N (verify current total via TOOL_SPECS in tools/tool_loader.py)
 # Widgets: 2/5 (40.0% coverage)
 # MCP: 4/27 (14.8% coverage)
 #

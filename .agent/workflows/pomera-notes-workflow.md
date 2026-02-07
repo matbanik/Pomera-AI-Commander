@@ -85,24 +85,29 @@ mcp_pomera_pomera_notes(
 )
 ```
 
-**CORRECT:**
+**CORRECT** (AI agent MCP tool invocation):
 ```python
-# 1. First read the file
-file_content = view_file("p:/project/myfile.py")
+# 1. First read the file content
+# (use view_file or read from filesystem)
 
-# 2. Create backup via MCP
-mcp_backup_backup_create(file_path="p:/project/myfile.py")
-
-# 3. Save to Pomera with FULL content
+# 2. Save to Pomera Notes with FULL content
 mcp_pomera_pomera_notes(
     action="save",
     title="Deleted/myfile.py-2026-01-19",
-    input_content=file_content,  # FULL content!
-    output_content="Reason: Feature deprecated. Backup: .code_backups/..."
+    input_content="<paste full file content here>",  # FULL content!
+    output_content="Reason: Feature deprecated."
 )
 
-# 4. Then delete
-run_command("Remove-Item ...")
+# Alternative: load directly from file path
+mcp_pomera_pomera_notes(
+    action="save",
+    title="Deleted/myfile.py-2026-01-19",
+    input_content="p:/project/myfile.py",
+    input_content_is_file=True,  # Pomera loads the file content
+    output_content="Reason: Feature deprecated."
+)
+
+# 3. Then delete the file
 ```
 
 ---

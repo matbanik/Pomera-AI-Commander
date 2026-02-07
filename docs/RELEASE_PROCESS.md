@@ -89,7 +89,7 @@ The automated workflow will:
 
 #### Update Documentation (if needed)
 - Update README.md if new features were added
-- Update TOOLS_DOCUMENTATION.md for new tools
+- Update docs/tools/ category files for new tools (see docs/tools/INDEX.md)
 - Create or update migration guides for breaking changes
 
 #### Announce the Release

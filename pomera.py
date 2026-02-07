@@ -3227,7 +3227,7 @@ class PromeraAIApp(tk.Tk):
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Data Location...", command=self._show_data_location_dialog)
-        file_menu.add_command(label="Export Location", command=self.browse_export_path)
+        file_menu.add_command(label="Export Location...", command=self._show_export_location_dialog)
         file_menu.add_separator()
         
         # Export Selected Output submenu
@@ -3403,6 +3403,15 @@ class PromeraAIApp(tk.Tk):
         erase_input_btn.pack(side=tk.LEFT, padx=(5, 0))
         self.Tooltip(erase_input_btn, "Erase Tabs")
         
+        # Export Selected Input dropdown
+        export_input_menubutton = ttk.Menubutton(title_row, text="⬇", width=3)
+        export_input_menubutton.pack(side=tk.LEFT, padx=(6, 0))
+        self.Tooltip(export_input_menubutton, "Export Selected Input")
+        export_input_dropdown = tk.Menu(export_input_menubutton, tearoff=0)
+        export_input_menubutton.config(menu=export_input_dropdown)
+        for fmt in ["CSV", "PDF", "TXT", "DOCX"]:
+            export_input_dropdown.add_command(label=fmt, command=lambda f=fmt.lower(): self.quick_export_input(f))
+        
         self.input_notebook = ttk.Notebook(input_frame)
         self.input_notebook.grid(row=1, column=0, sticky="nsew")
         self.input_tabs = []
@@ -3467,6 +3476,11 @@ class PromeraAIApp(tk.Tk):
         clear_input_filter_btn.grid(row=0, column=2, padx=(0, 5))
         self.Tooltip(clear_input_filter_btn, "Clear Filter")
         
+        # Save as Note button at the right edge of input filter row
+        save_note_btn = ttk.Button(filter_frame, text="💾 Save as Note", command=self.save_as_note)
+        save_note_btn.grid(row=0, column=3, padx=(5, 0))
+        self.Tooltip(save_note_btn, "Save as Note (Ctrl+S)")
+        
         # Store original content for filtering
         self.input_original_content = [""] * AppConfig.TAB_COUNT
         
@@ -3508,6 +3522,15 @@ class PromeraAIApp(tk.Tk):
         erase_output_btn = ttk.Button(title_row, text="⌫", command=self.clear_all_output_tabs, width=3)
         erase_output_btn.pack(side=tk.LEFT)
         self.Tooltip(erase_output_btn, "Erase Tabs")
+        
+        # Export Selected Output dropdown
+        export_output_menubutton = ttk.Menubutton(title_row, text="⬇", width=3)
+        export_output_menubutton.pack(side=tk.LEFT, padx=(6, 0))
+        self.Tooltip(export_output_menubutton, "Export Selected Output")
+        export_output_dropdown = tk.Menu(export_output_menubutton, tearoff=0)
+        export_output_menubutton.config(menu=export_output_dropdown)
+        for fmt in ["CSV", "PDF", "TXT", "DOCX"]:
+            export_output_dropdown.add_command(label=fmt, command=lambda f=fmt.lower(): self.quick_export_output(f))
 
         self.output_notebook = ttk.Notebook(output_frame)
         self.output_notebook.grid(row=1, column=0, sticky="nsew")
@@ -4598,10 +4621,7 @@ class PromeraAIApp(tk.Tk):
             temp_window.destroy()
             
             if note_id:
-                if self.dialog_manager:
-                    self.dialog_manager.show_info("Success", f"Note saved successfully (ID: {note_id})")
-                else:
-                    messagebox.showinfo("Success", f"Note saved successfully (ID: {note_id})")
+                self._show_note_saved_dialog(note_id)
                 self.logger.info(f"Saved note with ID {note_id} from tabs {input_index+1} and {output_index+1}")
             else:
                 self._handle_warning("Failed to save note", "Saving note", "Notes", show_dialog=True)
@@ -4609,8 +4629,46 @@ class PromeraAIApp(tk.Tk):
         except Exception as e:
             self._handle_error(e, "Saving as note", "Notes")
 
+    def _show_note_saved_dialog(self, note_id):
+        """Show a confirmation dialog after saving a note with OK and Open Notes buttons."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Success")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
 
-    
+        content = ttk.Frame(dialog, padding="20")
+        content.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(
+            content,
+            text=f"Note saved successfully (ID: {note_id})",
+            wraplength=350, justify=tk.LEFT
+        ).pack(pady=(0, 15))
+
+        btn_frame = ttk.Frame(content)
+        btn_frame.pack(fill=tk.X)
+
+        def open_notes():
+            dialog.destroy()
+            self.open_notes_widget()
+
+        ttk.Button(btn_frame, text="Open Notes", command=open_notes).pack(side=tk.LEFT, padx=(0, 10))
+        ok_btn = ttk.Button(btn_frame, text="OK", command=dialog.destroy)
+        ok_btn.pack(side=tk.RIGHT)
+        ok_btn.focus_set()
+
+        # Center on main window
+        dialog.update_idletasks()
+        dw = dialog.winfo_width()
+        dh = dialog.winfo_height()
+        px = self.winfo_rootx() + (self.winfo_width() - dw) // 2
+        py = self.winfo_rooty() + (self.winfo_height() - dh) // 2
+        dialog.geometry(f"+{px}+{py}")
+
+        dialog.bind('<Escape>', lambda e: dialog.destroy())
+        dialog.bind('<Return>', lambda e: dialog.destroy())
+
     def show_performance_settings(self):
         """Shows the performance settings configuration dialog."""
         if hasattr(self, 'performance_settings_window') and self.performance_settings_window and self.performance_settings_window.winfo_exists():
@@ -6799,6 +6857,70 @@ class PromeraAIApp(tk.Tk):
             self.save_settings()
             self.logger.info(f"Export path set to: {path}")
 
+    def _show_export_location_dialog(self):
+        """Show the Export Location settings dialog."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Export Location Settings")
+        dialog.withdraw()
+        dialog.transient(self)
+        dialog.grab_set()
+
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text="Current Export Location:", font=('TkDefaultFont', 10, 'bold')).pack(anchor=tk.W)
+
+        path_frame = ttk.Frame(main_frame)
+        path_frame.pack(fill=tk.X, pady=(5, 15))
+
+        path_var = tk.StringVar(value=self.export_path_var.get())
+        path_entry = ttk.Entry(path_frame, textvariable=path_var, width=60)
+        path_entry.config(state='readonly')
+        path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=(0, 5))
+
+        def browse():
+            folder = filedialog.askdirectory(
+                title="Select Export Directory",
+                initialdir=self.export_path_var.get()
+            )
+            if folder:
+                self.export_path_var.set(folder)
+                self.settings["export_path"] = folder
+                self.save_settings()
+                path_var.set(folder)
+                self.logger.info(f"Export path set to: {folder}")
+
+        def open_folder():
+            import subprocess
+            folder = self.export_path_var.get()
+            if os.path.isdir(folder):
+                if platform.system() == 'Windows':
+                    os.startfile(folder)
+                elif platform.system() == 'Darwin':
+                    subprocess.Popen(['open', folder])
+                else:
+                    subprocess.Popen(['xdg-open', folder])
+
+        ttk.Button(btn_frame, text="Browse...", command=browse).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(btn_frame, text="Open Folder", command=open_folder).pack(side=tk.LEFT, padx=5)
+        close_btn = ttk.Button(btn_frame, text="Close", command=dialog.destroy)
+        close_btn.pack(side=tk.RIGHT)
+        close_btn.focus_set()
+
+        dialog.bind('<Escape>', lambda e: dialog.destroy())
+
+        # Center on main window
+        dialog.update_idletasks()
+        dw = dialog.winfo_reqwidth()
+        dh = dialog.winfo_reqheight()
+        px = self.winfo_rootx() + (self.winfo_width() - dw) // 2
+        py = self.winfo_rooty() + (self.winfo_height() - dh) // 2
+        dialog.geometry(f"+{px}+{py}")
+        dialog.deiconify()
+
     def update_log_level(self, event=None):
         """Updates the logger's level based on the dropdown selection."""
         level = self.log_level.get()
@@ -8269,6 +8391,126 @@ class PromeraAIApp(tk.Tk):
         doc = Document()
         doc.add_paragraph(text)
         doc.save(filename)
+
+    def quick_export_output(self, file_format):
+        """Quick-export the active output tab to Export Location with auto-generated filename."""
+        active_output_tab = self.output_tabs[self.output_notebook.index(self.output_notebook.select())]
+        text = active_output_tab.text.get("1.0", tk.END)
+        self._quick_export(file_format, text, "output")
+
+    def quick_export_input(self, file_format):
+        """Quick-export the active input tab to Export Location with auto-generated filename."""
+        active_input_tab = self.input_tabs[self.input_notebook.index(self.input_notebook.select())]
+        text = active_input_tab.text.get("1.0", tk.END)
+        self._quick_export(file_format, text, "input")
+
+    def _quick_export(self, file_format, text, source):
+        """Shared quick-export logic: save directly to Export Location and show dialog."""
+        export_path = self.export_path_var.get()
+        if not os.path.isdir(export_path):
+            self._handle_warning("Invalid export path. Set it via File → Export Location.", f"Export {source.title()}", "File", show_dialog=True)
+            return
+
+        if not text.strip():
+            self._handle_warning(f"No {source} content to export.", f"Export {source.title()}", "File", show_dialog=True)
+            return
+
+        # Auto-generate filename: toolname-source-timestamp.ext
+        tool_name = self.tool_var.get().lower().replace(" ", "-") if hasattr(self, 'tool_var') else "pomera"
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"{tool_name}-{source}-{timestamp}.{file_format}"
+        filepath = os.path.join(export_path, filename)
+
+        try:
+            if file_format == "txt":
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(text)
+            elif file_format == "csv":
+                with open(filepath, "w", encoding="utf-8", newline='') as f:
+                    writer = csv.writer(f)
+                    for line in text.splitlines():
+                        writer.writerow([line])
+            elif file_format == "pdf":
+                self.export_to_pdf(filepath, text)
+            elif file_format == "docx":
+                self.export_to_docx(filepath, text)
+
+            self.logger.info(f"Quick-exported {source} to {filepath}")
+            self._show_export_complete_dialog(filepath)
+
+        except Exception as e:
+            self._handle_error(e, f"Quick-exporting {source} to {filepath}", "File Operations")
+
+    def _show_export_complete_dialog(self, filepath):
+        """Show a download-complete dialog after quick export."""
+        import subprocess
+        dialog = tk.Toplevel(self)
+        dialog.title("Download Complete")
+        dialog.geometry("450x180")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Center on main window
+        dialog.update_idletasks()
+        parent_x = self.winfo_rootx()
+        parent_y = self.winfo_rooty()
+        parent_w = self.winfo_width()
+        parent_h = self.winfo_height()
+        dw = dialog.winfo_width()
+        dh = dialog.winfo_height()
+        dialog.geometry(f"+{parent_x + (parent_w - dw) // 2}+{parent_y + (parent_h - dh) // 2}")
+
+        content = ttk.Frame(dialog, padding="20")
+        content.pack(fill=tk.BOTH, expand=True)
+
+        filename = os.path.basename(filepath)
+        folder = os.path.dirname(filepath)
+
+        ttk.Label(
+            content,
+            text=f"Note downloaded successfully!\n\nFile: {filename}\nLocation: {folder}",
+            wraplength=400, justify=tk.LEFT, foreground="green"
+        ).pack(pady=(0, 15))
+
+        btn_frame = ttk.Frame(content)
+        btn_frame.pack(fill=tk.X)
+
+        def open_file():
+            try:
+                if platform.system() == 'Windows':
+                    os.startfile(filepath)
+                elif platform.system() == 'Darwin':
+                    subprocess.Popen(['open', filepath])
+                else:
+                    subprocess.Popen(['xdg-open', filepath])
+            except Exception as e:
+                self._handle_error(e, "Opening exported file", "File")
+
+        def open_folder():
+            try:
+                if platform.system() == 'Windows':
+                    normalized = os.path.normpath(filepath)
+                    subprocess.Popen(f'explorer /select,"{normalized}"', shell=True)
+                elif platform.system() == 'Darwin':
+                    subprocess.run(['open', '-R', filepath], check=False)
+                else:
+                    subprocess.run(['xdg-open', os.path.dirname(filepath)], check=False)
+            except Exception as e:
+                self._handle_error(e, "Opening folder", "File")
+
+        def change_location():
+            self.browse_export_path()
+            dialog.destroy()
+
+        ttk.Button(btn_frame, text="Open File", command=open_file).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(btn_frame, text="Open Folder", command=open_folder).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Change Location", command=change_location).pack(side=tk.LEFT, padx=5)
+        close_btn = ttk.Button(btn_frame, text="Close", command=dialog.destroy)
+        close_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        close_btn.focus_set()
+
+        dialog.bind('<Escape>', lambda e: dialog.destroy())
         
     def clear_regex_cache(self):
         self._regex_cache.clear()

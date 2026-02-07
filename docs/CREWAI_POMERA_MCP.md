@@ -152,7 +152,7 @@ python crews/blog_crew.py "road cycling"
 | `pomera_notes` | Persistent memory |
 | `pomera_read_url` | Web scraping |
 
-See [TOOLS_DOCUMENTATION.md](TOOLS_DOCUMENTATION.md) for the full list.
+See [Tools Documentation](tools/INDEX.md) for the full list.
 
 ---
 

@@ -355,6 +355,15 @@ TOOL_SPECS: Dict[str, ToolSpec] = {
         description="Generate reports of folder contents",
         available_flag="FOLDER_FILE_REPORTER_MODULE_AVAILABLE"
     ),
+    "Smart Diff": ToolSpec(
+        name="Smart Diff",
+        module_path="tools.smart_diff_widget",
+        class_name="SmartDiffWidget",
+        category=ToolCategory.ANALYSIS,
+        is_widget=True,
+        description="Semantic diff and 3-way merge for structured data (JSON, YAML, ENV, TOML)",
+        available_flag="SMART_DIFF_WIDGET_MODULE_AVAILABLE"
+    ),
     
     # MCP Tools
     "MCP Manager": ToolSpec(

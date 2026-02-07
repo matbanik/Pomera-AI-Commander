@@ -246,6 +246,9 @@ class StdioMCPServer:
     
     def _handle_tools_call(self, id: int, params: Dict[str, Any]) -> MCPMessage:
         """Handle 'tools/call' request."""
+        import time
+        from .metrics import mcp_metrics
+        
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
         
@@ -256,7 +259,30 @@ class StdioMCPServer:
             return MCPProtocol.tool_not_found(id, tool_name)
         
         logger.info(f"Executing tool: {tool_name}")
-        result = self.registry.execute(tool_name, arguments)
+        
+        # Performance instrumentation
+        start = time.perf_counter()
+        success = True
+        error_msg = None
+        try:
+            result = self.registry.execute(tool_name, arguments)
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+            raise
+        finally:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            # Estimate payload size from result
+            payload_bytes = 0
+            if success and result:
+                try:
+                    if isinstance(result, MCPToolResult):
+                        payload_bytes = sum(len(str(c.get("text", ""))) for c in result.content) if result.content else 0
+                    else:
+                        payload_bytes = len(str(result))
+                except Exception:
+                    pass
+            mcp_metrics.record(tool_name, elapsed_ms, payload_bytes, success, error_msg)
         
         return MCPProtocol.create_tools_call_response(id, result)
     

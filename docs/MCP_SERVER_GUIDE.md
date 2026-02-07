@@ -847,7 +847,7 @@ pomera_diagnose(verbose=true)
 
 ## Resources
 
-- [Full Tools Documentation](./TOOLS_DOCUMENTATION.md)
+- [Full Tools Documentation](./tools/INDEX.md)
 - [MCP Protocol Details](./MCP_PROJECT.md)
 - [Troubleshooting Guide](./TROUBLESHOOTING.md)
 - [GitHub Repository](https://github.com/matbanik/Pomera-AI-Commander)

@@ -776,4 +776,4 @@ python -m pomera mcp call pomera_my_tool '{"input": "test"}'
 
 ---
 
-**Next Steps**: See full architectural analysis in `mcp_tool_architecture_analysis.md`
+**Next Steps**: See architecture documentation in `.agent/docs/mcp-architecture.md` for design patterns and integration guidance.

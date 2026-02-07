@@ -7,7 +7,7 @@ description: How to develop Widgets (standalone components) for Pomera AI Comman
 ## Quick Reference
 
 **Widget** = Standalone window component (Smart Diff, Notes, MCP Tools)  
-**Tool** = BaseTool V2 in options panel (Case Tool, Sorter Tools, etc.)
+**Tool** = BaseTool in options panel (Case Tool, Sorter Tools, etc.)
 
 **This workflow is for Widgets only.** For Tools, see `/tool-workflow`.
 
@@ -17,7 +17,7 @@ description: How to develop Widgets (standalone components) for Pomera AI Comman
 
 ```
 Do you need...
-  ├─ Text processing in options panel? → Use BaseTool V2 (/tool-workflow)
+  ├─ Text processing in options panel? → Use BaseTool (/tool-workflow)
   ├─ Separate window with full UI? → Use Widget (this workflow)
   ├─ Database/complex state? → Use Widget
   └─ Send content TO input tabs? → Use Widget
@@ -550,7 +550,8 @@ class Test{Name}Widget:
 
 ```bash
 # 1. Copy template
-cp .agent/templates/widget_template.py tools/my_widget.py
+# Use an existing widget as a template (e.g., notes_widget.py or list_comparator.py)
+cp tools/notes_widget.py tools/my_widget.py
 
 # 2. Implement your widget
 # - Update class name
@@ -573,4 +574,4 @@ pytest tests/widgets/test_my_widget.py -v
 
 ---
 
-**Next Steps**: See full architectural analysis in session artifact `widget_architecture_analysis.md`
+**Next Steps**: See architecture documentation in `.agent/docs/` for design patterns and integration guidance.

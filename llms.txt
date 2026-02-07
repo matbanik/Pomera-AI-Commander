@@ -1,103 +1,67 @@
 # Pomera AI Commander
 
-> Pomera AI Commander is a comprehensive text processing toolkit with 22 MCP (Model Context Protocol) tools for AI assistants. It provides case transformation, encoding/decoding, hashing, text analysis, regex extraction, email/URL parsing, notes management, and more.
+> Pomera AI Commander is a comprehensive text processing toolkit with 24+ MCP (Model Context Protocol) tools for AI assistants. It provides persistent notes, web search, semantic diff/merge, AI delegation, regex find & replace, HTML processing, config validation, and more.
 
 Important notes:
 - Pomera can run as a standalone GUI application OR as an MCP server for AI integration
-- All 22 tools are available via MCP protocol for use with Cursor, Claude Desktop, VS Code, etc.
+- All 24+ tools are available via MCP protocol for use with Cursor, Claude Desktop, VS Code, Antigravity, Cline, etc.
 - Written in Python with cross-platform support (Windows, Linux, macOS)
+- Works 100% offline by default — optional API keys unlock web search and AI features
 
-## Core Features
+## Top 10 Critical Tools for Agentic AI
 
-### Multi-Tab Interface with Independent Find & Replace
-- Create multiple text tabs with `Ctrl+T`
-- Each tab has its own independent find/replace state
-- Switch tabs with `Ctrl+Tab` or click tab headers
-- Per-tab undo/redo history and cursor position
-- Find in current tab: `Ctrl+F`, Replace: `Ctrl+H`
+1. `pomera_notes` - Persistent memory with FTS5 search (prevents re-pasting, ~100K+ token savings)
+2. `pomera_web_search` - 7-engine web search (Tavily/Exa/Brave/Google/DuckDuckGo/SerpAPI/Serper)
+3. `pomera_read_url` - Fetch & convert HTML to clean markdown
+4. `pomera_find_replace_diff` - Regex with diff preview & auto-backup to notes
+5. `pomera_smart_diff_2way` - Semantic config diff (JSON/YAML/ENV/TOML, ignores formatting)
+6. `pomera_smart_diff_3way` - 3-way merge with conflict resolution (auto-merge + report)
+7. `pomera_ai_tools` - Multi-provider AI delegation (11 providers, research, deep reasoning)
+8. `pomera_json_xml` - Validate/prettify/minify/convert JSON↔XML configs
+9. `pomera_extract` - Extract emails/URLs/regex patterns from large text
+10. `pomera_html` - HTML content extraction (visible text, links, images, tables, forms)
 
-### Real-Time Text Statistics
-- Live character, word, line, paragraph counting in status bar
-- Statistics update automatically as you type
-- Use `pomera_text_stats` MCP tool for comprehensive analysis
-- Includes bytes, unique words, average word length
+## All Available MCP Tools
 
-### Multiple AI Providers Configuration
-Supported providers:
-- **OpenAI**: GPT-4, GPT-3.5-turbo (set OPENAI_API_KEY)
-- **Google Vertex AI**: Gemini Pro/Ultra (set GOOGLE_APPLICATION_CREDENTIALS)
-- **Azure OpenAI**: Azure-hosted GPT models (set AZURE_OPENAI_KEY)
-- **Anthropic**: Claude 3/2 models (set ANTHROPIC_API_KEY)
-- **Ollama**: Local models like Llama, Mistral (run on localhost:11434)
+### Critical Efficiency Tools
+- `pomera_notes`: Persistent notes database (save, get, search, list, update, delete) with FTS5 full-text search, encryption, dual input/output fields
+- `pomera_web_search`: Multi-engine web search (Tavily AI-optimized, Exa neural, Brave, Google, DuckDuckGo, SerpAPI, Serper) with result counts and file output
+- `pomera_read_url`: Fetch URL content, convert HTML to markdown with main content extraction
+- `pomera_find_replace_diff`: Regex find/replace with validate → preview → execute workflow, automatic backup to notes
+- `pomera_smart_diff_2way`: Semantic diff for structured data (JSON/JSON5/YAML/ENV/TOML), format-aware comparison ignoring whitespace, auto-repair LLM JSON output, schema validation
+- `pomera_smart_diff_3way`: 3-way merge for structured data, auto-resolve non-conflicting changes, conflict strategies (report/keep_yours/keep_theirs), git merge assistance
+- `pomera_ai_tools`: Access 11 AI providers (OpenAI, Anthropic, Google AI, Groq, OpenRouter, Azure, Vertex AI, Cohere, HuggingFace, LM Studio, AWS Bedrock), actions: generate, research (web + reasoning), deep reasoning (6-step protocol)
+- `pomera_json_xml`: Format, validate, minify, convert between JSON and XML
+- `pomera_extract`: Extract content from text (type: regex, emails, urls) with dedup/sort
+- `pomera_html`: Process HTML content — extract visible text, clean HTML, extract links/images/headings/tables/forms
 
-Switch providers using `AIProviderManager.switch_provider("provider_name")` or via Settings > AI Configuration.
-
-### Custom Text Processing Pipelines
-Chain multiple operations together for complex transformations:
-```python
-# Example pipeline: clean, format, sort
-pipeline = [
-    {"tool": "pomera_whitespace", "operation": "normalize"},
-    {"tool": "pomera_case_transform", "operation": "sentence"},
-    {"tool": "pomera_sort", "operation": "alphabetical"}
-]
-```
-
-### Intelligent Caching System
-- Content-hash-based caching via `ContentHashCache` class
-- Same input + operation returns cached result instantly
-- Memory and disk caching with configurable TTL
-- View cache stats: hits, misses, hit rate
-
-## MCP Server Documentation
-
-- [Feature Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/FEATURE_GUIDE.md): Detailed feature documentation
-- [MCP Project Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/MCP_PROJECT.md): Complete MCP server documentation
-- [Tools Documentation](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/TOOLS_DOCUMENTATION.md): Comprehensive guide to all available tools
-
-## Available MCP Tools
+### High-Value Support Tools
+- `pomera_generators`: Generate passwords, UUIDs, lorem ipsum, random emails, URL slugs
+- `pomera_text_stats`: Count characters, words, lines, paragraphs, reading time, top words
+- `pomera_markdown`: Strip markdown, extract links/headers, table conversion
+- `pomera_line_tools`: Add/remove line numbers, deduplicate, remove empty, reverse, shuffle
+- `pomera_list_comparator`: Compare two lists, find unique/common/missing items
 
 ### Text Transform Tools
 - `pomera_case_transform`: Transform text case (sentence, lower, upper, title, alternating, inverse)
-- `pomera_whitespace`: Normalize whitespace, remove blank lines, trim lines
-- `pomera_line_tools`: Add/remove line numbers, wrap lines, prefix/suffix operations
+- `pomera_whitespace`: Normalize whitespace, tabs/spaces conversion, line ending normalization
 - `pomera_sort`: Sort lines alphabetically, numerically, by length, randomize
 
 ### Encoding Tools
 - `pomera_encode`: Encoding operations (type: base64, hash, number_base)
-  - base64: Encode/decode Base64, URL-safe Base64
-  - hash: Generate MD5, SHA-1, SHA-256, SHA-512, CRC32 hashes
-  - number_base: Convert between decimal, hex, binary, octal
 - `pomera_string_escape`: Escape/unescape HTML, URL, JSON, regex characters
+- `pomera_translator`: Translate text to Morse code, binary, NATO alphabet
 
-### Data Format Tools
-- `pomera_json_xml`: Format, minify, convert between JSON and XML
-- `pomera_markdown`: Convert markdown to HTML or plain text
+### Data & Analysis Tools
 - `pomera_column_tools`: Extract, reorder, merge CSV/TSV columns
-
-### Extraction Tools
-- `pomera_extract`: Extract content from text (type: regex, emails, urls)
-  - regex: Extract text matching regex patterns
-  - emails: Extract all email addresses from text
-  - urls: Extract all URLs from text
-- `pomera_html`: Strip HTML tags, extract text content
-- `pomera_email_header_analyzer`: Parse and analyze email headers
-
-### Utility Tools
 - `pomera_url_parse`: Parse URLs into components (protocol, host, path, query)
 - `pomera_timestamp`: Convert between Unix timestamps and human dates
 - `pomera_cron`: Parse and explain cron expressions
-- `pomera_text_wrap`: Wrap text at specified width
-- `pomera_text_stats`: Count characters, words, lines, paragraphs
 - `pomera_word_frequency`: Analyze word frequency in text
-- `pomera_list_compare`: Find differences between two lists
+- `pomera_email_header_analyzer`: Parse and analyze email headers
 
-### Generator Tools
-- `pomera_generators`: Generate content (generator: password, uuid, lorem_ipsum, random_email, slug)
-- `pomera_translator`: Translate text to Morse code, binary, NATO alphabet
-
-### Notes Database Tools
-- `pomera_notes`: Manage notes (action: save, get, list, search, update, delete)
+### Diagnostics
+- `pomera_diagnose`: MCP server self-diagnostics (database paths, config, API key status, encryption health)
 
 ## Quick Start
 
@@ -111,56 +75,65 @@ pip install pomera-ai-commander
 npm install -g pomera-ai-commander
 ```
 
-### Run as MCP Server
-```bash
-pomera-mcp
-# or
-pomera-ai-commander
-# or
-python pomera.py --mcp-server
-```
-
-### Configure in Cursor/Claude Desktop
+### Configure in MCP client (Cursor/Claude Desktop/Cline/Antigravity)
 ```json
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-mcp"
+      "command": "python",
+      "args": ["-m", "pomera.mcp_server"]
     }
   }
 }
 ```
 
-## Configuration Examples
+## Common Agentic Workflows
 
-### AI Provider Configuration (settings.json)
-```json
-{
-  "ai_providers": {
-    "openai": {
-      "enabled": true,
-      "api_key": "sk-...",
-      "model": "gpt-4"
-    },
-    "vertex_ai": {
-      "enabled": true,
-      "project_id": "my-project",
-      "model": "gemini-pro"
-    }
-  },
-  "active_provider": "openai"
-}
+### Research (97% token reduction)
+```
+1. pomera_web_search "topic" → Tavily/Exa for best results
+2. pomera_read_url <best result> → clean markdown
+3. pomera_html extract_links → gather all sources
+4. pomera_notes save → persist findings
 ```
 
-### Caching Configuration
-```python
-from core.content_hash_cache import ContentHashCache
-
-cache = ContentHashCache(cache_dir=".cache", max_size_mb=100)
-# Cache automatically used for all text processing operations
+### Config Change Verification
 ```
+1. pomera_json_xml validate → check original
+2. Edit config
+3. pomera_smart_diff_2way → semantic diff before vs after
+4. pomera_json_xml validate → verify changes
+```
+
+### 3-Way Config Merge
+```
+1. pomera_smart_diff_3way base=<original> yours=<your changes> theirs=<their changes>
+2. Review auto-merged fields + conflicts
+3. Re-run with conflict_strategy="keep_yours" or "keep_theirs"
+```
+
+### Regex Operations (80% token reduction)
+```
+1. pomera_find_replace_diff validate → check syntax
+2. pomera_find_replace_diff preview → see diff
+3. pomera_find_replace_diff execute → apply with backup
+```
+
+### AI Delegation
+```
+1. pomera_ai_tools --action research --provider OpenAI → deep research + web search
+2. pomera_ai_tools --action deepreasoning --provider "Anthropic AI" → structured analysis
+3. pomera_notes save → persist findings
+```
+
+## Documentation
+
+- [Installation Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/llms-install.md): Detailed setup for all MCP clients
+- [Tools Documentation](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/tools/INDEX.md): Comprehensive guide to all tools
+- [MCP Server Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/MCP_SERVER_GUIDE.md): MCP protocol documentation
+- [Troubleshooting](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/TROUBLESHOOTING.md): Common issues and solutions
 
 ## Optional
 
 - [Build Guide](https://github.com/matbanik/Pomera-AI-Commander/blob/main/BUILD.md): How to build from source
-- [Troubleshooting](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/TROUBLESHOOTING.md): Common issues and solutions
+- [Agentic AI Analysis](https://github.com/matbanik/Pomera-AI-Commander/blob/main/docs/pomera-mcp-agentic-ai-analysis.md): Why AI agents need Pomera

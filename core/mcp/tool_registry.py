@@ -246,6 +246,9 @@ class ToolRegistry:
         # Diagnostic Tool (Phase 9) - Cross-IDE path troubleshooting
         self._register_diagnose_tool()
         
+        # GUI Launcher Tool (Phase 10) - Launch Pomera GUI from agentic IDE
+        self._register_launch_gui_tool()
+        
         self._logger.info(f"Registered {len(self._tools)} built-in MCP tools")
 
     
@@ -5044,7 +5047,14 @@ class ToolRegistry:
             name="pomera_diagnose",
             description="Diagnose Pomera MCP configuration for cross-IDE compatibility. "
                        "Returns database paths, config file locations, environment variable status, "
-                       "and file existence. Use this to troubleshoot when API keys or settings are not found.",
+                       "GUI availability (tkinter, required libraries), and file existence. "
+                       "Also checks: Pomera/Python version, encryption health, API key availability "
+                       "(per-provider, never reveals keys), tool registry stats, runtime info, "
+                       "and PERFORMANCE METRICS (per-tool latency p50/p95/p99, error rates, "
+                       "call counts, payload sizes). "
+                       "Use this to troubleshoot when API keys or settings are not found, "
+                       "GUI fails to launch, MCP tools are not working, or tool calls are "
+                       "slow or failing. Performance metrics accumulate per server session.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -5062,6 +5072,8 @@ class ToolRegistry:
         """Handle diagnostic tool execution."""
         import json
         import os
+        import sys
+        import platform
         from pathlib import Path
         
         verbose = args.get("verbose", False)
@@ -5106,12 +5118,33 @@ class ToolRegistry:
             else:
                 config_source = "platform default (platformdirs)"
             
+            # =========================================================
+            # GUI Diagnostics - Check tkinter and required libraries
+            # =========================================================
+            gui_diagnostics = self._diagnose_gui_availability()
+            
+            # =========================================================
+            # Enhanced Diagnostics (Phase 9.1)
+            # =========================================================
+            version_info = self._diagnose_version_info()
+            encryption_info = self._diagnose_encryption()
+            api_key_info = self._diagnose_api_keys()
+            registry_info = self._diagnose_tool_registry()
+            runtime_info = self._diagnose_runtime()
+            performance_info = self._diagnose_performance()
+            
             result = {
                 "status": "ok",
+                "version": version_info,
                 "data_directory": dir_info['user_data_dir'],
                 "config_file": dir_info.get('config_file', 'unknown'),
                 "config_source": config_source,
                 "databases": databases,
+                "encryption": encryption_info,
+                "api_keys": api_key_info,
+                "tool_registry": registry_info,
+                "runtime": runtime_info,
+                "performance": performance_info,
                 "environment": {
                     POMERA_DATA_DIR_ENV: env_data_dir,
                     POMERA_CONFIG_DIR_ENV: env_config_dir,
@@ -5119,22 +5152,74 @@ class ToolRegistry:
                 },
                 "portable_mode": dir_info.get("portable_mode", False),
                 "platformdirs_available": dir_info.get("platformdirs_available", False),
+                "gui": gui_diagnostics,
             }
             
             if verbose:
+                result["dependencies"] = self._diagnose_dependencies()
                 result["config_values"] = config
                 result["installation_dir"] = dir_info.get("installation_dir")
                 result["backup_dir"] = dir_info.get("backup_dir")
             
             # Add recommendations if issues detected
+            recommendations = []
+            warnings = []
+            
+            # Database warnings
             missing_dbs = [k for k, v in databases.items() if not v.get("exists")]
             if missing_dbs:
-                result["warning"] = f"Missing database files: {', '.join(missing_dbs)}"
-                result["recommendations"] = [
+                warnings.append(f"Missing database files: {', '.join(missing_dbs)}")
+                recommendations.extend([
                     f"Set {POMERA_DATA_DIR_ENV} environment variable to the directory containing your databases",
                     "Or use --data-dir argument when starting the MCP server",
                     "Or ensure config.json has correct 'data_directory' value"
-                ]
+                ])
+            
+            # GUI warnings
+            if not gui_diagnostics.get("tkinter_available"):
+                warnings.append("tkinter not available - GUI cannot be launched")
+                recommendations.extend(gui_diagnostics.get("installation_hints", []))
+            
+            if gui_diagnostics.get("warnings"):
+                warnings.extend(gui_diagnostics["warnings"])
+            
+            # Encryption warnings
+            if not encryption_info.get("cryptography_available"):
+                warnings.append("cryptography library not installed - note encryption unavailable")
+                recommendations.append("Install cryptography: pip install cryptography")
+            elif not encryption_info.get("key_derivation_ok"):
+                warnings.append("Fernet key derivation failed - encryption may not work")
+            
+            # API key warnings
+            configured_count = sum(
+                1 for v in api_key_info.values()
+                if isinstance(v, dict) and v.get("configured")
+            )
+            if configured_count == 0:
+                warnings.append("No API keys configured for any AI provider")
+                recommendations.append(
+                    "Configure API keys via the Pomera GUI (Settings > AI Tools) "
+                    "or set them in settings.db"
+                )
+            
+            # Performance warnings
+            if performance_info.get("total_tool_calls", 0) > 0:
+                per_tool = performance_info.get("per_tool", {})
+                for tname, tstats in per_tool.items():
+                    # Warn on high error rates
+                    if tstats.get("errors", 0) > 0 and tstats.get("calls", 0) > 0:
+                        err_pct = tstats["errors"] / tstats["calls"] * 100
+                        if err_pct > 10:
+                            warnings.append(f"Tool '{tname}' has {err_pct:.0f}% error rate ({tstats['errors']}/{tstats['calls']} calls)")
+                    # Warn on slow p95
+                    p95 = tstats.get("p95_ms", 0)
+                    if p95 > 1000 and tname not in ("pomera_web_search", "pomera_ai_tools", "pomera_read_url"):
+                        warnings.append(f"Tool '{tname}' p95 latency is {p95:.0f}ms (target: <1000ms for non-network tools)")
+            
+            if warnings:
+                result["warnings"] = warnings
+            if recommendations:
+                result["recommendations"] = recommendations
             
             return json.dumps(result, indent=2, ensure_ascii=False)
             
@@ -5144,6 +5229,596 @@ class ToolRegistry:
                 "status": "error",
                 "error": str(e)
             }, indent=2)
+    
+    def _diagnose_gui_availability(self) -> Dict[str, Any]:
+        """Diagnose GUI (tkinter) availability and required libraries.
+        
+        Returns diagnostic information about:
+        - tkinter availability
+        - Required libraries on each platform
+        - Frozen executable status
+        - Installation hints for missing components
+        """
+        import sys
+        import platform
+        import shutil
+        
+        os_name = platform.system()
+        gui_info = {
+            "platform": os_name,
+            "python_version": sys.version,
+            "is_frozen_executable": getattr(sys, 'frozen', False),
+            "tkinter_available": False,
+            "tk_version": None,
+            "tcl_version": None,
+            "warnings": [],
+            "installation_hints": [],
+        }
+        
+        # Check tkinter availability
+        try:
+            import tkinter as tk
+            gui_info["tkinter_available"] = True
+            
+            # Get Tk/Tcl versions
+            try:
+                root = tk.Tk()
+                root.withdraw()  # Hide the window
+                gui_info["tk_version"] = root.tk.call('info', 'patchlevel')
+                gui_info["tcl_version"] = root.tk.call('info', 'tclversion')
+                root.destroy()
+            except Exception as e:
+                gui_info["warnings"].append(f"tkinter imported but cannot create window: {e}")
+                gui_info["tkinter_available"] = False
+                
+        except ImportError as e:
+            gui_info["tkinter_available"] = False
+            gui_info["import_error"] = str(e)
+            
+            # Platform-specific installation hints
+            if os_name == "Darwin":  # macOS
+                gui_info["installation_hints"] = [
+                    "macOS: tkinter requires python-tk package",
+                    "If using Homebrew Python: brew install python-tk@3.x (match your Python version)",
+                    "If using pyenv: Install Python with Tk support:",
+                    "  PYTHON_CONFIGURE_OPTS='--enable-framework' pyenv install 3.x.x",
+                    "If using system Python: Install ActiveTcl from https://www.activestate.com/products/tcl/",
+                    "Alternative: Install Python from python.org which includes Tk"
+                ]
+            elif os_name == "Linux":
+                gui_info["installation_hints"] = [
+                    "Linux: Install tkinter package for your distribution:",
+                    "  Ubuntu/Debian: sudo apt-get install python3-tk",
+                    "  Fedora: sudo dnf install python3-tkinter",
+                    "  Arch Linux: sudo pacman -S tk",
+                    "  RHEL/CentOS: sudo yum install python3-tkinter"
+                ]
+            elif os_name == "Windows":
+                gui_info["installation_hints"] = [
+                    "Windows: tkinter is usually included with Python",
+                    "If missing, reinstall Python from python.org and ensure 'tcl/tk and IDLE' is checked",
+                    "Or use the frozen executable (pomera.exe) which includes all dependencies"
+                ]
+        except Exception as e:
+            gui_info["tkinter_available"] = False
+            gui_info["error"] = str(e)
+        
+        # Check for pomera.py or pomera executable
+        try:
+            from core.data_directory import _get_installation_dir
+            install_dir = _get_installation_dir()
+            
+            pomera_py = install_dir / "pomera.py"
+            if pomera_py.exists():
+                gui_info["pomera_script_found"] = True
+                gui_info["pomera_script_path"] = str(pomera_py)
+            else:
+                gui_info["pomera_script_found"] = False
+                gui_info["pomera_script_expected"] = str(pomera_py)
+                
+            # Check for pomera command in PATH
+            pomera_cmd = shutil.which("pomera")
+            if pomera_cmd:
+                gui_info["pomera_command_in_path"] = pomera_cmd
+                
+        except Exception:
+            pass
+        
+        # macOS specific: Check for required frameworks
+        if os_name == "Darwin":
+            # Check if Tk.framework exists
+            tk_framework_paths = [
+                "/Library/Frameworks/Tk.framework",
+                "/System/Library/Frameworks/Tk.framework",
+                f"{sys.prefix}/lib/libtk8.6.dylib",
+            ]
+            found_framework = None
+            for path in tk_framework_paths:
+                from pathlib import Path
+                if Path(path).exists():
+                    found_framework = path
+                    break
+            
+            gui_info["macos_tk_framework"] = found_framework
+            if not found_framework and gui_info["tkinter_available"]:
+                gui_info["warnings"].append(
+                    "Tk framework not found in standard locations - may cause issues"
+                )
+        
+        # Check for display (Linux/macOS headless environments)
+        if os_name in ("Linux", "Darwin"):
+            import os
+            display = os.environ.get("DISPLAY")
+            wayland = os.environ.get("WAYLAND_DISPLAY")
+            
+            if os_name == "Linux":
+                gui_info["display_server"] = {
+                    "DISPLAY": display,
+                    "WAYLAND_DISPLAY": wayland,
+                }
+                if not display and not wayland:
+                    gui_info["warnings"].append(
+                        "No display server detected (DISPLAY/WAYLAND_DISPLAY not set). "
+                        "GUI requires a graphical environment."
+                    )
+        
+        return gui_info
+    
+    # =========================================================================
+    # Enhanced Diagnostic Helpers (Phase 9.1)
+    # =========================================================================
+    
+    def _diagnose_version_info(self) -> Dict[str, Any]:
+        """Get Pomera version, Python version, and platform information."""
+        import sys
+        import platform
+        
+        # Get Pomera version
+        pomera_version = "unknown"
+        try:
+            from pomera.version import __version__
+            pomera_version = __version__
+        except ImportError:
+            pass
+        
+        return {
+            "pomera_version": pomera_version,
+            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "python_full": sys.version,
+            "platform": platform.system(),
+            "platform_release": platform.release(),
+            "machine": platform.machine(),
+            "architecture": platform.architecture()[0],
+        }
+    
+    def _diagnose_dependencies(self) -> Dict[str, Any]:
+        """Check availability and versions of key dependencies (verbose only)."""
+        import importlib.metadata
+        
+        packages = [
+            "cryptography", "requests", "deepdiff", "detect-secrets",
+            "platformdirs", "google-auth", "boto3", "mcp",
+            "jsonschema", "pyyaml", "toml",
+        ]
+        
+        deps = {}
+        for pkg in packages:
+            try:
+                version = importlib.metadata.version(pkg)
+                deps[pkg] = {"installed": True, "version": version}
+            except importlib.metadata.PackageNotFoundError:
+                deps[pkg] = {"installed": False, "version": None}
+            except Exception:
+                deps[pkg] = {"installed": False, "version": None}
+        
+        return deps
+    
+    def _diagnose_encryption(self) -> Dict[str, Any]:
+        """Diagnose encryption subsystem health."""
+        result = {
+            "cryptography_available": False,
+            "key_derivation_ok": False,
+            "detect_secrets_available": False,
+            "key_derivation_method": "PBKDF2-SHA256 + platform.node() + getpass.getuser()",
+        }
+        
+        try:
+            from core.note_encryption import (
+                ENCRYPTION_AVAILABLE, is_encryption_available,
+                get_system_encryption_key
+            )
+            result["cryptography_available"] = ENCRYPTION_AVAILABLE
+            
+            # Test key derivation
+            if ENCRYPTION_AVAILABLE:
+                try:
+                    fernet = get_system_encryption_key()
+                    result["key_derivation_ok"] = fernet is not None
+                except Exception as e:
+                    result["key_derivation_ok"] = False
+                    result["key_derivation_error"] = str(e)
+        except ImportError as e:
+            result["import_error"] = str(e)
+        
+        # Check detect-secrets
+        try:
+            from core.note_encryption import DETECT_SECRETS_AVAILABLE
+            result["detect_secrets_available"] = DETECT_SECRETS_AVAILABLE
+        except ImportError:
+            pass
+        
+        return result
+    
+    def _diagnose_api_keys(self) -> Dict[str, Any]:
+        """Check API key availability per provider. Never reveals full keys."""
+        providers = [
+            "Google AI", "Vertex AI", "Azure AI", "Anthropic AI",
+            "OpenAI", "Groq AI", "OpenRouterAI", "Cohere AI",
+            "HuggingFace", "LM Studio", "AWS Bedrock",
+        ]
+        
+        api_keys = {}
+        
+        # Try to get database settings manager
+        db_manager = None
+        try:
+            from core.database_settings_manager import DatabaseSettingsManager
+            db_manager = DatabaseSettingsManager()
+        except Exception:
+            api_keys["_db_access"] = "unavailable"
+            # Return providers with unknown status
+            for provider in providers:
+                api_keys[provider] = {"configured": None, "status": "database unavailable"}
+            return api_keys
+        
+        for provider in providers:
+            try:
+                if provider == "LM Studio":
+                    # LM Studio doesn't use API keys
+                    api_keys[provider] = {
+                        "configured": True,
+                        "status": "no key required",
+                    }
+                    continue
+                
+                settings = db_manager.get_tool_settings(provider)
+                if not settings:
+                    api_keys[provider] = {"configured": False, "status": "no settings found"}
+                    continue
+                
+                raw_key = settings.get("API_KEY", "") if isinstance(settings, dict) else ""
+                
+                if not raw_key:
+                    api_keys[provider] = {"configured": False, "status": "empty key"}
+                elif raw_key == "putinyourkey":
+                    api_keys[provider] = {"configured": False, "status": "placeholder key"}
+                else:
+                    is_enc = raw_key.startswith("ENC:")
+                    # Show only first 4 chars of the raw key for identification
+                    prefix = raw_key[:4] + "..." if len(raw_key) > 4 else "***"
+                    api_keys[provider] = {
+                        "configured": True,
+                        "encrypted": is_enc,
+                        "key_prefix": prefix,
+                    }
+            except Exception as e:
+                api_keys[provider] = {"configured": None, "status": f"error: {e}"}
+        
+        return api_keys
+    
+    def _diagnose_tool_registry(self) -> Dict[str, Any]:
+        """Report tool registry health and registered tool count."""
+        try:
+            tool_names = self.get_tool_names()
+            return {
+                "total_tools": len(tool_names),
+                "tool_names": sorted(tool_names),
+                "healthy": True,
+            }
+        except Exception as e:
+            return {
+                "total_tools": 0,
+                "tool_names": [],
+                "healthy": False,
+                "error": str(e),
+            }
+    
+    def _diagnose_runtime(self) -> Dict[str, Any]:
+        """Report runtime/process information."""
+        import os
+        import sys
+        import logging
+        
+        root_logger = logging.getLogger()
+        
+        return {
+            "pid": os.getpid(),
+            "cwd": os.getcwd(),
+            "mcp_server_script": os.path.abspath(
+                os.path.join(os.path.dirname(__file__), '..', '..', 'pomera_mcp_server.py')
+            ),
+            "logging_level": logging.getLevelName(root_logger.level),
+            "is_frozen": getattr(sys, 'frozen', False),
+            "sys_prefix": sys.prefix,
+        }
+    
+    def _diagnose_performance(self) -> Dict[str, Any]:
+        """Report MCP tool execution performance metrics."""
+        try:
+            from core.mcp.metrics import mcp_metrics
+            return mcp_metrics.get_stats()
+        except Exception as e:
+            return {
+                "available": False,
+                "error": str(e),
+                "note": "Performance metrics are collected during MCP server sessions. "
+                        "If running outside the server, metrics are not available."
+            }
+    
+    # =========================================================================
+    # GUI Launcher Tool (Phase 10) - Launch Pomera GUI from Agentic IDE
+    # =========================================================================
+    
+    def _register_launch_gui_tool(self) -> None:
+        """Register GUI launcher tool for agentic IDEs."""
+        self.register(MCPToolAdapter(
+            name="pomera_launch_gui",
+            description="Launch the Pomera AI Commander GUI application from an agentic IDE. "
+                       "This tool starts the full GUI in a separate process and returns immediately. "
+                       "The GUI will run independently and can be used alongside the MCP server. "
+                       "Use this when you want to give the user access to the visual interface.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "wait_for_close": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, wait for the GUI to close before returning. "
+                                      "Default is false (return immediately after launching)."
+                    },
+                    "tool_tab": {
+                        "type": "string",
+                        "description": "Optional: Name of the tool tab to focus when GUI opens. "
+                                      "Examples: 'Notes', 'AI Tools', 'Find & Replace', 'Diff Viewer'. "
+                                      "If not specified, opens to the last used tab."
+                    }
+                }
+            },
+            handler=self._handle_launch_gui
+        ))
+    
+    def _handle_launch_gui(self, args: Dict[str, Any]) -> str:
+        """Handle GUI launcher tool execution.
+        
+        Supports multiple installation modes:
+        - Frozen executable: pomera.exe from GitHub Actions builds (PyInstaller)
+        - Portable mode: pomera.py in source directory
+        - npm install: pomera-mcp-server package (pomera.py bundled)
+        - PyPI install: pomera-ai-commander package (entry point or pomera.py bundled)
+        """
+        import json
+        import os
+        import sys
+        import subprocess
+        import shutil
+        from pathlib import Path
+        
+        wait_for_close = args.get("wait_for_close", False)
+        tool_tab = args.get("tool_tab", None)
+        
+        try:
+            # Strategy for finding the GUI executable/script:
+            # 0. Check if we're running as a frozen executable (PyInstaller)
+            # 1. Use data_directory module's installation dir (canonical)
+            # 2. Search relative to this module (core/mcp/tool_registry.py)
+            # 3. Check for 'pomera' command in PATH (PyPI entry point)
+            # 4. Check for pomera.exe in same directory (Windows frozen)
+            # 5. Check POMERA_INSTALL_DIR environment variable
+            
+            pomera_py = None
+            project_root = None
+            launch_method = None
+            is_frozen = getattr(sys, 'frozen', False)
+            
+            # Method 0: Running as frozen executable (PyInstaller build)
+            if is_frozen:
+                # We're running inside a PyInstaller executable
+                # The GUI is the executable itself (without --mcp-server flag)
+                pomera_py = Path(sys.executable)
+                project_root = pomera_py.parent
+                launch_method = "frozen_executable"
+                self._logger.debug(f"Running as frozen exe, using: {pomera_py}")
+            
+            # Method 1: Use data_directory module (handles all install modes consistently)
+            if pomera_py is None:
+                try:
+                    from core.data_directory import _get_installation_dir
+                    project_root = _get_installation_dir()
+                    candidate = project_root / "pomera.py"
+                    if candidate.exists():
+                        pomera_py = candidate
+                        launch_method = "installation_dir"
+                        self._logger.debug(f"Found pomera.py via installation_dir: {pomera_py}")
+                except ImportError:
+                    self._logger.debug("data_directory module not available")
+            
+            # Method 2: Relative to this module
+            if pomera_py is None:
+                current_file = Path(__file__).resolve()
+                project_root = current_file.parent.parent.parent  # core/mcp/tool_registry.py -> project root
+                candidate = project_root / "pomera.py"
+                if candidate.exists():
+                    pomera_py = candidate
+                    launch_method = "relative_path"
+                    self._logger.debug(f"Found pomera.py via relative path: {pomera_py}")
+            
+            # Method 3: Check for 'pomera' command in PATH (PyPI entry point)
+            if pomera_py is None:
+                pomera_cmd = shutil.which("pomera")
+                if pomera_cmd:
+                    # pomera is an entry point script, we can call it directly
+                    pomera_py = Path(pomera_cmd)
+                    launch_method = "entry_point"
+                    self._logger.debug(f"Found pomera entry point: {pomera_py}")
+            
+            # Method 4: Environment variable override
+            if pomera_py is None:
+                install_dir = os.environ.get("POMERA_INSTALL_DIR")
+                if install_dir:
+                    candidate = Path(install_dir) / "pomera.py"
+                    if candidate.exists():
+                        pomera_py = candidate
+                        project_root = Path(install_dir)
+                        launch_method = "environment_variable"
+                        self._logger.debug(f"Found pomera.py via POMERA_INSTALL_DIR: {pomera_py}")
+            
+            # Method 5: Check site-packages for installed package
+            if pomera_py is None:
+                for site_pkg in sys.path:
+                    if 'site-packages' in site_pkg or 'dist-packages' in site_pkg:
+                        # Check for pomera package directory
+                        candidate = Path(site_pkg) / "pomera" / "pomera.py"
+                        if candidate.exists():
+                            pomera_py = candidate
+                            project_root = candidate.parent
+                            launch_method = "site_packages"
+                            self._logger.debug(f"Found pomera.py in site-packages: {pomera_py}")
+                            break
+                        # Check for pomera_ai_commander package
+                        candidate = Path(site_pkg) / "pomera_ai_commander" / "pomera.py"
+                        if candidate.exists():
+                            pomera_py = candidate
+                            project_root = candidate.parent
+                            launch_method = "site_packages"
+                            self._logger.debug(f"Found pomera.py in pomera_ai_commander: {pomera_py}")
+                            break
+            
+            if pomera_py is None or (launch_method != "entry_point" and not pomera_py.exists()):
+                # Provide helpful error with all paths tried
+                searched_paths = []
+                try:
+                    from core.data_directory import _get_installation_dir
+                    searched_paths.append(str(_get_installation_dir() / "pomera.py"))
+                except Exception:
+                    pass
+                current_file = Path(__file__).resolve()
+                searched_paths.append(str(current_file.parent.parent.parent / "pomera.py"))
+                searched_paths.append("'pomera' command in PATH")
+                searched_paths.append("POMERA_INSTALL_DIR/pomera.py")
+                searched_paths.append("site-packages/pomera/pomera.py")
+                
+                return json.dumps({
+                    "success": False,
+                    "error": "Cannot find Pomera GUI (pomera.py or pomera command)",
+                    "searched_paths": searched_paths,
+                    "hints": [
+                        "For source installs: Ensure you're running from the Pomera-AI-Commander directory",
+                        "For npm installs: Run 'npm install -g pomera-mcp-server' to install globally",
+                        "For pip installs: Run 'pip install pomera-ai-commander' to install",
+                        "Set POMERA_INSTALL_DIR environment variable to the Pomera installation directory"
+                    ]
+                }, indent=2, ensure_ascii=False)
+            
+            # Build the command
+            python_executable = sys.executable
+            
+            if launch_method == "frozen_executable":
+                # Frozen executable - run directly without Python
+                cmd = [str(pomera_py)]
+            elif launch_method == "entry_point":
+                # Use the entry point script directly
+                cmd = [str(pomera_py)]
+            else:
+                # Use python to run pomera.py
+                cmd = [python_executable, str(pomera_py)]
+            
+            # Add tool tab argument if specified
+            if tool_tab:
+                cmd.extend(["--tool", tool_tab])
+            
+            # Determine working directory
+            cwd = str(project_root) if project_root else str(pomera_py.parent)
+            
+            # Launch the GUI
+            if wait_for_close:
+                # Wait for the process to complete
+                result = subprocess.run(
+                    cmd,
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True
+                )
+                return json.dumps({
+                    "success": result.returncode == 0,
+                    "message": "GUI closed" if result.returncode == 0 else "GUI exited with error",
+                    "return_code": result.returncode,
+                    "waited": True,
+                    "launch_method": launch_method
+                }, indent=2, ensure_ascii=False)
+            else:
+                # Launch detached (non-blocking)
+                # Use OS shell commands to fully escape the MCP server's
+                # process context. Python-level flags (creationflags, 
+                # start_new_session) don't fully detach from IDE-spawned
+                # MCP servers, causing GUI crashes on Windows.
+                if sys.platform == "win32":
+                    # Windows: 'start' for full process detachment (proven to work)
+                    # + pythonw.exe to avoid visible console window.
+                    # pythonw.exe alone with creationflags crashes; start alone
+                    # shows a console. Together they solve both problems.
+                    pythonw = python_executable.replace("python.exe", "pythonw.exe")
+                    if not os.path.exists(pythonw):
+                        pythonw = python_executable  # fallback
+                    
+                    subprocess.Popen(
+                        f'start "" "{pythonw}" "{pomera_py}"',
+                        shell=True,
+                        cwd=cwd
+                    )
+                elif sys.platform == "darwin":
+                    # macOS: nohup to survive parent exit
+                    subprocess.Popen(
+                        f'nohup "{python_executable}" "{pomera_py}" > /dev/null 2>&1 &',
+                        shell=True,
+                        cwd=cwd
+                    )
+                else:
+                    # Linux: setsid for new session leader
+                    subprocess.Popen(
+                        f'setsid "{python_executable}" "{pomera_py}" > /dev/null 2>&1 &',
+                        shell=True,
+                        cwd=cwd
+                    )
+                
+                return json.dumps({
+                    "success": True,
+                    "message": "Pomera GUI launched successfully",
+                    "pid": None,
+                    "waited": False,
+                    "pomera_path": str(pomera_py),
+                    "launch_method": launch_method,
+                    "tool_tab": tool_tab
+                }, indent=2, ensure_ascii=False)
+            
+        except FileNotFoundError as e:
+            self._logger.exception("Executable not found")
+            return json.dumps({
+                "success": False,
+                "error": f"Executable not found: {e}",
+                "python_path": sys.executable
+            }, indent=2, ensure_ascii=False)
+        except PermissionError as e:
+            self._logger.exception("Permission denied launching GUI")
+            return json.dumps({
+                "success": False,
+                "error": f"Permission denied: {e}"
+            }, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self._logger.exception("GUI launcher failed")
+            return json.dumps({
+                "success": False,
+                "error": str(e)
+            }, indent=2, ensure_ascii=False)
 
 
 # Singleton instance for convenience

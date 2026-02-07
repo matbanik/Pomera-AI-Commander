@@ -6,7 +6,7 @@ description: Review workflow documents for token efficiency and clarity
 
 ## Purpose
 
-Periodically review AGENTS.md and workflow documents to:
+Periodically review GEMINI.md and workflow documents to:
 1. Remove redundant instructions
 2. Consolidate similar patterns
 3. Keep content beginner-friendly
@@ -18,14 +18,14 @@ Periodically review AGENTS.md and workflow documents to:
 
 - After adding new workflows
 - Monthly maintenance
-- When AGENTS.md exceeds 150 lines
+- When GEMINI.md exceeds target line count
 - When workflows feel verbose
 
 ---
 
 ## Review Checklist
 
-### AGENTS.md (<150 lines target)
+### GEMINI.md (agent guidance file)
 
 - [ ] No duplicate sections
 - [ ] Tables used instead of verbose lists
@@ -79,26 +79,26 @@ Periodically review AGENTS.md and workflow documents to:
 
 ## Quick Audit Commands
 
-```bash
-# Count AGENTS.md lines
-wc -l AGENTS.md
+```powershell
+# Count GEMINI.md lines
+(Get-Content GEMINI.md | Measure-Object -Line).Lines
 
 # Find duplicate patterns
-grep -c "pomera_notes" AGENTS.md
+(Select-String -Path GEMINI.md -Pattern 'pomera_notes' | Measure-Object).Count
 
 # List all workflows
-ls -la .agent/workflows/
+Get-ChildItem .agent/workflows/ -Name
 ```
 
 ---
 
 ## After Review
 
-1. Update AGENTS.md with improvements
+1. Update GEMINI.md with improvements
 2. If explicitly requested, commit changes: `git commit -m "docs: meta-review optimization"`
 3. Log review to pomera:
 ```bash
 pomera_notes save --title "Meta/Review/{date}" \
-  --input_content "Reviewed: AGENTS.md, {workflows}" \
+  --input_content "Reviewed: GEMINI.md, {workflows}" \
   --output_content "Changes: {summary of optimizations}"
 ```

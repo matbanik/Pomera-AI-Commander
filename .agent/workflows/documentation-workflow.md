@@ -397,7 +397,7 @@ Copy this template to start your documentation:
 
 ## Example: Smart Diff 3-Way Merge
 
-See `.agent/docs/example-smart-diff-3way.md` for a complete example following this workflow.
+See `.agent/docs/` for architecture documentation and examples following this workflow.
 
 ---
 

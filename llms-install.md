@@ -6,7 +6,7 @@ This document provides installation instructions for AI assistants (Cline, Claud
 
 ## Overview
 
-Pomera AI Commander is an MCP server providing **22+ deterministic text processing tools** that reduce token usage by **70-80%** for common agentic AI workflows.
+Pomera AI Commander is an MCP server providing **24+ deterministic text processing tools** that reduce token usage by **70-80%** for common agentic AI workflows.
 
 **Key Benefits:**
 - ✅ **No API keys required** (works offline, privacy-focused)
@@ -15,16 +15,16 @@ Pomera AI Commander is an MCP server providing **22+ deterministic text processi
 - ✅ **Universal compatibility** - Works with all MCP clients
 
 **Top 10 Critical Tools:**
-1. `pomera_notes` - Queryable notes with FTS5 search (prevents re-pasting)
-2. `pomera_web_search` - Multi-engine web search (Brave/Google/Context7)
+1. `pomera_notes` - Persistent memory with FTS5 search (prevents re-pasting)
+2. `pomera_web_search` - 7-engine web search (Tavily/Exa/Brave/Google/DuckDuckGo)
 3. `pomera_read_url` - Fetch & convert HTML to markdown
-4. `pomera_find_replace_diff` - Regex with preview & backup
-5. `pomera_generators` - Password/UUID/slug generation
-6. `pomera_text_stats` - Text analysis without parsing in-context
-7. `pomera_json_xml` - Validate/prettify/convert configs
-8. `pomera_extract` - Extract emails/URLs/patterns from text
-9. `pomera_markdown` - Strip/extract from markdown docs
-10. `pomera_line_tools` - Dedup/sort/clean text lines
+4. `pomera_find_replace_diff` - Regex with diff preview & auto-backup
+5. `pomera_smart_diff_2way` - Semantic config diff (JSON/YAML/ENV/TOML)
+6. `pomera_smart_diff_3way` - 3-way merge with conflict resolution
+7. `pomera_ai_tools` - Multi-provider AI delegation (11 providers)
+8. `pomera_json_xml` - Validate/prettify/convert configs
+9. `pomera_extract` - Extract emails/URLs/patterns from text
+10. `pomera_html` - HTML content extraction (text/links/tables/forms)
 
 ---
 
@@ -215,74 +215,83 @@ For development from source:
 
 ---
 
-## Available Tools (22+ Tools)
+## Available Tools (24+ Tools)
 
 ### Category 1: Critical Efficiency Tools ⭐⭐⭐⭐⭐
 
 **1. `pomera_notes`**
 - **Operations:** save, get, search, list, update, delete
-- **Value:** Session persistence, queryable notes with FTS5 search
-- **Token Savings:** ~100K+ tokens/project (prevents re-pasting)
+- **Value:** Persistent memory — cross-session state, prevents re-pasting
+- **Token Savings:** ~100K+ tokens/project
 
 **2. `pomera_web_search`**
-- **Engines:** Brave, Google, Context7, DuckDuckGo
-- **Value:** Research automation without user input
+- **Engines:** Tavily (AI-optimized), Exa (neural), Brave, Google, DuckDuckGo, SerpAPI, Serper
+- **Value:** Real-time information access — 7 engines with fallback
 - **Token Savings:** ~50K tokens/search
 
 **3. `pomera_read_url`**
-- **Function:** Fetch URL content, convert HTML to markdown
-- **Value:** Clean content extraction
+- **Function:** Fetch URL content, convert HTML to clean markdown
+- **Value:** Content extraction without browser overhead
 - **Token Savings:** ~20K tokens/article
 
 **4. `pomera_find_replace_diff`**
-- **Operations:** validate, preview, execute (regex with backup)
-- **Value:** Safe regex operations with diff preview
-- **Token Savings:** ~10K tokens/task (prevents iteration)
+- **Operations:** validate, preview, execute (regex with auto-backup)
+- **Value:** Safe regex with diff preview — prevents destructive iteration
+- **Token Savings:** ~10K tokens/task
 
-**5. `pomera_generators`**
-- **Types:** password, uuid, lorem_ipsum, random_email, slug
-- **Value:** Instant generation without AI reasoning
-- **Token Savings:** ~2K tokens/generation
+**5. `pomera_smart_diff_2way`**
+- **Formats:** JSON, JSON5/JSONC, YAML, ENV, TOML (auto-detect)
+- **Value:** Semantic config comparison — ignores formatting, detects real changes
+- **Token Savings:** ~40K tokens/comparison (agents can't diff structured data in-context)
+
+**6. `pomera_smart_diff_3way`**
+- **Strategies:** report (list conflicts), keep_yours, keep_theirs
+- **Value:** 3-way merge — auto-resolves non-conflicting changes, reports conflicts
+- **Token Savings:** ~40K tokens/merge (impossible for agents to merge configs natively)
+
+**7. `pomera_ai_tools`**
+- **Providers:** OpenAI, Anthropic, Google AI, Groq, OpenRouter, Azure, + 5 more
+- **Actions:** generate, research (web + reasoning), deep reasoning (6-step protocol)
+- **Value:** Multi-model delegation — call specialized models for subtasks
+
+**8. `pomera_json_xml`**
+- **Operations:** validate, prettify, minify, convert (JSON ↔ XML)
+- **Value:** Config validation before processing
+- **Token Savings:** ~10K tokens/validation
+
+**9. `pomera_extract`**
+- **Types:** regex patterns, emails, URLs (with dedup/sort)
+- **Value:** Data extraction from large documents
+- **Token Savings:** ~30K tokens/extraction
+
+**10. `pomera_html`**
+- **Operations:** visible_text, clean_html, extract_links, extract_images, extract_tables, extract_forms
+- **Value:** Structured HTML processing — companion to `read_url`
+- **Token Savings:** ~15K tokens/page
 
 ---
 
 ### Category 2: High-Value Support Tools ⭐⭐⭐⭐
 
-**6. `pomera_text_stats`**
-- **Metrics:** word count, char count, reading time, top words
-- **Value:** Quick analysis without in-context parsing
-
-**7. `pomera_json_xml`**
-- **Operations:** validate, prettify, minify, convert (JSON ↔ XML)
-- **Value:** Config validation before processing
-
-**8. `pomera_extract`**
-- **Types:** regex patterns, emails, URLs (with dedup/sort)
-- **Value:** Data extraction from large documents
-- **Token Savings:** ~30K tokens/extraction
-
-**9. `pomera_markdown`**
-- **Operations:** strip, extract_links, extract_headers, table conversion
-- **Value:** Documentation processing
-
-**10. `pomera_line_tools`**
-- **Operations:** remove_duplicates, remove_empty, add/remove numbers, reverse, shuffle
-- **Value:** Text cleanup for imports, lists, logs
+**11. `pomera_generators`** - Password, UUID, lorem ipsum, random email, slug generation  
+**12. `pomera_text_stats`** - Word/char count, reading time, top words analysis  
+**13. `pomera_markdown`** - Strip, extract links/headers, table conversion  
+**14. `pomera_line_tools`** - Dedup, remove empty, add/remove numbers, reverse, shuffle  
+**15. `pomera_list_comparator`** - Compare lists, find unique/common/missing items
 
 ---
 
 ### Category 3: Specialist Tools (Conditional) ⭐⭐⭐
 
-**11. `pomera_whitespace`** - Tabs/spaces conversion, line ending normalization  
-**12. `pomera_html`** - HTML content extraction, link/image/table parsing  
-**13. `pomera_list_comparator`** - Compare lists, find differences  
-**14. `pomera_column_tools`** - CSV/TSV data processing
+**16. `pomera_whitespace`** - Tabs/spaces conversion, line ending normalization  
+**17. `pomera_column_tools`** - CSV/TSV data processing  
+**18. `pomera_diagnose`** - MCP server self-diagnostics and health checks
 
 ---
 
 ### Category 4: Additional Tools (On-Demand) ⭐⭐
 
-**15-24:** `pomera_case_transform`, `pomera_encode` (base64/hash), `pomera_string_escape`, `pomera_sort`, `pomera_translator`, `pomera_cron`, `pomera_timestamp`, `pomera_url_parser`, `pomera_email_header_analyzer`, `pomera_word_frequency`
+**19-26:** `pomera_case_transform`, `pomera_encode` (base64/hash), `pomera_string_escape`, `pomera_sort`, `pomera_translator`, `pomera_cron`, `pomera_timestamp`, `pomera_url_parser`, `pomera_email_header_analyzer`, `pomera_word_frequency`
 
 ---
 
@@ -325,18 +334,27 @@ Expected: Previous note should be retrieved
 
 ### Research Workflow (97% token reduction)
 ```
-1. pomera_web_search "topic" 
-2. pomera_read_url <best result>
-3. pomera_notes save --title "Research/Topic/Findings"
-4. Later: pomera_notes search "Topic*" → instant retrieval
+1. pomera_web_search "topic" → Tavily/Exa for best results
+2. pomera_read_url <best result> → clean markdown
+3. pomera_html extract_links → gather all sources
+4. pomera_notes save --title "Research/Topic/Findings"
+5. Later: pomera_notes search "Topic*" → instant retrieval
 ```
 
-### Config Validation Workflow
+### Config Change Verification Workflow
 ```
-1. pomera_json_xml validate → check for errors
-2. pomera_json_xml prettify → format for readability
-3. Edit config
-4. pomera_json_xml validate → verify changes
+1. pomera_json_xml validate → check original for errors
+2. Edit config file
+3. pomera_smart_diff_2way → semantic diff before vs after
+4. pomera_json_xml validate → verify changes are valid
+```
+
+### 3-Way Config Merge Workflow
+```
+1. pomera_smart_diff_3way base=<original> yours=<your changes> theirs=<their changes>
+2. Review auto-merged fields + conflicts
+3. Re-run with conflict_strategy="keep_yours" or "keep_theirs"
+4. pomera_notes save → audit trail
 ```
 
 ### Regex Operations Workflow (80% token reduction)
@@ -344,6 +362,13 @@ Expected: Previous note should be retrieved
 1. pomera_find_replace_diff --operation validate
 2. pomera_find_replace_diff --operation preview → see diff
 3. pomera_find_replace_diff --operation execute → apply with backup
+```
+
+### AI Delegation Workflow
+```
+1. pomera_ai_tools --action research --provider OpenAI → deep research with web search
+2. pomera_ai_tools --action deepreasoning --provider "Anthropic AI" → structured analysis
+3. pomera_notes save → persist findings
 ```
 
 ---
@@ -374,24 +399,27 @@ Expected: Previous note should be retrieved
 ## IDE-Specific Tips
 
 ### Antigravity
-- Enable all 10 core tools + `pomera_html`, `pomera_whitespace`
+- Enable all 10 critical tools + smart diff tools for config verification
 - Use Notes system to complement task_boundary workflow
-- Leverage web_search for research during PLANNING mode
+- Leverage web_search + ai_tools for research during PLANNING mode
+- Use `pomera_smart_diff_2way` to verify config changes after edits
 
 ### Cline
 - Notes system complements Memory Bank with FTS5 search
 - Use `pomera_web_search` instead of external MCP servers
 - Default to `pomera_find_replace_diff` for regex operations
+- Use `pomera_smart_diff_3way` to resolve config merge conflicts
 
 ### Cursor
 - Pomera fills massive gap (Cursor has NO text utility tools)
-- Enable ALL 14 tools (10 core + 4 specialists)
-- Use Notes for cross-session API keys/configs
+- Enable ALL tools (10 critical + 5 high-value + specialists)
+- Use Notes for cross-session state, smart diff for config verification
 
 ### Claude Desktop
 - Sub-agents can delegate text processing to Pomera
-- Use validators before sub-agent tasks
-- Notes store sub-agent findings
+- Use `pomera_ai_tools` for multi-model delegation from sub-agents
+- Use `pomera_smart_diff_2way` to validate config changes
+- Notes store sub-agent findings and merge audit trails
 
 ---
 
@@ -430,7 +458,7 @@ Pomera works **100% offline** by default. Optional API keys enable:
 ## Resources
 
 - **Documentation:** [https://github.com/matbanik/Pomera-AI-Commander/tree/master/docs](https://github.com/matbanik/Pomera-AI-Commander/tree/master/docs)
-- **Tool Reference:** [TOOLS_DOCUMENTATION.md](https://github.com/matbanik/Pomera-AI-Commander/blob/master/docs/TOOLS_DOCUMENTATION.md)
+- **Tool Reference:** [Tools Documentation](https://github.com/matbanik/Pomera-AI-Commander/blob/master/docs/tools/INDEX.md)
 - **MCP Guide:** [MCP_SERVER_GUIDE.md](https://github.com/matbanik/Pomera-AI-Commander/blob/master/docs/MCP_SERVER_GUIDE.md)
 - **Agentic AI Analysis:** [Why AI needs Pomera](https://github.com/matbanik/Pomera-AI-Commander/blob/master/docs/pomera-mcp-agentic-ai-analysis.md)
 - **Troubleshooting:** [TROUBLESHOOTING.md](https://github.com/matbanik/Pomera-AI-Commander/blob/master/docs/TROUBLESHOOTING.md)
@@ -439,4 +467,4 @@ Pomera works **100% offline** by default. Optional API keys enable:
 
 **Quick Start:** Install with `pip install pomera-ai-commander`, add to MCP config, restart client, test with `pomera_generators` or `pomera_notes`.
 
-*Installation guide for AI assistants | Last updated: January 2026*
+*Installation guide for AI assistants | Last updated: February 2026*

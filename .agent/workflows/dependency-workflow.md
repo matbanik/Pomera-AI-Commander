@@ -68,7 +68,7 @@ description: Workflow for managing dependencies, checking updates, and maintaini
 5. **Update documentation**:
    - Add to README if user-facing
    - Document in code comments
-   - Update AGENTS.md if relevant for AI workflows
+   - Update GEMINI.md if relevant for AI workflows
 
 6. **Commit with clear message**:
    ```bash
@@ -194,7 +194,7 @@ pip-audit
    ```bash
    pip install -r requirements.txt --upgrade
    python -m pytest tests/ -v
-   python run_all_tests_local.py  # If exists
+   python -m pytest tests/ -v  # Run test suite
    ```
 
 6. **Check for dependency conflicts**:
@@ -447,7 +447,7 @@ strategy:
 
 ### Documentation
 - [ ] Update README if Python version changed
-- [ ] Update AGENTS.md if workflows changed
+- [ ] Update GEMINI.md if workflows changed
 - [ ] Document any breaking changes
 - [ ] Update CHANGELOG.md
 ```
