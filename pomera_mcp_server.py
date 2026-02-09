@@ -13,7 +13,8 @@ Configuration for Claude Desktop (claude_desktop_config.json):
         "mcpServers": {
             "pomera": {
                 "command": "python",
-                "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"]
+                "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"],
+                "timeout": 3600
             }
         }
     }
@@ -23,10 +24,15 @@ Configuration for Cursor (.cursor/mcp.json):
         "mcpServers": {
             "pomera": {
                 "command": "python",
-                "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"]
+                "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"],
+                "timeout": 3600
             }
         }
     }
+
+Timeout: The "timeout": 3600 prevents request timeouts during long-running
+AI operations (research, deepreasoning). Default MCP client timeout is 60s,
+but AI calls with web search + reasoning can take 60-300s.
 
 Available Tools:
     - pomera_case_transform: Transform text case (sentence, lower, upper, title)

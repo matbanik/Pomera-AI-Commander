@@ -40,7 +40,8 @@ Create `.antigravity/mcp.json` in your project root:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-ai-commander"
+      "command": "pomera-ai-commander",
+      "timeout": 3600
     }
   }
 }
@@ -53,7 +54,8 @@ Create `.antigravity/mcp.json` in your project root:
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["-m", "pomera_mcp_server"]
+      "args": ["-m", "pomera_mcp_server"],
+      "timeout": 3600
     }
   }
 }
@@ -65,7 +67,8 @@ Create `.antigravity/mcp.json` in your project root:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-mcp"
+      "command": "pomera-mcp",
+      "timeout": 3600
     }
   }
 }
@@ -80,7 +83,8 @@ If the above options don't work, use the full path to the Python script:
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["C:/Users/YOUR_USER/AppData/Roaming/npm/node_modules/pomera-ai-commander/pomera_mcp_server.py"]
+      "args": ["C:/Users/YOUR_USER/AppData/Roaming/npm/node_modules/pomera-ai-commander/pomera_mcp_server.py"],
+      "timeout": 3600
     }
   }
 }
@@ -100,7 +104,8 @@ Cursor stores MCP configuration in `.cursor/mcp.json` in your project root.
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-ai-commander"
+      "command": "pomera-ai-commander",
+      "timeout": 3600
     }
   }
 }
@@ -112,7 +117,8 @@ Cursor stores MCP configuration in `.cursor/mcp.json` in your project root.
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-mcp"
+      "command": "pomera-mcp",
+      "timeout": 3600
     }
   }
 }
@@ -125,7 +131,8 @@ Cursor stores MCP configuration in `.cursor/mcp.json` in your project root.
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["C:/Users/YOUR_USER/AppData/Roaming/npm/node_modules/pomera-ai-commander/pomera_mcp_server.py"]
+      "args": ["C:/Users/YOUR_USER/AppData/Roaming/npm/node_modules/pomera-ai-commander/pomera_mcp_server.py"],
+      "timeout": 3600
     }
   }
 }
@@ -151,7 +158,8 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-ai-commander"
+      "command": "pomera-ai-commander",
+      "timeout": 3600
     }
   }
 }
@@ -163,7 +171,8 @@ Claude Desktop uses `claude_desktop_config.json` located at:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-mcp"
+      "command": "pomera-mcp",
+      "timeout": 3600
     }
   }
 }
@@ -176,7 +185,8 @@ Claude Desktop uses `claude_desktop_config.json` located at:
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"]
+      "args": ["C:/path/to/Pomera-AI-Commander/pomera_mcp_server.py"],
+      "timeout": 3600
     }
   }
 }
@@ -842,6 +852,33 @@ pomera_diagnose(verbose=true)
 | `POMERA_DATA_DIR` | Override data directory (highest priority) |
 | `POMERA_CONFIG_DIR` | Override config file location |
 | `POMERA_PORTABLE` | Enable portable mode (data in installation dir) |
+
+---
+
+### MCP Request Timeout (Cline, Cursor, Claude Desktop)
+
+**Symptom:** `MCP error -2: Request timed out` after ~60 seconds, especially during `pomera_ai_tools` `research` or `deepreasoning` calls.
+
+**Root Cause:** The MCP TypeScript SDK defaults to `DEFAULT_REQUEST_TIMEOUT_MSEC = 60000` (60 seconds). **Cline, Cursor, and Claude Desktop** all inherit this default. AI operations involving web search + deep reasoning take 60-300+ seconds, exceeding this limit.
+
+**Solution:** Add `"timeout": 3600` to your MCP server configuration (all examples above already include this).
+
+> **Note:** Pomera sends progress keepalive signals every 10 seconds, but Cline/Cursor currently use a fixed absolute timeout rather than resetting on progress notifications.
+
+**Recommended timeout values:**
+
+| Use Case | Recommended |
+|----------|-------------|
+| `generate` action (10-30s) | 300 (5 min) |
+| `research` action with web search (60-180s) | 300 (5 min) |
+| `deepreasoning` with large thinking_budget (90-300s) | 600 (10 min) |
+| All-purpose (safe default) | 3600 (1 hr) |
+
+**Cline specific:** You can also change the timeout via UI: MCP Servers icon → Pomera config → Network Timeout dropdown (30s to 1 hour).
+
+**References:**
+- [Cline #1306](https://github.com/cline/cline/issues/1306) — "Any long running MCP tool request appears to get error MCP error -2: Request timed out"
+- [Claude Code #22542](https://github.com/anthropics/claude-code/issues/22542) — Feature request for configurable timeout + progress notification support
 
 ---
 

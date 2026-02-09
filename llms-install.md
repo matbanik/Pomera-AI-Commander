@@ -117,6 +117,7 @@ Add Pomera to your MCP client's configuration file. The configuration varies by 
     "pomera": {
       "command": "python",
       "args": ["-m", "pomera.mcp_server"],
+      "timeout": 3600,
       "env": {}
     }
   }
@@ -136,7 +137,8 @@ Add Pomera to your MCP client's configuration file. The configuration varies by 
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["-m", "pomera.mcp_server"]
+      "args": ["-m", "pomera.mcp_server"],
+      "timeout": 3600
     }
   }
 }
@@ -154,7 +156,8 @@ Add Pomera to your MCP client's configuration file. The configuration varies by 
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["-m", "pomera.mcp_server"]
+      "args": ["-m", "pomera.mcp_server"],
+      "timeout": 3600
     }
   }
 }
@@ -172,11 +175,14 @@ Add Pomera to your MCP client's configuration file. The configuration varies by 
   "mcpServers": {
     "pomera": {
       "command": "python",
-      "args": ["-m", "pomera.mcp_server"]
+      "args": ["-m", "pomera.mcp_server"],
+      "timeout": 3600
     }
   }
 }
 ```
+
+> **⏱️ Timeout:** The `"timeout": 3600` setting (in seconds) prevents MCP request timeouts during long-running AI operations. **Cline, Cursor, and Claude Desktop** all default to 60 seconds, which is too short for `research` and `deepreasoning` calls (60-300s). See [Cline #1306](https://github.com/cline/cline/issues/1306).
 
 ---
 
@@ -189,7 +195,8 @@ If installed via npm, you can use npx instead:
   "mcpServers": {
     "pomera": {
       "command": "npx",
-      "args": ["-y", "pomera-ai-commander"]
+      "args": ["-y", "pomera-ai-commander"],
+      "timeout": 3600
     }
   }
 }
@@ -207,7 +214,8 @@ For development from source:
     "pomera": {
       "command": "python",
       "args": ["-m", "pomera.mcp_server"],
-      "cwd": "/absolute/path/to/Pomera-AI-Commander"
+      "cwd": "/absolute/path/to/Pomera-AI-Commander",
+      "timeout": 3600
     }
   }
 }

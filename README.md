@@ -96,7 +96,8 @@ Pomera exposes 22 text processing tools via MCP. Configure your AI assistant:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-ai-commander"
+      "command": "pomera-ai-commander",
+      "timeout": 3600
     }
   }
 }
@@ -107,7 +108,8 @@ Pomera exposes 22 text processing tools via MCP. Configure your AI assistant:
 {
   "mcpServers": {
     "pomera": {
-      "command": "pomera-ai-commander"
+      "command": "pomera-ai-commander",
+      "timeout": 3600
     }
   }
 }
@@ -122,6 +124,8 @@ Pomera exposes 22 text processing tools via MCP. Configure your AI assistant:
 > # For pip install:
 > pip show pomera-ai-commander | grep Location
 > ```
+
+> **⏱️ Timeout:** The `"timeout": 3600` setting (in seconds) prevents MCP request timeouts during long-running AI operations like `research` and `deepreasoning`. **Cline, Cursor, and Claude Desktop** all default to a 60-second timeout, which is too short for AI calls involving web search + deep reasoning (60-300s). See [Cline #1306](https://github.com/cline/cline/issues/1306).
 
 See the full [MCP Server Guide](docs/MCP_SERVER_GUIDE.md) for Antigravity, executable configs, and troubleshooting.
 
