@@ -148,6 +148,37 @@ class MCPProtocol:
         """
         return MCPMessage(method=method, params=params)
     
+    @staticmethod
+    def create_progress_notification(
+        progress_token: Any,
+        progress: float,
+        total: float = 100.0,
+        message: Optional[str] = None
+    ) -> MCPMessage:
+        """
+        Create a progress notification for long-running operations.
+        
+        Sends notifications/progress to keep MCP client connections alive
+        during extended tool executions (e.g., AI research with web search).
+        
+        Args:
+            progress_token: Token from client's _meta.progressToken
+            progress: Current progress value
+            total: Total progress value (default 100)
+            message: Optional human-readable progress message
+            
+        Returns:
+            MCPMessage notification (no response expected)
+        """
+        params: Dict[str, Any] = {
+            "progressToken": progress_token,
+            "progress": progress,
+            "total": total,
+        }
+        if message:
+            params["message"] = message
+        return MCPMessage(method="notifications/progress", params=params)
+    
     # =========================================================================
     # MCP-specific response creators
     # =========================================================================
