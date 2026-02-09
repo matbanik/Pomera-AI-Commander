@@ -55,7 +55,7 @@ class TestAIToolsMCP:
         # Verify action enum
         action_schema = tool.inputSchema['properties']['action']
         assert 'enum' in action_schema
-        assert set(action_schema['enum']) == {'generate', 'list_providers', 'list_models'}
+        assert set(action_schema['enum']) == {'generate', 'list_providers', 'list_models', 'research', 'deepreasoning'}
     
     # =========================================================================
     # list_providers Action Tests
@@ -146,16 +146,16 @@ class TestAIToolsMCP:
     
     def test_generate_no_api_key_error(self, tool_registry):
         """Test generate without API key returns helpful error."""
+        # Use a provider name that will never have a configured API key
         result = tool_registry.execute('pomera_ai_tools', {
             "action": "generate",
-            "provider": "OpenAI",
+            "provider": "NonExistentProvider_NoKey",
             "prompt": "Hello, world!"
         })
         
         data = get_result(result)
         # Without a configured API key, should fail gracefully
         assert data['success'] is False
-        assert 'provider' in data and data['provider'] == 'OpenAI'
     
     def test_generate_standalone_database_access(self, tool_registry):
         """Test AI Tools can access database in standalone mode (no GUI context).

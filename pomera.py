@@ -3939,7 +3939,8 @@ class PromeraAIApp(tk.Tk):
                 tool_loader=self.tool_loader,
                 on_tool_selected=self._on_palette_tool_selected,
                 settings=self.settings,
-                on_settings_change=self._on_ui_settings_change
+                on_settings_change=self._on_ui_settings_change,
+                on_open_notes=self.open_notes_widget
             )
             self.tool_search_palette.pack(fill=tk.X, expand=True, padx=5)
             self.tool_menu = self.tool_search_palette
@@ -4049,7 +4050,8 @@ class PromeraAIApp(tk.Tk):
             tool_loader=self.tool_loader,
             on_tool_selected=self._on_palette_tool_selected,
             settings=self.settings,
-            on_settings_change=self._on_ui_settings_change
+            on_settings_change=self._on_ui_settings_change,
+            on_open_notes=self.open_notes_widget
         )
         # Pack to fill horizontally (top-center layout)
         self.tool_search_palette.pack(fill=tk.BOTH, expand=True, padx=5)

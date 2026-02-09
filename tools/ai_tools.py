@@ -1203,6 +1203,30 @@ class AIToolsWidget(ttk.Frame):
                     # Initial update
                     update_depth_visibility()
             
+            # Add dedicated "Run" buttons for Research and DeepReasoning tabs
+            if tab_name == "research":
+                # Calculate next row after all parameters
+                next_row = (len(params) // num_columns) + 1 if use_multi_columns else row
+                btn_frame = ttk.Frame(scrollable_frame)
+                btn_frame.grid(row=next_row + 1, column=0, columnspan=6, pady=(10, 5), padx=5, sticky="w")
+                run_btn = ttk.Button(
+                    btn_frame, text="▶ Run Research",
+                    command=self.run_research_in_thread
+                )
+                run_btn.pack(side=tk.LEFT, padx=(0, 10))
+                ttk.Label(btn_frame, text="Runs research with settings above", foreground="gray").pack(side=tk.LEFT)
+            
+            elif tab_name == "deepreasoning":
+                next_row = (len(params) // num_columns) + 1 if use_multi_columns else row
+                btn_frame = ttk.Frame(scrollable_frame)
+                btn_frame.grid(row=next_row + 1, column=0, columnspan=6, pady=(10, 5), padx=5, sticky="w")
+                run_btn = ttk.Button(
+                    btn_frame, text="▶ Run Deep Reasoning",
+                    command=self.run_deepreasoning_in_thread
+                )
+                run_btn.pack(side=tk.LEFT, padx=(0, 10))
+                ttk.Label(btn_frame, text="Runs deep reasoning with settings above", foreground="gray").pack(side=tk.LEFT)
+            
             # Bind mouse wheel to all child widgets after they're created
             canvas._bind_mousewheel_to_children(scrollable_frame)
     
@@ -1863,6 +1887,314 @@ class AIToolsWidget(ttk.Frame):
         self._ai_thread = threading.Thread(target=self.process_ai_request, daemon=True)
         self._ai_thread.start()
     
+    def run_research_in_thread(self):
+        """Start Research processing in a separate thread (called by Run Research button)."""
+        if hasattr(self, '_ai_thread') and self._ai_thread and self._ai_thread.is_alive():
+            return
+        
+        provider_name = self.current_provider
+        if provider_name not in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
+            self.app.update_output_text(f"Error: Research is not supported for {provider_name}.")
+            return
+        
+        self._ai_thread = threading.Thread(target=self._execute_research, daemon=True)
+        self._ai_thread.start()
+    
+    def run_deepreasoning_in_thread(self):
+        """Start Deep Reasoning processing in a separate thread (called by Run Deep Reasoning button)."""
+        if hasattr(self, '_ai_thread') and self._ai_thread and self._ai_thread.is_alive():
+            return
+        
+        provider_name = self.current_provider
+        if provider_name != "Anthropic AI":
+            self.app.update_output_text(f"Error: Deep Reasoning is only supported for Anthropic AI.")
+            return
+        
+        self._ai_thread = threading.Thread(target=self._execute_deepreasoning, daemon=True)
+        self._ai_thread.start()
+    
+    def _execute_research(self):
+        """Execute a Research request. Called from run_research_in_thread()."""
+        provider_name = self.current_provider
+        settings = self.get_current_settings()
+        api_key = self.get_api_key_for_provider(provider_name, settings)
+        
+        # Get input text
+        active_input_tab = self.app.input_tabs[self.app.input_notebook.index(self.app.input_notebook.select())]
+        prompt = active_input_tab.text.get("1.0", tk.END).strip()
+        
+        if not prompt:
+            self.app.after(0, self.app.update_output_text, "Error: Input text cannot be empty.")
+            return
+        
+        # Validate API key (LM Studio doesn't need one)
+        if not api_key or api_key == "putinyourkey":
+            self.app.after(0, self.app.update_output_text, f"Error: Please enter a valid {provider_name} API Key in the settings.")
+            return
+        
+        self.logger.info(f"Research Mode enabled for {provider_name} - using research engine")
+        
+        # Get research settings from GUI BEFORE showing dialog
+        research_model = settings.get("research_model", "")
+        research_mode = settings.get("research_mode", "two-stage")
+        research_style = settings.get("research_style", "analytical")
+        reasoning_effort = settings.get("reasoning_effort", "xhigh")
+        thinking_budget = settings.get("research_thinking_budget", 32000)
+        search_count = settings.get("research_search_count", 10)
+        max_results = settings.get("research_max_results", 10)
+        force_search = settings.get("research_force_search", False)
+        max_tokens = settings.get("research_max_tokens", 64000)
+        
+        # Convert types
+        if isinstance(search_count, str):
+            try: search_count = int(search_count)
+            except: search_count = 10
+        if isinstance(max_results, str):
+            try: max_results = int(max_results)
+            except: max_results = 10
+        if isinstance(thinking_budget, str):
+            try: thinking_budget = int(thinking_budget)
+            except: thinking_budget = 32000
+        if isinstance(max_tokens, str):
+            try: max_tokens = int(max_tokens)
+            except: max_tokens = 64000
+        if isinstance(force_search, str):
+            force_search = force_search.lower() in ('true', '1', 'yes', 'on')
+        
+        self.logger.info(f"Research settings: model={research_model}, mode={research_mode}, effort={reasoning_effort}")
+        
+        # Show modal dialog
+        progress_dialog = ResearchProgressDialog(
+            self.app,
+            title=f"Research - {provider_name}",
+            mode="research"
+        )
+        progress_dialog.update_progress(
+            f"Starting {research_mode} research...",
+            f"Model: {research_model or 'default'}"
+        )
+        
+        self._research_dialog = progress_dialog
+        self._research_result = None
+        self._research_error = None
+        
+        def run_research():
+            try:
+                from core.ai_tools_engine import AIToolsEngine
+                db_manager = getattr(self.app, 'db_settings_manager', None)
+                engine = AIToolsEngine(db_settings_manager=db_manager)
+                
+                if progress_dialog.is_cancelled():
+                    return
+                
+                progress_dialog.update_progress("Connecting to API...", "Stage 1: Web Search")
+                
+                def research_progress(current, total):
+                    if progress_dialog.is_cancelled():
+                        raise InterruptedError("Research cancelled by user")
+                    stage = "Stage 1: Web Search" if current < total else "Stage 2: Analysis"
+                    progress_dialog.update_progress(f"Progress: {current}/{total}", stage)
+                
+                self.logger.info(f"[TRACE] Calling engine.generate_research()")
+                
+                result = engine.generate_research(
+                    prompt=prompt,
+                    provider=provider_name,
+                    model=research_model if research_model else None,
+                    research_mode=research_mode,
+                    reasoning_effort=reasoning_effort,
+                    thinking_budget=thinking_budget,
+                    style=research_style,
+                    search_count=search_count,
+                    force_search=force_search,
+                    max_tokens=max_tokens,
+                    progress_callback=research_progress
+                )
+                
+                if progress_dialog.is_cancelled():
+                    return
+                
+                self._research_result = result
+                
+            except InterruptedError:
+                self._research_error = "Cancelled by user"
+            except ImportError as e:
+                self._research_error = f"Research engine not available: {e}"
+            except Exception as e:
+                self.logger.error(f"Research failed: {e}", exc_info=True)
+                self._research_error = str(e)
+            finally:
+                self.app.after(0, self._finish_research)
+        
+        def _finish_research_impl():
+            progress_dialog.close()
+            
+            if progress_dialog.is_cancelled():
+                self.app.update_output_text("Research cancelled by user.")
+                return
+            
+            if self._research_error:
+                self.app.update_output_text(f"Error: {self._research_error}")
+                return
+            
+            result = self._research_result
+            if result and result.success:
+                self.start_streaming_response(clear_existing=True)
+                response_text = result.response or ""
+                
+                if hasattr(result, 'thinking') and result.thinking:
+                    thinking_text = "\n\n---\n**Thinking Process:**\n"
+                    for thought in result.thinking:
+                        thinking_text += f"\n{thought[:500]}..." if len(thought) > 500 else f"\n{thought}"
+                    response_text += thinking_text
+                
+                self.add_streaming_chunk(response_text)
+                self.end_streaming_response()
+                
+                if result.usage:
+                    self.logger.info(f"Research usage: {result.usage}")
+            elif result:
+                self.app.update_output_text(f"Research error: {result.error}")
+            else:
+                self.app.update_output_text("Research returned no result.")
+        
+        self._finish_research = _finish_research_impl
+        
+        research_thread = threading.Thread(target=run_research, daemon=True)
+        research_thread.start()
+        
+        progress_dialog.wait_for_close()
+    
+    def _execute_deepreasoning(self):
+        """Execute a Deep Reasoning request. Called from run_deepreasoning_in_thread()."""
+        provider_name = self.current_provider
+        settings = self.get_current_settings()
+        api_key = self.get_api_key_for_provider(provider_name, settings)
+        
+        # Get input text
+        active_input_tab = self.app.input_tabs[self.app.input_notebook.index(self.app.input_notebook.select())]
+        prompt = active_input_tab.text.get("1.0", tk.END).strip()
+        
+        if not prompt:
+            self.app.after(0, self.app.update_output_text, "Error: Input text cannot be empty.")
+            return
+        
+        if not api_key or api_key == "putinyourkey":
+            self.app.after(0, self.app.update_output_text, "Error: Please enter a valid Anthropic AI API Key in the settings.")
+            return
+        
+        self.logger.info(f"DeepReasoning Mode - {provider_name} deep reasoning engine")
+        
+        # Get deepreasoning settings
+        dr_model = settings.get("deepreasoning_model", "claude-opus-4-6")
+        dr_thinking_budget = settings.get("deepreasoning_thinking_budget", 32000)
+        dr_max_tokens = settings.get("deepreasoning_max_tokens", 128000)
+        
+        # Convert types
+        if isinstance(dr_thinking_budget, str):
+            try: dr_thinking_budget = int(dr_thinking_budget)
+            except: dr_thinking_budget = 32000
+        if isinstance(dr_max_tokens, str):
+            try: dr_max_tokens = int(dr_max_tokens)
+            except: dr_max_tokens = 64000
+        
+        self.logger.info(f"DeepReasoning settings: model={dr_model}, thinking_budget={dr_thinking_budget}, max_tokens={dr_max_tokens}")
+        
+        # Show modal dialog
+        progress_dialog = ResearchProgressDialog(
+            self.app,
+            title=f"Deep Reasoning - {provider_name}",
+            mode="deepreasoning"
+        )
+        progress_dialog.update_progress(
+            f"Starting deep reasoning...",
+            f"Thinking budget: {dr_thinking_budget:,} tokens"
+        )
+        
+        self._research_dialog = progress_dialog
+        self._research_result = None
+        self._research_error = None
+        
+        def run_deepreasoning():
+            try:
+                from core.ai_research_engine import AIResearchEngine
+                research_engine = AIResearchEngine()
+                
+                if progress_dialog.is_cancelled():
+                    return
+                
+                progress_dialog.update_progress("Connecting to API...", "Extended Thinking Mode")
+                
+                def dr_progress(current, total):
+                    if progress_dialog.is_cancelled():
+                        raise InterruptedError("Deep reasoning cancelled by user")
+                    progress_dialog.update_progress(f"Progress: {current}/{total}", "Extended Thinking Mode")
+                
+                self.logger.info(f"[TRACE] Calling deep_reasoning_anthropic()")
+                
+                result = research_engine.deep_reasoning_anthropic(
+                    prompt=prompt,
+                    api_key=api_key,
+                    model=dr_model,
+                    thinking_budget=dr_thinking_budget,
+                    max_tokens=dr_max_tokens,
+                    progress_callback=dr_progress
+                )
+                
+                if progress_dialog.is_cancelled():
+                    return
+                
+                self._research_result = result
+                
+            except InterruptedError:
+                self._research_error = "Cancelled by user"
+            except ImportError as e:
+                self._research_error = f"DeepReasoning engine not available: {e}"
+            except Exception as e:
+                self.logger.error(f"DeepReasoning failed: {e}", exc_info=True)
+                self._research_error = str(e)
+            finally:
+                self.app.after(0, self._finish_deepreasoning)
+        
+        def _finish_deepreasoning_impl():
+            progress_dialog.close()
+            
+            if progress_dialog.is_cancelled():
+                self.app.update_output_text("Deep reasoning cancelled by user.")
+                return
+            
+            if self._research_error:
+                self.app.update_output_text(f"Error: {self._research_error}")
+                return
+            
+            result = self._research_result
+            if result and result.success:
+                self.start_streaming_response(clear_existing=True)
+                response_text = result.response or ""
+                
+                if hasattr(result, 'thinking') and result.thinking:
+                    thinking_text = "\n\n---\n**Thinking Process:**\n"
+                    for thought in result.thinking:
+                        thinking_text += f"\n{thought[:500]}..." if len(thought) > 500 else f"\n{thought}"
+                    response_text += thinking_text
+                
+                self.add_streaming_chunk(response_text)
+                self.end_streaming_response()
+                
+                if result.usage:
+                    self.logger.info(f"DeepReasoning usage: {result.usage}")
+            elif result:
+                self.app.update_output_text(f"DeepReasoning error: {result.error}")
+            else:
+                self.app.update_output_text("DeepReasoning returned no result.")
+        
+        self._finish_deepreasoning = _finish_deepreasoning_impl
+        
+        dr_thread = threading.Thread(target=run_deepreasoning, daemon=True)
+        dr_thread.start()
+        
+        progress_dialog.wait_for_close()
+    
     def process_ai_request(self):
         """Process the AI request."""
         provider_name = self.current_provider
@@ -2025,328 +2357,9 @@ class AIToolsWidget(ttk.Frame):
                     # Fallback message if boto3 not available
                     self.logger.warning(f"boto3 not available, falling back to raw HTTP for AWS Bedrock")
 
-            # Detect active parameter tab for Research/DeepReasoning routing
-            active_tab_name = None
-            if provider_name in self.param_notebooks:
-                try:
-                    notebook = self.param_notebooks[provider_name]
-                    selected_tab_id = notebook.select()
-                    if selected_tab_id:
-                        # Get tab text (display name)
-                        tab_index = notebook.index(selected_tab_id)
-                        active_tab_name = notebook.tab(tab_index, "text").lower().replace(" ", "")
-                        self.logger.info(f"Active parameter tab: {active_tab_name}")
-                except Exception as e:
-                    self.logger.debug(f"Could not detect active tab: {e}")
-            
-            # Route based on active tab (Research tab, DeepReasoning tab, or normal API)
-            if active_tab_name == "research" and provider_name in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
-                self.logger.info(f"Research Mode enabled for {provider_name} - using research engine")
-                
-                # Get research settings from GUI BEFORE showing dialog
-                research_model = settings.get("research_model", "")
-                research_mode = settings.get("research_mode", "two-stage")
-                research_style = settings.get("research_style", "analytical")
-                reasoning_effort = settings.get("reasoning_effort", "xhigh")  # OpenAI/OpenRouter
-                thinking_budget = settings.get("research_thinking_budget", 32000)  # Anthropic
-                search_count = settings.get("research_search_count", 10)  # Anthropic
-                max_results = settings.get("research_max_results", 10)  # OpenRouter
-                force_search = settings.get("research_force_search", False)
-                max_tokens = settings.get("research_max_tokens", 64000)
-                
-                # Convert types
-                if isinstance(search_count, str):
-                    try:
-                        search_count = int(search_count)
-                    except:
-                        search_count = 10
-                if isinstance(max_results, str):
-                    try:
-                        max_results = int(max_results)
-                    except:
-                        max_results = 10
-                if isinstance(thinking_budget, str):
-                    try:
-                        thinking_budget = int(thinking_budget)
-                    except:
-                        thinking_budget = 32000
-                if isinstance(max_tokens, str):
-                    try:
-                        max_tokens = int(max_tokens)
-                    except:
-                        max_tokens = 64000
-                if isinstance(force_search, str):
-                    force_search = force_search.lower() in ('true', '1', 'yes', 'on')
-                
-                # Log research settings
-                self.logger.info(f"Research settings: model={research_model}, mode={research_mode}, effort={reasoning_effort}")
-                
-                # Show modal dialog - this blocks main app interaction
-                progress_dialog = ResearchProgressDialog(
-                    self.app, 
-                    title=f"Research - {provider_name}",
-                    mode="research"
-                )
-                progress_dialog.update_progress(
-                    f"Starting {research_mode} research...",
-                    f"Model: {research_model or 'default'}"
-                )
-                
-                # Store dialog reference for thread access
-                self._research_dialog = progress_dialog
-                self._research_result = None
-                self._research_error = None
-                
-                def run_research():
-                    """Background thread for research execution."""
-                    try:
-                        from core.ai_tools_engine import AIToolsEngine
-                        
-                        # Get db_settings_manager if available
-                        db_manager = getattr(self.app, 'db_settings_manager', None)
-                        engine = AIToolsEngine(db_settings_manager=db_manager)
-                        
-                        # Check cancellation before starting
-                        if progress_dialog.is_cancelled():
-                            return
-                        
-                        progress_dialog.update_progress(
-                            "Connecting to API...",
-                            "Stage 1: Web Search"
-                        )
-                        
-                        # Progress callback for research engine
-                        def research_progress(current, total):
-                            if progress_dialog.is_cancelled():
-                                raise InterruptedError("Research cancelled by user")
-                            stage = "Stage 1: Web Search" if current < total else "Stage 2: Analysis"
-                            progress_dialog.update_progress(
-                                f"Progress: {current}/{total}",
-                                stage
-                            )
-                        
-                        self.logger.info(f"[TRACE] Calling engine.generate_research()")
-                        print(f"[TRACE] Calling engine.generate_research() -- provider={provider_name}")
-                        
-                        result = engine.generate_research(
-                            prompt=prompt,
-                            provider=provider_name,
-                            model=research_model if research_model else None,
-                            research_mode=research_mode,
-                            reasoning_effort=reasoning_effort,  # OpenAI/OpenRouter
-                            thinking_budget=thinking_budget,    # Anthropic
-                            style=research_style,
-                            search_count=search_count,          # Anthropic
-                            force_search=force_search,
-                            max_tokens=max_tokens,
-                            progress_callback=research_progress
-                        )
-                        
-                        # Check cancellation after completion
-                        if progress_dialog.is_cancelled():
-                            return
-                        
-                        self._research_result = result
-                        
-                    except InterruptedError as e:
-                        self._research_error = "Cancelled by user"
-                    except ImportError as e:
-                        self._research_error = f"Research engine not available: {e}"
-                    except Exception as e:
-                        self.logger.error(f"Research failed: {e}", exc_info=True)
-                        self._research_error = str(e)
-                    finally:
-                        # Close dialog from main thread
-                        self.app.after(0, self._finish_research)
-                
-                def _finish_research_impl():
-                    """Handle research completion in main thread."""
-                    # Close dialog
-                    progress_dialog.close()
-                    
-                    if progress_dialog.is_cancelled():
-                        self.app.update_output_text("Research cancelled by user.")
-                        return
-                    
-                    if self._research_error:
-                        self.app.update_output_text(f"Error: {self._research_error}")
-                        return
-                    
-                    result = self._research_result
-                    if result and result.success:
-                        # Display research result
-                        self.start_streaming_response(clear_existing=True)
-                        response_text = result.response or ""
-                        
-                        # Add thinking blocks if available (Anthropic)
-                        if hasattr(result, 'thinking') and result.thinking:
-                            thinking_text = "\n\n---\n**Thinking Process:**\n"
-                            for thought in result.thinking:
-                                thinking_text += f"\n{thought[:500]}..." if len(thought) > 500 else f"\n{thought}"
-                            response_text += thinking_text
-                        
-                        self.add_streaming_chunk(response_text)
-                        self.end_streaming_response()
-                        
-                        # Log usage if available
-                        if result.usage:
-                            self.logger.info(f"Research usage: {result.usage}")
-                    elif result:
-                        self.app.update_output_text(f"Research error: {result.error}")
-                    else:
-                        self.app.update_output_text("Research returned no result.")
-                
-                # Store finish callback
-                self._finish_research = _finish_research_impl
-                
-                # Start research thread
-                research_thread = threading.Thread(target=run_research, daemon=True)
-                research_thread.start()
-                
-                # Wait for dialog to close (modal wait)
-                progress_dialog.wait_for_close()
-                return
-
-            # Route to DeepReasoning if that tab is active
-            if active_tab_name == "deepreasoning" and provider_name == "Anthropic AI":
-                self.logger.info(f"DeepReasoning Mode - {provider_name} deep reasoning engine")
-                
-                # Get deepreasoning settings from GUI BEFORE showing dialog
-                dr_model = settings.get("deepreasoning_model", "claude-opus-4-5-20251101")
-                dr_thinking_budget = settings.get("deepreasoning_thinking_budget", 32000)
-                dr_max_tokens = settings.get("deepreasoning_max_tokens", 64000)
-                
-                # Convert types
-                if isinstance(dr_thinking_budget, str):
-                    try:
-                        dr_thinking_budget = int(dr_thinking_budget)
-                    except:
-                        dr_thinking_budget = 32000
-                if isinstance(dr_max_tokens, str):
-                    try:
-                        dr_max_tokens = int(dr_max_tokens)
-                    except:
-                        dr_max_tokens = 64000
-                
-                self.logger.info(f"DeepReasoning settings: model={dr_model}, thinking_budget={dr_thinking_budget}, max_tokens={dr_max_tokens}")
-                
-                # Show modal dialog - this blocks main app interaction
-                progress_dialog = ResearchProgressDialog(
-                    self.app,
-                    title=f"Deep Reasoning - {provider_name}",
-                    mode="deepreasoning"
-                )
-                progress_dialog.update_progress(
-                    f"Starting deep reasoning...",
-                    f"Thinking budget: {dr_thinking_budget:,} tokens"
-                )
-                
-                # Store dialog reference for thread access
-                self._research_dialog = progress_dialog
-                self._research_result = None
-                self._research_error = None
-                
-                def run_deepreasoning():
-                    """Background thread for deep reasoning execution."""
-                    try:
-                        from core.ai_research_engine import AIResearchEngine
-                        
-                        research_engine = AIResearchEngine()
-                        
-                        # Check cancellation before starting
-                        if progress_dialog.is_cancelled():
-                            return
-                        
-                        progress_dialog.update_progress(
-                            "Connecting to API...",
-                            "Extended Thinking Mode"
-                        )
-                        
-                        # Progress callback for research engine
-                        def dr_progress(current, total):
-                            if progress_dialog.is_cancelled():
-                                raise InterruptedError("Deep reasoning cancelled by user")
-                            progress_dialog.update_progress(
-                                f"Progress: {current}/{total}",
-                                "Extended Thinking Mode"
-                            )
-                        
-                        self.logger.info(f"[TRACE] Calling deep_reasoning_anthropic()")
-                        print(f"[TRACE] Calling deep_reasoning_anthropic() -- model={dr_model}")
-                        
-                        result = research_engine.deep_reasoning_anthropic(
-                            prompt=prompt,
-                            api_key=api_key,
-                            model=dr_model,
-                            thinking_budget=dr_thinking_budget,
-                            max_tokens=dr_max_tokens,
-                            progress_callback=dr_progress
-                        )
-                        
-                        # Check cancellation after completion
-                        if progress_dialog.is_cancelled():
-                            return
-                        
-                        self._research_result = result
-                        
-                    except InterruptedError as e:
-                        self._research_error = "Cancelled by user"
-                    except ImportError as e:
-                        self._research_error = f"DeepReasoning engine not available: {e}"
-                    except Exception as e:
-                        self.logger.error(f"DeepReasoning failed: {e}", exc_info=True)
-                        self._research_error = str(e)
-                    finally:
-                        # Close dialog from main thread
-                        self.app.after(0, self._finish_deepreasoning)
-                
-                def _finish_deepreasoning_impl():
-                    """Handle deep reasoning completion in main thread."""
-                    # Close dialog
-                    progress_dialog.close()
-                    
-                    if progress_dialog.is_cancelled():
-                        self.app.update_output_text("Deep reasoning cancelled by user.")
-                        return
-                    
-                    if self._research_error:
-                        self.app.update_output_text(f"Error: {self._research_error}")
-                        return
-                    
-                    result = self._research_result
-                    if result and result.success:
-                        # Display deep reasoning result
-                        self.start_streaming_response(clear_existing=True)
-                        response_text = result.response or ""
-                        
-                        # Add thinking blocks if available
-                        if hasattr(result, 'thinking') and result.thinking:
-                            thinking_text = "\n\n---\n**Thinking Process:**\n"
-                            for thought in result.thinking:
-                                thinking_text += f"\n{thought[:500]}..." if len(thought) > 500 else f"\n{thought}"
-                            response_text += thinking_text
-                        
-                        self.add_streaming_chunk(response_text)
-                        self.end_streaming_response()
-                        
-                        # Log usage if available
-                        if result.usage:
-                            self.logger.info(f"DeepReasoning usage: {result.usage}")
-                    elif result:
-                        self.app.update_output_text(f"DeepReasoning error: {result.error}")
-                    else:
-                        self.app.update_output_text("DeepReasoning returned no result.")
-                
-                # Store finish callback
-                self._finish_deepreasoning = _finish_deepreasoning_impl
-                
-                # Start deep reasoning thread
-                dr_thread = threading.Thread(target=run_deepreasoning, daemon=True)
-                dr_thread.start()
-                
-                # Wait for dialog to close (modal wait)
-                progress_dialog.wait_for_close()
-                return
+            # NOTE: Research and DeepReasoning are now triggered by dedicated
+            # "▶ Run Research" / "▶ Run Deep Reasoning" buttons in their
+            # respective parameter tabs. Process always does standard generation.
 
             url, payload, headers = self._build_api_request(provider_name, api_key, prompt, settings)
 
@@ -2381,7 +2394,7 @@ class AIToolsWidget(ttk.Frame):
                         return
                     else:
                         # Non-streaming API call
-                        response = requests.post(url, json=payload, headers=headers, timeout=60)
+                        response = requests.post(url, json=payload, headers=headers, timeout=None)
                         response.raise_for_status()
 
                         data = response.json()
@@ -3268,7 +3281,7 @@ class AIToolsWidget(ttk.Frame):
                 # Fall back to non-streaming
                 payload_copy = payload.copy()
                 payload_copy.pop("stream", None)
-                response = requests.post(url, json=payload_copy, headers=headers, timeout=60)
+                response = requests.post(url, json=payload_copy, headers=headers, timeout=None)
                 response.raise_for_status()
                 data = response.json()
                 result_text = self._extract_response_text(provider_name, data)
@@ -3281,7 +3294,7 @@ class AIToolsWidget(ttk.Frame):
             self.logger.info(f"Payload: {json.dumps(payload, indent=2)}")
             
             # Make streaming request
-            response = requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
+            response = requests.post(url, json=payload, headers=headers, timeout=None, stream=True)
             response.raise_for_status()
             
             accumulated_text = ""
@@ -3506,19 +3519,19 @@ class AIToolsWidget(ttk.Frame):
             },
             "Anthropic AI": {
                 # Research tab (first) - uses Claude native web search only
-                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with Claude Opus 4.5 (overrides other tabs)."},
-                "research_model": {"tab": "research", "type": "entry", "default": "claude-opus-4-5-20251101", "label": "model", "tip": "Research model (recommended: claude-opus-4-5-20251101)."},
+                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with Claude Opus 4.6 (overrides other tabs)."},
+                "research_model": {"tab": "research", "type": "entry", "default": "claude-opus-4-6", "label": "model", "tip": "Research model (recommended: claude-opus-4-6)."},
                 "research_mode": {"tab": "research", "type": "combo", "values": ["two-stage", "single"], "default": "two-stage", "label": "mode", "tip": "two-stage: search first then reason. single: combined."},
-                "research_thinking_budget": {"tab": "research", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget."},
+                "research_thinking_budget": {"tab": "research", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (legacy, ignored by Opus 4.6 adaptive thinking)."},
                 "research_style": {"tab": "research", "type": "combo", "values": ["analytical", "concise", "creative", "report"], "default": "analytical", "label": "style", "tip": "Output style preset."},
                 "research_search_count": {"tab": "research", "type": "scale", "range": (1, 20), "res": 1, "default": 20, "label": "max_uses", "tip": "Maximum web search uses (Anthropic native)."},
                 "research_force_search": {"tab": "research", "type": "checkbox", "default": False, "label": "force_search", "tip": "Force web search before answering (tool_choice: any)."},
-                "research_max_tokens": {"tab": "research", "type": "entry", "default": "64000", "label": "max_tokens", "tip": "Maximum output tokens."},
+                "research_max_tokens": {"tab": "research", "type": "entry", "default": "128000", "label": "max_tokens", "tip": "Maximum output tokens."},
                 # DeepReasoning tab (second) - 6-step reasoning protocol
                 "deepreasoning_enabled": {"tab": "deepreasoning", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Deep Reasoning with 6-step protocol (overrides other tabs)."},
-                "deepreasoning_model": {"tab": "deepreasoning", "type": "entry", "default": "claude-opus-4-5-20251101", "label": "model", "tip": "DeepReasoning model (recommended: claude-opus-4-5-20251101)."},
-                "deepreasoning_thinking_budget": {"tab": "deepreasoning", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (1K-128K)."},
-                "deepreasoning_max_tokens": {"tab": "deepreasoning", "type": "entry", "default": "64000", "label": "max_tokens", "tip": "Maximum output tokens."},
+                "deepreasoning_model": {"tab": "deepreasoning", "type": "entry", "default": "claude-opus-4-6", "label": "model", "tip": "DeepReasoning model (recommended: claude-opus-4-6)."},
+                "deepreasoning_thinking_budget": {"tab": "deepreasoning", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (legacy, ignored by Opus 4.6 adaptive thinking)."},
+                "deepreasoning_max_tokens": {"tab": "deepreasoning", "type": "entry", "default": "128000", "label": "max_tokens", "tip": "Maximum output tokens."},
                 # Content tab
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
                 "stop_sequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."},

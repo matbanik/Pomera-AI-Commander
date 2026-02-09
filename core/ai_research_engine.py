@@ -3,8 +3,8 @@ AI Research Engine - Research and Deep Reasoning implementations
 
 Provides research capabilities with extended reasoning and web search:
 - OpenAI Research: GPT-5.2 with xhigh reasoning + web search
-- Anthropic Research: Claude Opus 4.5 with extended thinking + web search
-- Anthropic Deep Reasoning: Claude Opus 4.5 extended thinking protocol
+- Anthropic Research: Claude Opus 4.6 with adaptive thinking + web search
+- Anthropic Deep Reasoning: Claude Opus 4.6 adaptive thinking protocol
 
 This module is MCP-accessible via pomera_ai_tools research/deepreasoning actions.
 """
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Research models
 OPENAI_RESEARCH_MODEL = "gpt-5.2"
-ANTHROPIC_RESEARCH_MODEL = "claude-opus-4-5-20251101"
+ANTHROPIC_RESEARCH_MODEL = "claude-opus-4-6"
 OPENROUTER_RESEARCH_MODEL = "perplexity/sonar-deep-research"
 
 # Reasoning levels
@@ -261,7 +261,7 @@ class AIResearchEngine:
                 self.logger.debug(f"[STAGE 1] Payload: {json.dumps(stage1_payload, indent=2)}")
                 self.logger.debug(f"[OpenAI Research STAGE 1] Payload:\n{json.dumps(stage1_payload, indent=2)}")
                 
-                response = requests.post(url, json=stage1_payload, headers=headers)
+                response = requests.post(url, json=stage1_payload, headers=headers, timeout=None)
                 if not response.ok:
                     error_body = response.text
                     self.logger.error(f"[STAGE 1] HTTP Error: {response.status_code}")
@@ -319,7 +319,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                 self.logger.debug(f"[STAGE 2] Payload: {json.dumps(stage2_payload, indent=2)[:2000]}...")
                 self.logger.debug(f"[OpenAI Research STAGE 2] Payload:\n{json.dumps(stage2_payload, indent=2)[:2000]}...")
                 
-                response = requests.post(url, json=stage2_payload, headers=headers)
+                response = requests.post(url, json=stage2_payload, headers=headers, timeout=None)
                 if not response.ok:
                     error_body = response.text
                     self.logger.error(f"[STAGE 2] HTTP Error: {response.status_code}")
@@ -376,9 +376,8 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
             if progress_callback:
                 progress_callback(50, 100)
             
-            # Make request with extended timeout for deep reasoning
-            timeout = 300 if reasoning_effort in ["high", "xhigh"] else 120
-            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            # No timeout - AI models may take arbitrarily long
+            response = requests.post(url, json=payload, headers=headers, timeout=None)
             response.raise_for_status()
             
             data = response.json()
@@ -448,7 +447,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
         prompt: str,
         api_key: str,
         # Model selection
-        model: Optional[str] = None,  # Default: claude-opus-4-5-20251101
+        model: Optional[str] = None,  # Default: claude-opus-4-6
         # Research options
         research_mode: str = "two-stage",
         thinking_budget: int = 32000,
@@ -534,7 +533,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                 self.logger.info(f"[STAGE 1] Payload: {json.dumps(stage1_payload, indent=2)[:2000]}...")
                 self.logger.debug(f"[Anthropic Research STAGE 1] Payload:\n{json.dumps(stage1_payload, indent=2)[:2000]}...")
                 
-                response = requests.post(url, json=stage1_payload, headers=headers)
+                response = requests.post(url, json=stage1_payload, headers=headers, timeout=None)
                 if not response.ok:
                     error_body = response.text
                     self.logger.error(f"[STAGE 1] HTTP Error: {response.status_code}")
@@ -583,18 +582,11 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                     "max_tokens": max_tokens,
                     "system": system_prompt,  # STYLE_PRESETS here
                     "thinking": {
-                        "type": "enabled",
-                        "budget_tokens": thinking_budget
+                        "type": "adaptive"
                     },
                     "messages": [{"role": "user", "content": context_message}]
-                    # NO web search tool - just extended thinking
+                    # NO web search tool - just adaptive thinking
                 }
-                
-                # Validate: max_tokens must be > thinking_budget
-                if max_tokens <= thinking_budget:
-                    adjusted_max_tokens = thinking_budget + 16000  # Add buffer
-                    self.logger.warning(f"[STAGE 2] max_tokens ({max_tokens}) must be > thinking_budget ({thinking_budget}). Adjusting to {adjusted_max_tokens}")
-                    stage2_payload["max_tokens"] = adjusted_max_tokens
                 
                 if progress_callback:
                     progress_callback(50, 100)
@@ -605,7 +597,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                 self.logger.info(f"[STAGE 2] Payload: {json.dumps(stage2_payload, indent=2)[:2000]}...")
                 self.logger.debug(f"[Anthropic Research STAGE 2] Payload:\n{json.dumps(stage2_payload, indent=2)[:2000]}...")
                 
-                response = requests.post(url, json=stage2_payload, headers=headers)
+                response = requests.post(url, json=stage2_payload, headers=headers, timeout=None)
                 if not response.ok:
                     error_body = response.text
                     self.logger.error(f"[STAGE 2] HTTP Error: {response.status_code}")
@@ -681,9 +673,8 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
             if progress_callback:
                 progress_callback(50, 100)
             
-            # Make request with extended timeout
-            timeout = 600  # 10 minutes for extended thinking
-            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            # No timeout - AI models may take arbitrarily long
+            response = requests.post(url, json=payload, headers=headers, timeout=None)
             response.raise_for_status()
             
             data = response.json()
@@ -841,7 +832,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                 self.logger.debug(f"[OpenRouter Research STAGE 1] Payload:\n{json.dumps(stage1_payload, indent=2)[:2000]}...")
                 print(f"\n[OpenRouter Research STAGE 1] Payload:\n{json.dumps(stage1_payload, indent=2)}", file=sys.stderr, flush=True)
                 
-                response = requests.post(url, json=stage1_payload, headers=headers, timeout=120)
+                response = requests.post(url, json=stage1_payload, headers=headers, timeout=None)
                 if not response.ok:
                     error_body = response.text
                     self.logger.error(f"[STAGE 1] HTTP Error: {response.status_code}")
@@ -902,7 +893,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                 self.logger.debug(f"[OpenRouter Research STAGE 2] Payload:\n{json.dumps(stage2_payload, indent=2)[:2000]}...")
                 print(f"\n[OpenRouter Research STAGE 2] Payload:\n{json.dumps(stage2_payload, indent=2)}", file=sys.stderr, flush=True)
                 
-                response = requests.post(url, json=stage2_payload, headers=headers, timeout=300)
+                response = requests.post(url, json=stage2_payload, headers=headers, timeout=None)
                 if not response.ok:
                     error_body = response.text
                     self.logger.error(f"[STAGE 2] HTTP Error: {response.status_code}")
@@ -956,9 +947,8 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
             self.logger.debug(f"[OpenRouter Research Single] Payload:\n{json.dumps(payload, indent=2)[:2000]}...")
             print(f"\n[OpenRouter Research Single Mode] Payload:\n{json.dumps(payload, indent=2)}", file=sys.stderr, flush=True)
             
-            # Make request
-            timeout = 300 if reasoning_effort in ["high", "xhigh"] else 120
-            response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            # No timeout - AI models may take arbitrarily long
+            response = requests.post(url, json=payload, headers=headers, timeout=None)
             response.raise_for_status()
             
             data = response.json()
@@ -1034,7 +1024,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
         prompt: str,
         api_key: str,
         # Model selection
-        model: Optional[str] = None,  # Default: claude-opus-4-5-20251101
+        model: Optional[str] = None,  # Default: claude-opus-4-6
         # Thinking options
         thinking_budget: int = 32000,
         # Search options (not used in DeepReasoning, but accepted for API compatibility)
@@ -1097,8 +1087,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                 "model": actual_model,
                 "max_tokens": max_tokens,
                 "thinking": {
-                    "type": "enabled",
-                    "budget_tokens": thinking_budget
+                    "type": "adaptive"
                 },
                 "messages": [
                     {"role": "user", "content": deep_think_prompt}

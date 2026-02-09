@@ -324,7 +324,7 @@ class AIToolsEngine:
             
             for i in range(max_retries):
                 try:
-                    response = requests.post(url, json=payload, headers=headers, timeout=120)
+                    response = requests.post(url, json=payload, headers=headers, timeout=None)
                     response.raise_for_status()
                     
                     data = response.json()
@@ -407,7 +407,7 @@ class AIToolsEngine:
         prompt: str,
         provider: str,
         # Model selection
-        model: Optional[str] = None,  # OpenAI: gpt-5.2, Anthropic: claude-opus-4-5-20251101
+        model: Optional[str] = None,  # OpenAI: gpt-5.2, Anthropic: claude-opus-4-6
         # Research options
         research_mode: str = "two-stage",
         reasoning_effort: str = "xhigh",  # OpenAI only
@@ -492,7 +492,7 @@ class AIToolsEngine:
                 )
             elif provider == "Anthropic AI":
                 # Use provided model or default - always uses Claude native search
-                anthropic_model = model or "claude-opus-4-5-20251101"
+                anthropic_model = model or "claude-opus-4-6"
                 result = self._research_engine.research_anthropic(
                     prompt=prompt,
                     api_key=api_key,
@@ -547,7 +547,7 @@ class AIToolsEngine:
         self,
         prompt: str,
         # Model selection
-        model: Optional[str] = None,  # Default: claude-opus-4-5-20251101
+        model: Optional[str] = None,  # Default: claude-opus-4-6
         # Thinking options
         thinking_budget: int = 32000,
         # Web search options
@@ -556,7 +556,7 @@ class AIToolsEngine:
         search_count: int = 5,
         search_depth: str = "basic",
         # Output options
-        max_tokens: int = 64000,
+        max_tokens: int = 128000,
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> AIToolsResult:
         """
@@ -608,7 +608,7 @@ class AIToolsEngine:
         
         try:
             # Use provided model or default
-            anthropic_model = model or "claude-opus-4-5-20251101"
+            anthropic_model = model or "claude-opus-4-6"
             result = self._research_engine.deep_reasoning_anthropic(
                 prompt=prompt,
                 api_key=api_key,

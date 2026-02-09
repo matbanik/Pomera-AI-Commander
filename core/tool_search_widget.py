@@ -52,6 +52,7 @@ class ToolSearchPalette(ttk.Frame):
         on_tool_selected: Callable[[str], None],
         settings: Optional[Dict[str, Any]] = None,
         on_settings_change: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_open_notes: Optional[Callable[[], None]] = None,
         **kwargs
     ):
         super().__init__(parent, **kwargs)
@@ -60,6 +61,7 @@ class ToolSearchPalette(ttk.Frame):
         self._on_tool_selected = on_tool_selected
         self._settings = settings or {}
         self._on_settings_change = on_settings_change
+        self._on_open_notes = on_open_notes
         
         # Get UI layout settings
         ui_layout = self._settings.get("ui_layout", {})
@@ -86,6 +88,14 @@ class ToolSearchPalette(ttk.Frame):
         # Main bar frame (fixed width, centered)
         self.bar_frame = ttk.Frame(self.center_frame)
         self.bar_frame.pack()
+        
+        # "📝 Notes" button on the far left
+        if self._on_open_notes:
+            self.notes_button = ttk.Button(
+                self.bar_frame, text="\U0001f4dd Notes", width=10,
+                command=self._on_open_notes
+            )
+            self.notes_button.pack(side=tk.LEFT, padx=(5, 10))
         
         # "Search Tools" label instead of icon
         self.icon_label = ttk.Label(self.bar_frame, text="Search Tools", cursor="hand2")

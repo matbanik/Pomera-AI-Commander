@@ -4502,13 +4502,13 @@ class ToolRegistry:
                 
                 "**RESEARCH ACTION** (OpenAI, Anthropic AI & OpenRouterAI):\\n"
                 "- OpenAI: GPT-5.2 with reasoning_effort (xhigh)\\n"
-                "- Anthropic: Claude Opus 4.5 with thinking_budget and search_count\\n"
+                "- Anthropic: Claude Opus 4.6 with adaptive thinking and search_count\\n"
                 "- OpenRouter: Various models (gemini-3-flash, sonar-deep-research) with max_results\\n"
                 "- Mode: two-stage (search → reason) or single (combined)\\n"
                 "- Style presets: analytical, concise, creative, report\\n\\n"
                 
                 "**DEEPREASONING ACTION** (Anthropic AI only):\\n"
-                "- Uses Claude Opus 4.5 Extended Thinking\\n"
+                "- Uses Claude Opus 4.6 Adaptive Thinking\\n"
                 "- 6-step protocol: Decompose → Search → Decide → Analyze → Verify → Synthesize\\n"
                 "- Optional web search during reasoning\\n"
                 "- Thinking budget control (1K-128K tokens)\\n\\n"
@@ -4594,7 +4594,7 @@ class ToolRegistry:
                     # Research-specific parameters
                     "research_model": {
                         "type": "string",
-                        "description": "Model for research/deepreasoning. OpenAI: gpt-5.2, Anthropic: claude-opus-4-5-20251101, OpenRouter: perplexity/sonar-deep-research"
+                        "description": "Model for research/deepreasoning. OpenAI: gpt-5.2, Anthropic: claude-opus-4-6, OpenRouter: perplexity/sonar-deep-research"
                     },
                     "research_mode": {
                         "type": "string",
@@ -4870,7 +4870,7 @@ class ToolRegistry:
                 search_count = 0  # OpenRouter uses max_results instead
             else:  # Anthropic AI
                 # Anthropic-specific settings - always uses Claude native search
-                research_model = get_setting("research_model", "research_model", "claude-opus-4-5-20251101")
+                research_model = get_setting("research_model", "research_model", "claude-opus-4-6")
                 thinking_budget = get_setting("thinking_budget", "research_thinking_budget", 32000)
                 search_count = get_setting("search_count", "research_search_count", 20)
                 reasoning_effort = "xhigh"  # Not used for Anthropic
@@ -4981,13 +4981,13 @@ class ToolRegistry:
                 return default
             
             # Get settings with GUI defaults (MCP args override)
-            deepreasoning_model = get_dr_setting("research_model", "deepreasoning_model", "claude-opus-4-5-20251101")
+            deepreasoning_model = get_dr_setting("research_model", "deepreasoning_model", "claude-opus-4-6")
             thinking_budget = get_dr_setting("thinking_budget", "deepreasoning_thinking_budget", 32000)
             enable_search = get_dr_setting("enable_search", "deepreasoning_enable_search", False)
             search_engine = get_dr_setting("web_search_engine", "deepreasoning_search_engine", "tavily")
             search_count = get_dr_setting("search_count", "deepreasoning_search_count", 5)
             search_depth = get_dr_setting("search_depth", "deepreasoning_search_depth", "basic")
-            max_tokens = get_dr_setting("max_tokens", "deepreasoning_max_tokens", 64000)
+            max_tokens = get_dr_setting("max_tokens", "deepreasoning_max_tokens", 128000)
             
             # Progress callback for deep reasoning
             def reasoning_progress(current: int, total: int):

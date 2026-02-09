@@ -418,14 +418,15 @@ class SettingsDefaultsRegistry:
             description="Azure OpenAI integration"
         ))
         
-        # Anthropic AI - Updated December 2025
-        # Latest: Claude 4 series (Opus 4.5, Sonnet 4.5, Sonnet 4, Opus 4)
+        # Anthropic AI - Updated February 2026
+        # Latest: Claude 4 series (Opus 4.6, Opus 4.5, Sonnet 4.5, Sonnet 4, Opus 4)
         self.register_tool(ToolDefaultsSpec(
             tool_name="Anthropic AI",
             defaults={
                 "API_KEY": "putinyourkey",
                 "MODEL": "claude-sonnet-4-5-20250929",
                 "MODELS_LIST": [
+                    "claude-opus-4-6",
                     "claude-sonnet-4-5-20250929",
                     "claude-opus-4-5-20251124",
                     "claude-sonnet-4-20250522",
@@ -442,18 +443,18 @@ class SettingsDefaultsRegistry:
                 "stop_sequences": "",
                 # Research tab defaults
                 "research_mode_enabled": False,
-                "research_model": "claude-opus-4-5-20251101",
+                "research_model": "claude-opus-4-6",
                 "research_mode": "two-stage",
                 "research_thinking_budget": 32000,
                 "research_style": "analytical",
                 "research_search_count": 20,
                 "research_force_search": False,
-                "research_max_tokens": "64000",
+                "research_max_tokens": "128000",
                 # DeepReasoning tab defaults
                 "deepreasoning_enabled": False,
-                "deepreasoning_model": "claude-opus-4-5-20251101",
+                "deepreasoning_model": "claude-opus-4-6",
                 "deepreasoning_thinking_budget": 32000,
-                "deepreasoning_max_tokens": "64000"
+                "deepreasoning_max_tokens": "128000"
             },
             required_keys={"API_KEY", "MODEL"},
             description="Anthropic Claude AI integration"
