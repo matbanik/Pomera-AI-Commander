@@ -749,7 +749,40 @@ def _handle_{tool}(self, args):
 
 ---
 
-## 11. Quick Start
+## 11. Local Testing in IDE
+
+To test MCP tool changes in a running IDE (e.g., Antigravity, VS Code with Cline), **copy modified files** from the source repo to the local Pomera installation directory. This is a **file copy operation**, not an npm command.
+
+### Pomera Installation Path
+
+```
+Windows:  C:\Users\{user}\AppData\Roaming\npm\node_modules\pomera-ai-commander\
+```
+
+### Deployment Steps
+
+```bash
+# 1. Copy modified engine file
+copy "core\{engine}.py" "{install_path}\core\{engine}.py"
+
+# 2. Copy modified tool_registry.py (if handler changed)
+copy "core\mcp\tool_registry.py" "{install_path}\core\mcp\tool_registry.py"
+
+# 3. Copy any other modified MCP files (protocol, server, etc.)
+copy "core\mcp\{file}.py" "{install_path}\core\mcp\{file}.py"
+
+# 4. Restart the IDE to reload the MCP server
+```
+
+> [!IMPORTANT]
+> The IDE must be **restarted** after copying files. The MCP server loads Python modules at startup and does not hot-reload.
+
+> [!CAUTION]
+> This overwrites the installed package files. After a `npm update -g pomera-ai-commander`, your local changes will be replaced by the published version.
+
+---
+
+## 12. Quick Start
 
 ```bash
 # 1. Create engine

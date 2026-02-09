@@ -3606,25 +3606,13 @@ class ToolRegistry:
     def _get_encrypted_web_search_api_key(self, engine_key: str) -> str:
         """Load encrypted API key for a search engine from database settings.
         
-        Uses the same database path as the Pomera UI to ensure keys are loaded
-        from the correct location.
+        Uses raw SQLite reads to avoid DatabaseSettingsManager constructor
+        which destructively overwrites encrypted keys with defaults.
         """
         try:
             from tools.ai_tools import decrypt_api_key
-            from core.database_settings_manager import DatabaseSettingsManager
             
-            # Get the correct database path (same as UI uses)
-            try:
-                from core.data_directory import get_database_path
-                db_path = get_database_path("settings.db")
-            except ImportError:
-                # Fallback to relative path
-                db_path = "settings.db"
-            
-            settings_manager = DatabaseSettingsManager(db_path=db_path)
-            web_search_settings = settings_manager.get_tool_settings("Web Search")
-            
-            encrypted = web_search_settings.get(f"{engine_key}_api_key", "")
+            encrypted = self._raw_db_read_tool_setting("Web Search", f"{engine_key}_api_key")
             if encrypted:
                 return decrypt_api_key(encrypted)
         except Exception as e:
@@ -3634,22 +3622,12 @@ class ToolRegistry:
     def _get_web_search_setting(self, engine_key: str, setting: str, default: str) -> str:
         """Get a web search setting from database.
         
-        Uses the same database path as the Pomera UI.
+        Uses raw SQLite reads to avoid DatabaseSettingsManager constructor
+        which destructively overwrites encrypted keys with defaults.
         """
         try:
-            from core.database_settings_manager import DatabaseSettingsManager
-            
-            # Get the correct database path (same as UI uses)
-            try:
-                from core.data_directory import get_database_path
-                db_path = get_database_path("settings.db")
-            except ImportError:
-                db_path = "settings.db"
-            
-            settings_manager = DatabaseSettingsManager(db_path=db_path)
-            web_search_settings = settings_manager.get_tool_settings("Web Search")
-            
-            return web_search_settings.get(f"{engine_key}_{setting}", default)
+            value = self._raw_db_read_tool_setting("Web Search", f"{engine_key}_{setting}")
+            return value if value else default
         except Exception:
             return default
     
@@ -5133,6 +5111,14 @@ class ToolRegistry:
             runtime_info = self._diagnose_runtime()
             performance_info = self._diagnose_performance()
             
+            # MCP session diagnostics (timeout investigation)
+            session_info = None
+            try:
+                from .server_stdio import get_session_diagnostics
+                session_info = get_session_diagnostics()
+            except Exception:
+                pass
+            
             result = {
                 "status": "ok",
                 "version": version_info,
@@ -5145,6 +5131,7 @@ class ToolRegistry:
                 "tool_registry": registry_info,
                 "runtime": runtime_info,
                 "performance": performance_info,
+                "mcp_session": session_info,
                 "environment": {
                     POMERA_DATA_DIR_ENV: env_data_dir,
                     POMERA_CONFIG_DIR_ENV: env_config_dir,
@@ -5449,60 +5436,212 @@ class ToolRegistry:
         
         return result
     
+    def _get_db_path(self) -> str:
+        """Get the database path for raw SQLite reads.
+        
+        Uses the same path resolution as the Pomera UI.
+        """
+        try:
+            from core.data_directory import get_database_path
+            return get_database_path("settings.db")
+        except ImportError:
+            import os
+            return os.path.join(os.environ.get("POMERA_DATA_DIR", "."), "settings.db")
+    
+    def _raw_db_read_tool_setting(self, tool_name: str, setting_path: str) -> str:
+        """Read a single tool setting directly from SQLite, bypassing
+        DatabaseSettingsManager to avoid its constructor overwriting
+        encrypted values with defaults.
+        
+        Args:
+            tool_name: Tool name (e.g. 'Google AI', 'Web Search')
+            setting_path: Setting path (e.g. 'API_KEY', 'tavily_api_key')
+            
+        Returns:
+            Raw setting value string, or empty string if not found.
+        """
+        import sqlite3
+        try:
+            db_path = self._get_db_path()
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                cur = conn.execute(
+                    "SELECT setting_value FROM tool_settings "
+                    "WHERE tool_name = ? AND setting_path = ?",
+                    (tool_name, setting_path)
+                )
+                row = cur.fetchone()
+                return row[0] if row else ""
+            finally:
+                conn.close()
+        except Exception as e:
+            self._logger.warning(f"Raw DB read failed for {tool_name}.{setting_path}: {e}")
+            return ""
+    
     def _diagnose_api_keys(self) -> Dict[str, Any]:
-        """Check API key availability per provider. Never reveals full keys."""
+        """Check API key availability per provider. Never reveals full keys.
+        
+        Uses raw SQLite reads to avoid the DatabaseSettingsManager constructor
+        which destructively overwrites encrypted keys with placeholder defaults
+        via INSERT OR REPLACE during its initialization sequence.
+        """
         providers = [
             "Google AI", "Vertex AI", "Azure AI", "Anthropic AI",
             "OpenAI", "Groq AI", "OpenRouterAI", "Cohere AI",
-            "HuggingFace", "LM Studio", "AWS Bedrock",
+            "HuggingFace AI", "LM Studio", "AWS Bedrock",
         ]
+        
+        # Web search engines and their DB setting paths
+        web_search_engines = {
+            "tavily": "tavily_api_key",
+            "exa": "exa_api_key",
+            "google": "google_api_key",
+            "brave": "brave_api_key",
+            "serpapi": "serpapi_api_key",
+            "serper": "serper_api_key",
+        }
         
         api_keys = {}
         
-        # Try to get database settings manager
-        db_manager = None
+        # Verify database is accessible
+        import sqlite3
+        db_path = self._get_db_path()
         try:
-            from core.database_settings_manager import DatabaseSettingsManager
-            db_manager = DatabaseSettingsManager()
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            conn.execute("SELECT 1 FROM tool_settings LIMIT 1")
+            conn.close()
         except Exception:
             api_keys["_db_access"] = "unavailable"
-            # Return providers with unknown status
             for provider in providers:
                 api_keys[provider] = {"configured": None, "status": "database unavailable"}
             return api_keys
         
+        # Try to load decrypt function (same path as AIToolsEngine)
+        decrypt_fn = None
+        try:
+            from tools.ai_tools import decrypt_api_key
+            decrypt_fn = decrypt_api_key
+        except ImportError:
+            pass
+        
+        # --- AI Provider keys ---
         for provider in providers:
             try:
                 if provider == "LM Studio":
-                    # LM Studio doesn't use API keys
                     api_keys[provider] = {
                         "configured": True,
                         "status": "no key required",
                     }
                     continue
                 
-                settings = db_manager.get_tool_settings(provider)
-                if not settings:
+                # Vertex AI uses vertex_ai_json table, not tool_settings.API_KEY
+                if provider == "Vertex AI":
+                    try:
+                        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                        try:
+                            cur = conn.execute(
+                                "SELECT project_id, client_email, private_key "
+                                "FROM vertex_ai_json ORDER BY updated_at DESC LIMIT 1"
+                            )
+                            row = cur.fetchone()
+                        finally:
+                            conn.close()
+                        if row and row[0]:
+                            has_pk = bool(row[2] and str(row[2]).startswith("ENC:"))
+                            api_keys[provider] = {
+                                "configured": True,
+                                "auth_method": "service_account_json",
+                                "project_id": row[0],
+                                "client_email": row[1] or "",
+                                "private_key_encrypted": has_pk,
+                            }
+                        else:
+                            api_keys[provider] = {"configured": False, "status": "no service account JSON uploaded"}
+                    except Exception as e:
+                        api_keys[provider] = {"configured": None, "status": f"error: {e}"}
+                    continue
+                
+                raw_key = self._raw_db_read_tool_setting(provider, "API_KEY")
+                
+                if not raw_key:
                     api_keys[provider] = {"configured": False, "status": "no settings found"}
                     continue
                 
-                raw_key = settings.get("API_KEY", "") if isinstance(settings, dict) else ""
+                # Attempt decryption (mirrors AIToolsEngine._get_api_key logic)
+                decrypted_key = raw_key
+                is_enc = raw_key.startswith("ENC:")
+                decrypt_ok = False
                 
-                if not raw_key:
-                    api_keys[provider] = {"configured": False, "status": "empty key"}
-                elif raw_key == "putinyourkey":
+                if decrypt_fn:
+                    try:
+                        decrypted_key = decrypt_fn(raw_key)
+                        decrypt_ok = True
+                    except Exception:
+                        decrypted_key = raw_key
+                
+                # Check if the effective key is the placeholder
+                if decrypted_key == "putinyourkey":
                     api_keys[provider] = {"configured": False, "status": "placeholder key"}
+                elif is_enc and decrypt_ok:
+                    prefix = decrypted_key[:4] + "..." if len(decrypted_key) > 4 else "***"
+                    api_keys[provider] = {
+                        "configured": True,
+                        "encrypted": True,
+                        "key_prefix": prefix,
+                        "key_length": len(decrypted_key),
+                    }
+                elif is_enc and not decrypt_ok:
+                    api_keys[provider] = {
+                        "configured": True,
+                        "encrypted": True,
+                        "status": "encrypted (decryption unavailable)",
+                    }
                 else:
-                    is_enc = raw_key.startswith("ENC:")
-                    # Show only first 4 chars of the raw key for identification
                     prefix = raw_key[:4] + "..." if len(raw_key) > 4 else "***"
                     api_keys[provider] = {
                         "configured": True,
-                        "encrypted": is_enc,
+                        "encrypted": False,
                         "key_prefix": prefix,
+                        "key_length": len(raw_key),
                     }
             except Exception as e:
                 api_keys[provider] = {"configured": None, "status": f"error: {e}"}
+        
+        # --- Web Search API keys ---
+        web_keys = {}
+        for engine, setting_path in web_search_engines.items():
+            try:
+                raw_key = self._raw_db_read_tool_setting("Web Search", setting_path)
+                
+                if not raw_key:
+                    web_keys[engine] = {"configured": False, "status": "not set"}
+                    continue
+                
+                decrypted_key = raw_key
+                is_enc = raw_key.startswith("ENC:")
+                decrypt_ok = False
+                
+                if decrypt_fn:
+                    try:
+                        decrypted_key = decrypt_fn(raw_key)
+                        decrypt_ok = True
+                    except Exception:
+                        decrypted_key = raw_key
+                
+                if is_enc and decrypt_ok:
+                    web_keys[engine] = {"configured": True, "encrypted": True}
+                elif is_enc and not decrypt_ok:
+                    web_keys[engine] = {"configured": True, "encrypted": True, "status": "decryption unavailable"}
+                elif decrypted_key:
+                    web_keys[engine] = {"configured": True, "encrypted": False}
+                else:
+                    web_keys[engine] = {"configured": False, "status": "empty key"}
+            except Exception as e:
+                web_keys[engine] = {"configured": None, "status": f"error: {e}"}
+        
+        # DuckDuckGo needs no key
+        web_keys["duckduckgo"] = {"configured": True, "status": "no key required"}
+        api_keys["_web_search"] = web_keys
         
         return api_keys
     

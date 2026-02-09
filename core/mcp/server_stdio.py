@@ -27,6 +27,15 @@ from .tool_registry import ToolRegistry, get_registry
 
 logger = logging.getLogger(__name__)
 
+# Module-level reference for pomera_diagnose to access session data
+_active_server: Optional['StdioMCPServer'] = None
+
+def get_session_diagnostics() -> Optional[Dict[str, Any]]:
+    """Get session diagnostics from the active MCP server (if running)."""
+    if _active_server is None:
+        return None
+    return _active_server._get_session_diagnostics()
+
 
 class StdioMCPServer:
     """
@@ -65,8 +74,46 @@ class StdioMCPServer:
         self.running = False
         self._initialized = False
         
+        # Session metadata for timeout diagnostics
+        import time as _time
+        self._session_start_time = _time.time()
+        self._total_requests = 0
+        self._last_request_time = None
+        self._longest_request = {"tool": None, "duration_ms": 0}
+        self._active_request = None  # {"tool": str, "start": float} or None
+        
         # Resources list (can be populated externally)
         self._resources: list[MCPResource] = []
+    
+    def _get_session_diagnostics(self) -> Dict[str, Any]:
+        """Return session-level diagnostics for timeout investigation."""
+        import time
+        from datetime import datetime
+        
+        now = time.time()
+        active = None
+        if self._active_request:
+            elapsed = now - self._active_request["start"]
+            active = {
+                "tool": self._active_request["tool"],
+                "running_seconds": round(elapsed, 1),
+            }
+        
+        last_age = None
+        if self._last_request_time:
+            last_age = round(now - self._last_request_time, 1)
+        
+        return {
+            "session_start": datetime.fromtimestamp(self._session_start_time).isoformat(),
+            "uptime_seconds": round(now - self._session_start_time, 1),
+            "total_requests": self._total_requests,
+            "last_request_age_seconds": last_age,
+            "longest_request": self._longest_request,
+            "currently_executing": active,
+            "progress_keepalive_interval_s": 10,
+            "stdin_open": not sys.stdin.closed,
+            "stdout_open": not sys.stdout.closed,
+        }
     
     def add_resource(self, resource: MCPResource) -> None:
         """Add a resource to the server's resource list."""
@@ -134,6 +181,8 @@ class StdioMCPServer:
         Simpler alternative to async run() for single-threaded use.
         """
         self.running = True
+        global _active_server
+        _active_server = self
         logger.info("MCP stdio server starting (sync mode)...")
         
         while self.running:
@@ -260,12 +309,23 @@ class StdioMCPServer:
         
         logger.info(f"Executing tool: {tool_name}")
         
+        # Track request for timeout diagnostics
+        self._total_requests += 1
+        self._last_request_time = time.time()
+        self._active_request = {"tool": tool_name, "start": time.time()}
+        
         # Check for long-running tool calls that need progress notifications
         if self._is_long_running_tool(tool_name, arguments):
             # Extract progress token from client metadata (if provided)
             meta = params.get("_meta", {})
             progress_token = meta.get("progressToken", f"progress-{id}")
-            return self._execute_with_progress(id, tool_name, arguments, progress_token)
+            try:
+                return self._execute_with_progress(id, tool_name, arguments, progress_token)
+            finally:
+                elapsed_ms = (time.time() - self._active_request["start"]) * 1000
+                if elapsed_ms > self._longest_request["duration_ms"]:
+                    self._longest_request = {"tool": tool_name, "duration_ms": round(elapsed_ms, 1)}
+                self._active_request = None
         
         # Standard synchronous execution for fast tools
         start = time.perf_counter()
@@ -279,6 +339,10 @@ class StdioMCPServer:
             raise
         finally:
             elapsed_ms = (time.perf_counter() - start) * 1000
+            # Track longest request
+            if elapsed_ms > self._longest_request["duration_ms"]:
+                self._longest_request = {"tool": tool_name, "duration_ms": round(elapsed_ms, 1)}
+            self._active_request = None
             # Estimate payload size from result
             payload_bytes = 0
             if success and result:
