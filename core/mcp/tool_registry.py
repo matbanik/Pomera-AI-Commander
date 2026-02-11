@@ -544,7 +544,7 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_whitespace",
             description="Whitespace manipulation: trim lines, remove extra spaces, "
-                       "convert tabs/spaces, normalize line endings.",
+                       "convert tabs/spaces, normalize line endings. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -690,7 +690,7 @@ class ToolRegistry:
         """Register the Sorter Tools."""
         self.register(MCPToolAdapter(
             name="pomera_sort",
-            description="Sort lines numerically or alphabetically, ascending or descending.",
+            description="Sort lines numerically or alphabetically, ascending or descending. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -1231,7 +1231,7 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_extract",
             description="Extract content from text. Types: regex (pattern matching), emails (email addresses), "
-                       "urls (web links). All types support deduplication and sorting.",
+                       "urls (web links). All types support deduplication and sorting. Supports file input (text_is_file).",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -1354,13 +1354,18 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_markdown",
             description="Markdown processing: strip formatting, extract links, extract headers, "
-                       "convert tables to CSV, format tables.",
+                       "convert tables to CSV, format tables. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Markdown text to process"
+                        "description": "Markdown text to process (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load markdown content from file"
                     },
                     "operation": {
                         "type": "string",
@@ -1383,6 +1388,10 @@ class ToolRegistry:
                         "enum": ["indented", "flat", "numbered"],
                         "description": "For extract_headers: output format",
                         "default": "indented"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text", "operation"]
@@ -1392,26 +1401,34 @@ class ToolRegistry:
     
     def _handle_markdown_tools(self, args: Dict[str, Any]) -> str:
         """Handle markdown tools execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.markdown_tools import MarkdownToolsProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         operation = args.get("operation", "strip")
         
         if operation == "strip":
             preserve_links_text = args.get("preserve_links_text", True)
-            return MarkdownToolsProcessor.strip_markdown(text, preserve_links_text)
+            result = MarkdownToolsProcessor.strip_markdown(text, preserve_links_text)
         elif operation == "extract_links":
             include_images = args.get("include_images", False)
-            return MarkdownToolsProcessor.extract_links(text, include_images)
+            result = MarkdownToolsProcessor.extract_links(text, include_images)
         elif operation == "extract_headers":
             header_format = args.get("header_format", "indented")
-            return MarkdownToolsProcessor.extract_headers(text, header_format)
+            result = MarkdownToolsProcessor.extract_headers(text, header_format)
         elif operation == "table_to_csv":
-            return MarkdownToolsProcessor.table_to_csv(text)
+            result = MarkdownToolsProcessor.table_to_csv(text)
         elif operation == "format_table":
-            return MarkdownToolsProcessor.format_table(text)
+            result = MarkdownToolsProcessor.format_table(text)
         else:
-            return f"Unknown operation: {operation}"
+            result = f"Unknown operation: {operation}"
+        
+        return handle_file_output(args, result)
     
     def _register_translator_tools(self) -> None:
         """Register the Translator Tools (Morse/Binary)."""
@@ -1638,13 +1655,18 @@ class ToolRegistry:
         """Register the Email Extraction Tool."""
         self.register(MCPToolAdapter(
             name="pomera_extract_emails",
-            description="Extract email addresses from text with options for deduplication and sorting.",
+            description="Extract email addresses from text with options for deduplication and sorting. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to extract emails from"
+                        "description": "Text to extract emails from (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "omit_duplicates": {
                         "type": "boolean",
@@ -1660,6 +1682,10 @@ class ToolRegistry:
                         "type": "boolean",
                         "description": "Extract only domains, not full addresses",
                         "default": False
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save extracted emails to this file path"
                     }
                 },
                 "required": ["text"]
@@ -1669,29 +1695,41 @@ class ToolRegistry:
     
     def _handle_email_extraction(self, args: Dict[str, Any]) -> str:
         """Handle email extraction tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.email_extraction_tool import EmailExtractionProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         omit_duplicates = args.get("omit_duplicates", True)
         sort_emails = args.get("sort_emails", False)
         only_domain = args.get("only_domain", False)
         
-        return EmailExtractionProcessor.extract_emails_advanced(
+        result = EmailExtractionProcessor.extract_emails_advanced(
             text, omit_duplicates, hide_counts=True, 
             sort_emails=sort_emails, only_domain=only_domain
         )
+        return handle_file_output(args, result)
     
     def _register_url_extractor_tool(self) -> None:
         """Register the URL Extractor Tool."""
         self.register(MCPToolAdapter(
             name="pomera_extract_urls",
-            description="Extract URLs from text with options for different URL types.",
+            description="Extract URLs from text with options for different URL types. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Text to extract URLs from"
+                        "description": "Text to extract URLs from (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load content from file"
                     },
                     "extract_href": {
                         "type": "boolean",
@@ -1717,6 +1755,10 @@ class ToolRegistry:
                         "type": "string",
                         "description": "Filter URLs containing this text",
                         "default": ""
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save extracted URLs to this file path"
                     }
                 },
                 "required": ["text"]
@@ -1726,7 +1768,13 @@ class ToolRegistry:
     
     def _handle_url_extraction(self, args: Dict[str, Any]) -> str:
         """Handle URL extraction tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.url_link_extractor import URLLinkExtractorProcessor
+        
+        # Process file input
+        success, args, error = process_file_args(args, {"text": "text_is_file"})
+        if not success:
+            return error
         
         text = args.get("text", "")
         extract_href = args.get("extract_href", False)
@@ -1735,16 +1783,17 @@ class ToolRegistry:
         extract_markdown = args.get("extract_markdown", False)
         filter_text = args.get("filter_text", "")
         
-        return URLLinkExtractorProcessor.extract_urls(
+        result = URLLinkExtractorProcessor.extract_urls(
             text, extract_href, extract_https, 
             extract_any_protocol, extract_markdown, filter_text
         )
+        return handle_file_output(args, result)
     
     def _register_word_frequency_tool(self) -> None:
         """Register the Word Frequency Counter Tool."""
         self.register(MCPToolAdapter(
             name="pomera_word_frequency",
-            description="Count word frequencies in text, showing count and percentage for each word.",
+            description="Count word frequencies in text, showing count and percentage for each word. Supports file input (text_is_file).",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -2200,6 +2249,16 @@ class ToolRegistry:
                         "type": "boolean",
                         "description": "If true, treat output_content as a file path to load content from",
                         "default": False
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "For get action: save retrieved note content to this file path"
+                    },
+                    "content_field": {
+                        "type": "string",
+                        "enum": ["all", "input", "output"],
+                        "description": "For get action with output_to_file: which content to save. 'all'=full note (default), 'input'=input field only, 'output'=output field only",
+                        "default": "all"
                     }
                 },
                 "required": ["action"]
@@ -2472,7 +2531,27 @@ class ToolRegistry:
                 decrypted_output
             ])
             
-            return "\n".join(lines)
+            result = "\n".join(lines)
+            
+            # Handle file output if requested
+            output_path = args.get("output_to_file")
+            if output_path:
+                from .file_io_helpers import save_file_content
+                content_field = args.get("content_field", "all")
+                if content_field == "input":
+                    file_content = decrypted_input if decrypted_input != "(empty)" else ""
+                elif content_field == "output":
+                    file_content = decrypted_output if decrypted_output != "(empty)" else ""
+                else:
+                    file_content = result
+                
+                success, msg = save_file_content(output_path, file_content)
+                if success:
+                    return f"{msg}\n\n--- Content Preview ---\n{result}"
+                else:
+                    return f"⚠️ {msg}\n\n--- Original Result ---\n{result}"
+            
+            return result
         except Exception as e:
             return f"Error retrieving note: {str(e)}"
     
@@ -2739,13 +2818,18 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_email_header_analyzer",
             description="Analyze email headers to extract routing information, authentication results (SPF, DKIM, DMARC), "
-                       "server hops, delivery timing, and spam scores.",
+                       "server hops, delivery timing, and spam scores. Supports file input/output.",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Raw email headers to analyze"
+                        "description": "Raw email headers to analyze (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load email headers from file"
                     },
                     "show_timestamps": {
                         "type": "boolean",
@@ -2766,6 +2850,10 @@ class ToolRegistry:
                         "type": "boolean",
                         "description": "Show spam score if available",
                         "default": True
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save analysis result to this file path"
                     }
                 },
                 "required": ["text"]
@@ -2775,7 +2863,7 @@ class ToolRegistry:
     
     def _handle_email_header_analyzer(self, args: Dict[str, Any]) -> str:
         """Handle email header analyzer tool execution."""
-        from .file_io_helpers import process_file_args
+        from .file_io_helpers import process_file_args, handle_file_output
         from tools.email_header_analyzer import EmailHeaderAnalyzerProcessor
         
         # Process file input
@@ -2789,21 +2877,28 @@ class ToolRegistry:
         show_authentication = args.get("show_authentication", True)
         show_spam_score = args.get("show_spam_score", True)
         
-        return EmailHeaderAnalyzerProcessor.analyze_email_headers(
+        result = EmailHeaderAnalyzerProcessor.analyze_email_headers(
             text, show_timestamps, show_delays, show_authentication, show_spam_score
         )
+        return handle_file_output(args, result)
     
     def _register_html_tool(self) -> None:
         """Register the HTML Extraction Tool."""
         self.register(MCPToolAdapter(
             name="pomera_html",
-            description="Process HTML content: extract visible text, clean HTML, extract links, images, headings, tables, or forms.",
+            description="Process HTML content: extract visible text, clean HTML, extract links, images, headings, tables, or forms. "
+                       "Supports file input (text_is_file) and file output (output_to_file).",
             input_schema={
                 "type": "object",
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "HTML content to process"
+                        "description": "HTML content to process (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path and load HTML content from file"
                     },
                     "operation": {
                         "type": "string",
@@ -2866,6 +2961,10 @@ class ToolRegistry:
                         "type": "string",
                         "description": "For extract_tables: column separator character",
                         "default": "\t"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
                     }
                 },
                 "required": ["text"]
@@ -2913,17 +3012,28 @@ class ToolRegistry:
         self.register(MCPToolAdapter(
             name="pomera_list_compare",
             description="Compare two lists and find items unique to each list or common to both. "
-                       "Useful for finding differences between datasets, configurations, or any line-based content.",
+                       "Useful for finding differences between datasets, configurations, or any line-based content. "
+                       "Supports file input (list_a_is_file, list_b_is_file) and file output (output_to_file).",
             input_schema={
                 "type": "object",
                 "properties": {
                     "list_a": {
                         "type": "string",
-                        "description": "First list (one item per line)"
+                        "description": "First list, one item per line (or file path if list_a_is_file=true)"
+                    },
+                    "list_a_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'list_a' as file path and load content from file"
                     },
                     "list_b": {
                         "type": "string",
-                        "description": "Second list (one item per line)"
+                        "description": "Second list, one item per line (or file path if list_b_is_file=true)"
+                    },
+                    "list_b_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'list_b' as file path and load content from file"
                     },
                     "case_insensitive": {
                         "type": "boolean",
@@ -2935,6 +3045,10 @@ class ToolRegistry:
                         "enum": ["all", "only_a", "only_b", "in_both"],
                         "description": "What to return: all results, only items unique to A, only items unique to B, or only common items",
                         "default": "all"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save comparison result to this file path"
                     }
                 },
                 "required": ["list_a", "list_b"]
@@ -2944,6 +3058,13 @@ class ToolRegistry:
     
     def _handle_list_comparator(self, args: Dict[str, Any]) -> str:
         """Handle list comparator tool execution."""
+        from .file_io_helpers import process_file_args, handle_file_output
+        
+        # Process file input for both lists
+        success, args, error = process_file_args(args, {"list_a": "list_a_is_file", "list_b": "list_b_is_file"})
+        if not success:
+            return error
+        
         list_a_text = args.get("list_a", "")
         list_b_text = args.get("list_b", "")
         case_insensitive = args.get("case_insensitive", False)
@@ -3010,7 +3131,7 @@ class ToolRegistry:
             result_lines.append(f"=== In Both Lists ({len(in_both)}) ===")
             result_lines.extend(in_both if in_both else ["(none)"])
         
-        return "\n".join(result_lines)
+        return handle_file_output(args, "\n".join(result_lines))
     
     def _register_safe_update_tool(self) -> None:
         """Register the Safe Update Tool for AI-initiated updates."""
@@ -3166,9 +3287,17 @@ class ToolRegistry:
         """Register the Find & Replace Diff Tool."""
         self.register(MCPToolAdapter(
             name="pomera_find_replace_diff",
-            description="Regex find/replace with diff preview and automatic backup to Notes. "
-                       "Designed for AI agent workflows requiring verification and rollback capability. "
-                       "Operations: validate (check regex), preview (show diff), execute (replace+backup), recall (retrieve previous). Supports file input/output.",
+            description=(
+                "Regex find/replace with diff preview and automatic backup to Notes. "
+                "Designed for AI agent workflows requiring verification and rollback capability. "
+                "Operations: validate (check regex), preview (show diff), execute (replace+backup), recall (retrieve previous). "
+                "**FILE-BASED WORKFLOW**: Set text_is_file=true to load content from a file path instead of inline text. "
+                "Use output_to_file to save the replaced result to a file. "
+                "Use diff_to_file to save the diff preview to a file. "
+                "Example: text='/path/to/file.py', text_is_file=true, find_pattern='old_func', "
+                "replace_pattern='new_func', output_to_file='/path/to/output.py', "
+                "diff_to_file='/path/to/changes.diff'"
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -3295,8 +3424,8 @@ class ToolRegistry:
             result = execute_replace(text, find_pattern, replace_pattern, flags, save_to_notes, notes_handler)
             
             # Save replaced text to file if requested
-            if output_to_file and result.get("success") and result.get("replaced_text"):
-                save_file_content(output_to_file, result["replaced_text"])
+            if output_to_file and result.get("success") and result.get("modified_text"):
+                save_file_content(output_to_file, result["modified_text"])
                 result["result_saved_to"] = output_to_file
             
             # Save diff to file if requested

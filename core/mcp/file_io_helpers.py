@@ -244,6 +244,7 @@ def process_file_args(
             if not success:
                 return False, args, f"Error loading '{field}' from file: {content}"
             modified[field] = content
+            modified[is_file_flag] = False  # Reset flag to prevent double-loading in chained handlers
             logger.debug(f"Loaded {field} from file: {file_path}")
     
     return True, modified, None
