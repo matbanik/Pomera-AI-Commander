@@ -5796,7 +5796,7 @@ class PromeraAIApp(tk.Tk):
                 saved_cat = self._get_web_search_setting("exa", "category", "")
                 self.exa_category_var = tk.StringVar(value=saved_cat)
                 cat_combo = ttk.Combobox(col1_r2, textvariable=self.exa_category_var,
-                                         values=["", "news", "research paper", "company", "tweet"], width=14, state="readonly")
+                                         values=["general", "news", "research paper", "company", "tweet"], width=14, state="readonly")
                 cat_combo.pack(side=tk.LEFT, padx=5)
                 cat_combo.bind("<<ComboboxSelected>>", lambda e: self._save_web_search_setting("exa", "category", self.exa_category_var.get()))
                 

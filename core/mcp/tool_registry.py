@@ -3541,7 +3541,7 @@ class ToolRegistry:
                 "- `neural`: Deepest semantic understanding, highest relevance\n\n"
                 
                 "**EXA CATEGORIES** (specialized indexes):\n"
-                "- Empty string (default): General web search\n"
+                "- `general` (default): General web search\n"
                 "- `news`: News articles\n"
                 "- `research paper`: Academic papers, arxiv, etc.\n"
                 "- `company`: Company information\n"
@@ -3594,9 +3594,9 @@ class ToolRegistry:
                     },
                     "exa_category": {
                         "type": "string",
-                        "enum": ["", "news", "research paper", "company", "tweet"],
-                        "description": "Exa only: Specialized content category. Empty for general search.",
-                        "default": ""
+                        "enum": ["general", "news", "research paper", "company", "tweet"],
+                        "description": "Exa only: Specialized content category. 'general' for general search.",
+                        "default": "general"
                     },
                     "exa_content_type": {
                         "type": "string",
@@ -3671,7 +3671,7 @@ class ToolRegistry:
                 # Get Exa-specific options from args
                 exa_options = {
                     "search_type": args.get("exa_search_type", "auto"),
-                    "category": args.get("exa_category", ""),
+                    "category": args.get("exa_category", "general"),
                     "content_type": args.get("exa_content_type", "highlights"),
                     "max_characters": args.get("exa_max_characters", 2000),
                     "max_age_hours": args.get("exa_max_age_hours", -1),

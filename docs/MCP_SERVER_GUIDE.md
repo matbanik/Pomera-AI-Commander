@@ -435,7 +435,7 @@ pomera_web_search \
 | Parameter | Type | Values | Description |
 |-----------|------|--------|-------------|
 | `exa_search_type` | string | `auto`, `fast`, `neural` | `auto` (balanced), `fast` (speed), `neural` (deep semantic) |
-| `exa_category` | string | `news`, `research paper`, `company`, `tweet`, `` | Specialized content index (empty for general) |
+| `exa_category` | string | `general`, `news`, `research paper`, `company`, `tweet` | Specialized content index (`general` for general search) |
 | `exa_content_type` | string | `highlights`, `text` | `highlights` (token efficient), `text` (full webpage) |
 | `exa_max_characters` | integer | 100-20000 | Max characters for content (default: 2000) |
 | `exa_max_age_hours` | integer | -1, 0, 24, 720+ | Content freshness: -1=cache, 0=livecrawl, 24=daily |
