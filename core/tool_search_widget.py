@@ -175,8 +175,10 @@ class ToolSearchPalette(ttk.Frame):
         self._popup.wm_attributes("-topmost", True)
         
         # macOS: Mark as transient child so Aqua treats it as a popup,
-        # not a separate window that steals focus
-        self._popup.wm_transient(self.winfo_toplevel())
+        # not a separate window that steals focus.
+        # NOTE: On Windows, wm_transient breaks overrideredirect popups.
+        if IS_MACOS:
+            self._popup.wm_transient(self.winfo_toplevel())
         
         # macOS: Start invisible to prevent flash during focus negotiation
         if IS_MACOS:
