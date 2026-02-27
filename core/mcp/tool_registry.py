@@ -3210,15 +3210,33 @@ class ToolRegistry:
             portable = False
             data_info = {"error": "data_directory module not available"}
         
-        # Get current version
+        # Get current version (match app's version resolution priority)
+        version = "unknown"
         try:
-            import importlib.metadata
-            version = importlib.metadata.version("pomera-ai-commander")
+            from pomera.version import __version__
+            version = __version__
         except Exception:
-            version = "unknown"
+            pass
         
         # Get installation directory
         install_dir = Path(__file__).parent.parent.parent
+        
+        if version == "unknown":
+            try:
+                # Fallback: read from package.json in installation dir
+                import json as _json
+                pkg_json = install_dir / "package.json"
+                if pkg_json.exists():
+                    with open(pkg_json, "r", encoding="utf-8") as _f:
+                        version = _json.load(_f).get("version", "unknown")
+            except Exception:
+                pass
+        if version == "unknown":
+            try:
+                import importlib.metadata
+                version = importlib.metadata.version("pomera-ai-commander")
+            except Exception:
+                pass
         
         # Find existing databases
         databases_found = []
