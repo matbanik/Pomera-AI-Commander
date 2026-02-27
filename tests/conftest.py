@@ -6,8 +6,23 @@ Provides common fixtures for testing Tools, Widgets, and MCP tools.
 
 import pytest
 import logging
+import os
+import sys
 from unittest.mock import Mock
 import tkinter as tk
+
+# Auto-fix Tcl/Tk library paths for conda/miniconda environments
+_prefix = os.path.dirname(sys.executable)
+for _candidate in [
+    os.path.join(_prefix, "Library", "lib"),   # conda on Windows
+    os.path.join(_prefix, "lib"),               # standard Python
+]:
+    _tcl_path = os.path.join(_candidate, "tcl8.6")
+    _tk_path = os.path.join(_candidate, "tk8.6")
+    if os.path.isdir(_tcl_path) and os.path.isdir(_tk_path):
+        os.environ.setdefault("TCL_LIBRARY", _tcl_path)
+        os.environ.setdefault("TK_LIBRARY", _tk_path)
+        break
 
 
 # ============================================================================

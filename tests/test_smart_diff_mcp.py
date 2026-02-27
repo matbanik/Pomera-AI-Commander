@@ -10,6 +10,9 @@ Tests the MCP tool registration and execution for:
 
 import pytest
 import json
+import sqlite3
+import tempfile
+from pathlib import Path
 from core.mcp.tool_registry import get_registry
 
 
@@ -22,6 +25,36 @@ def get_text(result):
 def tool_registry():
     """Get the shared ToolRegistry instance for testing"""
     return get_registry()
+
+
+@pytest.fixture
+def temp_notes_db():
+    """Create a temporary notes database for testing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "notes.db"
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute('''
+            CREATE TABLE notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Created TEXT NOT NULL,
+                Modified TEXT NOT NULL,
+                Title TEXT NOT NULL,
+                Input TEXT,
+                Output TEXT
+            )
+        ''')
+        conn.execute('''
+            CREATE VIRTUAL TABLE notes_fts USING fts5(
+                Title, Input, Output,
+                content='notes',
+                content_rowid='id'
+            )
+        ''')
+        conn.commit()
+        conn.close()
+
+        yield str(db_path)
 
 
 class TestSmartDiff2WayMCP:
@@ -151,21 +184,17 @@ class TestSmartDiff2WayMCP:
         # Strict mode might detect differences, but semantic parsing should still work
         assert result_data["format"] == "json"
 
-    @pytest.mark.skip(reason="Notes integration requires Notes database system")
     def test_notes_integration(self, tool_registry, temp_notes_db, monkeypatch):
         """Test saving diff results to notes"""
-        # Monkey-patch the notes database path
-        from core import notes_db
-        original_get_db = notes_db.NotesDatabase.get_instance
-        
-        def mock_get_instance():
-            return temp_notes_db
-        
-        monkeypatch.setattr(notes_db.NotesDatabase, "get_instance", mock_get_instance)
-        
+        # Monkeypatch the registry's DB path to use our temp database
+        monkeypatch.setattr(
+            type(tool_registry), '_get_notes_db_path',
+            lambda self: temp_notes_db
+        )
+
         before = '{"name": "John", "age": 30}'
         after = '{"name": "John", "age": 31}'
-        
+
         result = tool_registry.execute("pomera_smart_diff_2way", {
             "before": before,
             "after": after,
@@ -173,19 +202,24 @@ class TestSmartDiff2WayMCP:
             "save_to_notes": True,
             "note_title": "Test Diff Result"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
-        assert result_data["status"] == "success"
+
+        assert result_data["success"] is True
         assert "note_id" in result_data
-        
-        # Verify note was saved
+        assert result_data["note_id"] > 0
+
+        # Verify note was saved in the temp database
         note_id = result_data["note_id"]
-        saved_note = temp_notes_db.get_note(note_id)
-        
-        assert saved_note is not None
-        assert saved_note["title"] == "Test Diff Result"
-        assert "age" in saved_note["output_content"]
+        conn = sqlite3.connect(temp_notes_db)
+        row = conn.execute(
+            'SELECT Title, Input, Output FROM notes WHERE id = ?', (note_id,)
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert row[0] == "Test Diff Result"
+        assert "age" in row[2]  # Output contains the diff text mentioning 'age'
 
     def test_error_invalid_json(self, tool_registry):
         """Test error handling for invalid JSON"""

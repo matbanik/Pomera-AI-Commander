@@ -180,7 +180,7 @@ class TestApiKeysSection:
         expected_providers = {
             "Google AI", "Vertex AI", "Azure AI", "Anthropic AI",
             "OpenAI", "Groq AI", "OpenRouterAI", "Cohere AI",
-            "HuggingFace", "LM Studio", "AWS Bedrock",
+            "HuggingFace AI", "LM Studio", "AWS Bedrock",
         }
         keys = basic_result["api_keys"]
         for provider in expected_providers:

@@ -123,6 +123,39 @@ class MCPMessage:
         return self.method is None and (self.result is not None or self.error is not None)
 
 
+
+@dataclass
+class MCPToolAnnotations:
+    """
+    MCP Tool Annotations per spec 2025-06-18.
+    
+    Hints that describe tool behavior for client-side policy decisions.
+    All fields are optional — only non-None values are serialized.
+    
+    See: https://modelcontextprotocol.io/specification/2025-06-18/server/tools
+    """
+    title: Optional[str] = None
+    readOnlyHint: Optional[bool] = None
+    destructiveHint: Optional[bool] = None
+    idempotentHint: Optional[bool] = None
+    openWorldHint: Optional[bool] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to MCP annotations format, excluding None values."""
+        result = {}
+        if self.title is not None:
+            result["title"] = self.title
+        if self.readOnlyHint is not None:
+            result["readOnlyHint"] = self.readOnlyHint
+        if self.destructiveHint is not None:
+            result["destructiveHint"] = self.destructiveHint
+        if self.idempotentHint is not None:
+            result["idempotentHint"] = self.idempotentHint
+        if self.openWorldHint is not None:
+            result["openWorldHint"] = self.openWorldHint
+        return result
+
+
 @dataclass
 class MCPTool:
     """
@@ -137,14 +170,20 @@ class MCPTool:
         "properties": {},
         "required": []
     })
+    annotations: Optional[MCPToolAnnotations] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to MCP tool definition format."""
-        return {
+        result = {
             "name": self.name,
             "description": self.description,
             "inputSchema": self.inputSchema
         }
+        if self.annotations is not None:
+            ann = self.annotations.to_dict()
+            if ann:  # Only include if there are non-None values
+                result["annotations"] = ann
+        return result
 
 
 @dataclass

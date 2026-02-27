@@ -11,6 +11,10 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional, Callable, List, Dict, Any
 import logging
+import sys
+
+# Platform detection for macOS-specific workarounds
+IS_MACOS = sys.platform == "darwin"
 
 # Try to import rapidfuzz for fuzzy matching
 try:
@@ -76,6 +80,7 @@ class ToolSearchPalette(ttk.Frame):
         self._popup: Optional[tk.Toplevel] = None
         self._popup_listbox: Optional[tk.Listbox] = None
         self._closing: bool = False  # Flag to prevent re-opening during close
+        self._focus_sentinel_id = None  # macOS focus sentinel timer ID
         
         self._create_widgets()
     
@@ -135,6 +140,7 @@ class ToolSearchPalette(ttk.Frame):
             self._show_popup()
         else:
             self._update_popup_list()
+            self._ensure_entry_focus()
     
     def _on_main_window_configure(self, event=None) -> None:
         """Handle main window resize/move - hide popup to prevent floating."""
@@ -167,6 +173,14 @@ class ToolSearchPalette(ttk.Frame):
         self._popup = tk.Toplevel(self)
         self._popup.wm_overrideredirect(True)  # No window decorations
         self._popup.wm_attributes("-topmost", True)
+        
+        # macOS: Mark as transient child so Aqua treats it as a popup,
+        # not a separate window that steals focus
+        self._popup.wm_transient(self.winfo_toplevel())
+        
+        # macOS: Start invisible to prevent flash during focus negotiation
+        if IS_MACOS:
+            self._popup.wm_attributes("-alpha", 0.0)
         
         # Position below the entry
         x = self.tool_entry.winfo_rootx()
@@ -220,6 +234,57 @@ class ToolSearchPalette(ttk.Frame):
         
         # Populate list
         self._update_popup_list()
+        
+        # macOS: Restore visibility and force focus back to entry after
+        # Aqua's window manager has finished processing the new Toplevel
+        if IS_MACOS:
+            def _macos_post_popup_setup():
+                try:
+                    if self._popup and self._popup.winfo_exists():
+                        self._popup.wm_attributes("-alpha", 1.0)
+                        self.tool_entry.focus_force()
+                except tk.TclError:
+                    pass
+            self.after(50, _macos_post_popup_setup)
+            # Start periodic focus sentinel to reclaim focus if Aqua steals it
+            self._start_focus_sentinel()
+    
+    def _ensure_entry_focus(self) -> None:
+        """Reclaim focus to the search entry if the popup stole it (macOS workaround)."""
+        if not IS_MACOS:
+            return
+        if self._closing:
+            return
+        try:
+            focused = self.focus_get()
+            if focused != self.tool_entry and self._popup and self._popup.winfo_exists():
+                self.tool_entry.focus_force()
+        except (tk.TclError, KeyError):
+            pass
+    
+    def _start_focus_sentinel(self) -> None:
+        """Start a periodic timer that reclaims entry focus on macOS while popup is open."""
+        self._stop_focus_sentinel()
+        if not IS_MACOS:
+            return
+        
+        def _sentinel():
+            if self._popup and self._popup.winfo_exists() and not self._closing:
+                self._ensure_entry_focus()
+                self._focus_sentinel_id = self.after(200, _sentinel)
+            else:
+                self._focus_sentinel_id = None
+        
+        self._focus_sentinel_id = self.after(200, _sentinel)
+    
+    def _stop_focus_sentinel(self) -> None:
+        """Cancel the periodic focus sentinel timer."""
+        if self._focus_sentinel_id is not None:
+            try:
+                self.after_cancel(self._focus_sentinel_id)
+            except (tk.TclError, ValueError):
+                pass
+            self._focus_sentinel_id = None
     
     # Sub-tools that are nested within parent categories (for indentation)
     SUB_TOOLS = {
@@ -403,6 +468,7 @@ class ToolSearchPalette(ttk.Frame):
     
     def _hide_popup(self, event=None) -> str:
         """Hide the popup dropdown and restore tool name."""
+        self._stop_focus_sentinel()
         if self._popup and self._popup.winfo_exists():
             self._popup.destroy()
         self._popup = None
@@ -418,6 +484,7 @@ class ToolSearchPalette(ttk.Frame):
         """Close popup and select default tool if no tool selected."""
         # Set closing flag to prevent focus events from re-opening
         self._closing = True
+        self._stop_focus_sentinel()
         
         # Destroy popup FIRST to prevent any refresh loops
         if self._popup and self._popup.winfo_exists():

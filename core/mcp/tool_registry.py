@@ -13,7 +13,7 @@ import logging
 from typing import Dict, Any, List, Callable, Optional
 from dataclasses import dataclass
 
-from .schema import MCPTool, MCPToolResult
+from .schema import MCPTool, MCPToolResult, MCPToolAnnotations
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +33,15 @@ class MCPToolAdapter:
     description: str
     input_schema: Dict[str, Any]
     handler: Callable[[Dict[str, Any]], str]
+    annotations: Optional[MCPToolAnnotations] = None
     
     def to_mcp_tool(self) -> MCPTool:
         """Convert to MCPTool definition."""
         return MCPTool(
             name=self.name,
             description=self.description,
-            inputSchema=self.input_schema
+            inputSchema=self.input_schema,
+            annotations=self.annotations
         )
     
     def execute(self, arguments: Dict[str, Any]) -> MCPToolResult:
@@ -68,15 +70,19 @@ class ToolRegistry:
     Automatically registers built-in Pomera tools on initialization.
     """
     
-    def __init__(self, register_builtins: bool = True):
+    def __init__(self, register_builtins: bool = True, 
+                 enabled_tools: Optional[set] = None):
         """
         Initialize the tool registry.
         
         Args:
             register_builtins: Whether to register built-in tools
+            enabled_tools: If provided, only register tools in this set.
+                          None means register all tools (default behavior).
         """
         self._tools: Dict[str, MCPToolAdapter] = {}
         self._logger = logging.getLogger(__name__)
+        self._enabled_tools = enabled_tools  # None = all tools enabled
         
         if register_builtins:
             self._register_builtin_tools()
@@ -88,6 +94,10 @@ class ToolRegistry:
         Args:
             adapter: MCPToolAdapter to register
         """
+        # Skip registration if tool is not in the enabled set
+        if self._enabled_tools is not None and adapter.name not in self._enabled_tools:
+            return
+        
         self._tools[adapter.name] = adapter
         self._logger.info(f"Registered MCP tool: {adapter.name}")
     
@@ -289,7 +299,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "mode"]
             },
-            handler=self._handle_case_transform
+            handler=self._handle_case_transform,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_case_transform(self, args: Dict[str, Any]) -> str:
@@ -373,7 +384,8 @@ class ToolRegistry:
                 },
                 "required": ["type"]
             },
-            handler=self._handle_encode
+            handler=self._handle_encode,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_encode(self, args: Dict[str, Any]) -> str:
@@ -503,7 +515,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "operation"]
             },
-            handler=self._handle_line_tools
+            handler=self._handle_line_tools,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_line_tools(self, args: Dict[str, Any]) -> str:
@@ -587,7 +600,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "operation"]
             },
-            handler=self._handle_whitespace_tools
+            handler=self._handle_whitespace_tools,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_whitespace_tools(self, args: Dict[str, Any]) -> str:
@@ -652,7 +666,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "operation"]
             },
-            handler=self._handle_string_escape
+            handler=self._handle_string_escape,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_string_escape(self, args: Dict[str, Any]) -> str:
@@ -731,7 +746,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "sort_type"]
             },
-            handler=self._handle_sorter
+            handler=self._handle_sorter,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_sorter(self, args: Dict[str, Any]) -> str:
@@ -783,7 +799,8 @@ class ToolRegistry:
                 },
                 "required": ["text"]
             },
-            handler=self._handle_text_stats
+            handler=self._handle_text_stats,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_text_stats(self, args: Dict[str, Any]) -> str:
@@ -858,7 +875,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "operation"]
             },
-            handler=self._handle_json_xml
+            handler=self._handle_json_xml,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_json_xml(self, args: Dict[str, Any]) -> str:
@@ -978,7 +996,8 @@ class ToolRegistry:
                 },
                 "required": ["url"]
             },
-            handler=self._handle_url_parse
+            handler=self._handle_url_parse,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_url_parse(self, args: Dict[str, Any]) -> str:
@@ -1041,7 +1060,8 @@ class ToolRegistry:
                 },
                 "required": ["text"]
             },
-            handler=self._handle_text_wrap
+            handler=self._handle_text_wrap,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_text_wrap(self, args: Dict[str, Any]) -> str:
@@ -1168,7 +1188,8 @@ class ToolRegistry:
                 },
                 "required": ["value"]
             },
-            handler=self._handle_timestamp
+            handler=self._handle_timestamp,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_timestamp(self, args: Dict[str, Any]) -> str:
@@ -1307,7 +1328,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "type"]
             },
-            handler=self._handle_extract
+            handler=self._handle_extract,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_extract(self, args: Dict[str, Any]) -> str:
@@ -1396,7 +1418,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "operation"]
             },
-            handler=self._handle_markdown_tools
+            handler=self._handle_markdown_tools,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_markdown_tools(self, args: Dict[str, Any]) -> str:
@@ -1465,7 +1488,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "format"]
             },
-            handler=self._handle_translator
+            handler=self._handle_translator,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_translator(self, args: Dict[str, Any]) -> str:
@@ -1518,7 +1542,8 @@ class ToolRegistry:
                 },
                 "required": ["expression", "operation"]
             },
-            handler=self._handle_cron
+            handler=self._handle_cron,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_cron(self, args: Dict[str, Any]) -> str:
@@ -1809,7 +1834,8 @@ class ToolRegistry:
                 },
                 "required": ["text"]
             },
-            handler=self._handle_word_frequency
+            handler=self._handle_word_frequency,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_word_frequency(self, args: Dict[str, Any]) -> str:
@@ -1869,7 +1895,8 @@ class ToolRegistry:
                 },
                 "required": ["text", "operation"]
             },
-            handler=self._handle_column_tools
+            handler=self._handle_column_tools,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_column_tools(self, args: Dict[str, Any]) -> str:
@@ -1976,7 +2003,8 @@ class ToolRegistry:
                 },
                 "required": ["generator"]
             },
-            handler=self._handle_generators
+            handler=self._handle_generators,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_generators(self, args: Dict[str, Any]) -> str:
@@ -2263,7 +2291,8 @@ class ToolRegistry:
                 },
                 "required": ["action"]
             },
-            handler=self._handle_notes
+            handler=self._handle_notes,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_notes(self, args: Dict[str, Any]) -> str:
@@ -2858,7 +2887,8 @@ class ToolRegistry:
                 },
                 "required": ["text"]
             },
-            handler=self._handle_email_header_analyzer
+            handler=self._handle_email_header_analyzer,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_email_header_analyzer(self, args: Dict[str, Any]) -> str:
@@ -2969,7 +2999,8 @@ class ToolRegistry:
                 },
                 "required": ["text"]
             },
-            handler=self._handle_html_tool
+            handler=self._handle_html_tool,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_html_tool(self, args: Dict[str, Any]) -> str:
@@ -3053,7 +3084,8 @@ class ToolRegistry:
                 },
                 "required": ["list_a", "list_b"]
             },
-            handler=self._handle_list_comparator
+            handler=self._handle_list_comparator,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_list_comparator(self, args: Dict[str, Any]) -> str:
@@ -3156,7 +3188,8 @@ class ToolRegistry:
                 },
                 "required": ["action"]
             },
-            handler=self._handle_safe_update
+            handler=self._handle_safe_update,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_safe_update(self, args: Dict[str, Any]) -> str:
@@ -3357,7 +3390,8 @@ class ToolRegistry:
                 },
                 "required": ["operation"]
             },
-            handler=self._handle_find_replace_diff
+            handler=self._handle_find_replace_diff,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_find_replace_diff(self, args: Dict[str, Any]) -> str:
@@ -3628,7 +3662,8 @@ class ToolRegistry:
                 },
                 "required": ["query"]
             },
-            handler=self._handle_web_search
+            handler=self._handle_web_search,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
         ))
     
     def _handle_web_search(self, args: Dict[str, Any]) -> str:
@@ -4018,7 +4053,8 @@ class ToolRegistry:
                 },
                 "required": ["url"]
             },
-            handler=self._handle_read_url
+            handler=self._handle_read_url,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
         ))
     
     def _handle_read_url(self, args: Dict[str, Any]) -> str:
@@ -4229,7 +4265,8 @@ class ToolRegistry:
                 },
                 "required": ["before", "after"]
             },
-            handler=self._handle_smart_diff_2way
+            handler=self._handle_smart_diff_2way,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_smart_diff_2way(self, args: Dict[str, Any]) -> str:
@@ -4487,7 +4524,8 @@ class ToolRegistry:
                 },
                 "required": ["base", "yours", "theirs"]
             },
-            handler=self._handle_smart_diff_3way
+            handler=self._handle_smart_diff_3way,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_smart_diff_3way(self, args: Dict[str, Any]) -> str:
@@ -4757,7 +4795,8 @@ class ToolRegistry:
                 },
                 "required": []
             },
-            handler=self._handle_ai_tools
+            handler=self._handle_ai_tools,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
         ))
     
     def _handle_ai_tools(self, args: Dict[str, Any]) -> str:
@@ -5172,7 +5211,8 @@ class ToolRegistry:
                     }
                 }
             },
-            handler=self._handle_diagnose
+            handler=self._handle_diagnose,
+            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
         ))
     
     def _handle_diagnose(self, args: Dict[str, Any]) -> str:
@@ -5852,7 +5892,8 @@ class ToolRegistry:
                     }
                 }
             },
-            handler=self._handle_launch_gui
+            handler=self._handle_launch_gui,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_launch_gui(self, args: Dict[str, Any]) -> str:
