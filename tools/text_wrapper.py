@@ -186,8 +186,11 @@ class TextWrapperWidget(ttk.Frame):
                    command=self.on_setting_change).pack(side=tk.LEFT, padx=5)
         ttk.Label(width_frame, text="characters").pack(side=tk.LEFT)
         
-        ttk.Button(frame, text="Wrap Text", 
-                  command=lambda: self.process("wrap")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Wrap Text", 
+                  command=lambda: self.process("wrap")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_justify_tab(self):
         """Creates the Justify Text tab."""
@@ -212,8 +215,11 @@ class TextWrapperWidget(ttk.Frame):
                    textvariable=self.justify_width,
                    command=self.on_setting_change).pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(frame, text="Justify Text", 
-                  command=lambda: self.process("justify")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Justify Text", 
+                  command=lambda: self.process("justify")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_prefix_suffix_tab(self):
         """Creates the Prefix/Suffix tab."""
@@ -234,8 +240,11 @@ class TextWrapperWidget(ttk.Frame):
                        variable=self.skip_empty,
                        command=self.on_setting_change).pack(anchor=tk.W, padx=5, pady=5)
         
-        ttk.Button(frame, text="Add Prefix/Suffix", 
-                  command=lambda: self.process("prefix_suffix")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Add Prefix/Suffix", 
+                  command=lambda: self.process("prefix_suffix")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_indent_tab(self):
         """Creates the Indent/Dedent tab."""
@@ -266,6 +275,7 @@ class TextWrapperWidget(ttk.Frame):
                   command=lambda: self.process("indent")).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Dedent", 
                   command=lambda: self.process("dedent")).pack(side=tk.LEFT, padx=5)
+        ttk.Label(buttons_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_quote_tab(self):
         """Creates the Quote Text tab."""
@@ -288,8 +298,11 @@ class TextWrapperWidget(ttk.Frame):
                            variable=self.quote_style, value=value,
                            command=self.on_setting_change).pack(anchor=tk.W)
         
-        ttk.Button(frame, text="Quote Text", 
-                  command=lambda: self.process("quote")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Quote Text", 
+                  command=lambda: self.process("quote")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def load_settings(self):
         """Load settings from the application."""

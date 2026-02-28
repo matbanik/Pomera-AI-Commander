@@ -173,6 +173,7 @@ class FolderFileReporterAdapter:
         # Generate Reports button under Recursion section
         process_btn = ttk.Button(middle_column, text="Generate Reports", command=self._generate_reports)
         process_btn.grid(row=3, column=0, sticky='w', pady=(10, 0))
+        ttk.Label(middle_column, text="⌨ Ctrl+Enter", foreground="gray").grid(row=3, column=0, sticky='w', padx=(140, 0), pady=(10, 0))
         
         # RIGHT COLUMN
         # Separator - label and field on same line

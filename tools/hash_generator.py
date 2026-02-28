@@ -123,8 +123,11 @@ class HashGeneratorWidget(ttk.Frame):
                        command=self.on_setting_change).pack(anchor=tk.W)
         
         # Generate button
-        ttk.Button(self, text="Generate Hashes", 
-                  command=self.generate).pack(pady=10)
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Generate Hashes", 
+                  command=self.generate).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def load_settings(self):
         """Load settings from the application."""

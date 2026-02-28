@@ -187,7 +187,7 @@ class FindReplaceWidget:
         self.pattern_library_button.pack(anchor="w", pady=(2,5))
         
         # Info label for escape sequences
-        info_label = ttk.Label(left_frame, text="Tip: Use \\n \\t \\r in text mode", 
+        info_label = ttk.Label(left_frame, text="Tip: Use \\n \\t \\r in text mode  |  ⌨ Ctrl+Enter = Replace All", 
                               font=("Arial", 8), foreground="gray")
         info_label.pack(anchor="w", pady=(0,2))
 

@@ -74,12 +74,71 @@ def tk_root():
     """
     Provide a Tkinter root window for widget testing.
     
-    Automatically destroys the window after test completes.
+    Creates one Tk() root per test, immediately withdrawn.
+    Teardown flushes pending Tcl tasks before destroy (research consensus).
     """
     root = tk.Tk()
     root.withdraw()  # Hide window during tests
     yield root
-    root.destroy()
+    try:
+        root.update_idletasks()  # Flush pending Tcl tasks
+    except tk.TclError:
+        pass
+    try:
+        root.destroy()
+    except tk.TclError:
+        pass
+
+
+@pytest.fixture
+def tk_app(tk_root):
+    """
+    Mock app with REAL tk.Text widgets for GUI/widget testing.
+    
+    Uses real tk.Text (not MagicMock) because Tk's text index math
+    ("end-1c", tag_ranges, etc.) cannot be replicated by mocks.
+    wrap="none" avoids expensive layout calculations in CI.
+    
+    Provides:
+        - app.root: The Tk root window
+        - app.input_tabs[0].text: Real tk.Text for input
+        - app.output_tabs[0].text: Real tk.Text for output
+        - app.input_notebook / app.output_notebook: Mock notebooks
+        - app.settings, app.logger: Standard mocks
+    """
+    app = Mock()
+    app.root = tk_root
+    app.settings = {}
+    app.logger = Mock(spec=logging.Logger)
+    app.dialog_manager = Mock()
+    
+    # Real text widgets (wrap=none for CI performance — Gemini insight)
+    input_text = tk.Text(tk_root, wrap="none")
+    output_text = tk.Text(tk_root, wrap="none")
+    
+    # Mock tab objects with real text widgets
+    input_tab = Mock()
+    input_tab.text = input_text
+    output_tab = Mock()
+    output_tab.text = output_text
+    
+    app.input_tabs = [input_tab]
+    app.output_tabs = [output_tab]
+    
+    # Mock notebooks (return active tab index 0)
+    app.input_notebook = Mock()
+    app.input_notebook.index.return_value = 0
+    app.output_notebook = Mock()
+    app.output_notebook.index.return_value = 0
+    
+    # Common app methods used by widgets
+    app.send_content_to_input_tab = Mock()
+    app.send_content_to_output_tab = Mock()
+    app.open_url_content_reader = Mock()
+    app.tool_var = Mock()
+    app.tool_var.get = Mock(return_value="")
+    
+    return app
 
 
 @pytest.fixture
@@ -209,9 +268,10 @@ settings.load_profile("default")
 # ============================================================================
 
 def pytest_configure(config):
-    """Configure pytest with custom settings."""
-    # Add custom markers here if not in pytest.ini
-    pass
+    """Configure pytest with custom markers."""
+    config.addinivalue_line(
+        "markers", "gui: tests requiring Tkinter display (may skip in headless CI)"
+    )
 
 
 def pytest_collection_modifyitems(config, items):

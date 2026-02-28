@@ -349,8 +349,11 @@ class MarkdownToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=10)
         
-        ttk.Button(frame, text="Strip Markdown", 
-                  command=lambda: self.process("Strip Markdown")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Strip Markdown", 
+                  command=lambda: self.process("Strip Markdown")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_links_tab(self):
         """Creates the Extract Links tab."""
@@ -369,8 +372,11 @@ class MarkdownToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=10)
         
-        ttk.Button(frame, text="Extract Links", 
-                  command=lambda: self.process("Extract Links")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Extract Links", 
+                  command=lambda: self.process("Extract Links")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_headers_tab(self):
         """Creates the Extract Headers tab."""
@@ -390,8 +396,11 @@ class MarkdownToolsWidget(ttk.Frame):
                        variable=self.header_format, value="numbered",
                        command=self.on_setting_change).pack(anchor=tk.W)
         
-        ttk.Button(frame, text="Extract Headers", 
-                  command=lambda: self.process("Extract Headers")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Extract Headers", 
+                  command=lambda: self.process("Extract Headers")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_table_csv_tab(self):
         """Creates the Table to CSV tab."""
@@ -411,8 +420,11 @@ class MarkdownToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=10)
         
-        ttk.Button(frame, text="Convert to CSV", 
-                  command=lambda: self.process("Table to CSV")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Convert to CSV", 
+                  command=lambda: self.process("Table to CSV")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_format_table_tab(self):
         """Creates the Format Table tab."""
@@ -424,8 +436,11 @@ class MarkdownToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=20)
         
-        ttk.Button(frame, text="Format Table", 
-                  command=lambda: self.process("Format Table")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Format Table", 
+                  command=lambda: self.process("Format Table")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def load_settings(self):
         """Load settings from the application."""

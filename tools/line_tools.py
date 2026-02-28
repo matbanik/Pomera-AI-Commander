@@ -197,8 +197,11 @@ class LineToolsWidget(ttk.Frame):
                        variable=self.case_sensitive,
                        command=self.on_setting_change).pack(anchor=tk.W, padx=5, pady=5)
         
-        ttk.Button(frame, text="Remove Duplicates", 
-                  command=lambda: self.process("Remove Duplicates")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Remove Duplicates", 
+                  command=lambda: self.process("Remove Duplicates")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_remove_empty_tab(self):
         """Creates the Remove Empty Lines tab."""
@@ -212,8 +215,11 @@ class LineToolsWidget(ttk.Frame):
                        variable=self.preserve_single,
                        command=self.on_setting_change).pack(anchor=tk.W)
         
-        ttk.Button(frame, text="Remove Empty Lines", 
-                  command=lambda: self.process("Remove Empty Lines")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Remove Empty Lines", 
+                  command=lambda: self.process("Remove Empty Lines")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_add_numbers_tab(self):
         """Creates the Add Line Numbers tab."""
@@ -241,8 +247,11 @@ class LineToolsWidget(ttk.Frame):
                        variable=self.skip_empty,
                        command=self.on_setting_change).pack(anchor=tk.W, padx=5)
         
-        ttk.Button(frame, text="Add Line Numbers", 
-                  command=lambda: self.process("Add Line Numbers")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Add Line Numbers", 
+                  command=lambda: self.process("Add Line Numbers")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_remove_numbers_tab(self):
         """Creates the Remove Line Numbers tab."""
@@ -254,8 +263,11 @@ class LineToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=20)
         
-        ttk.Button(frame, text="Remove Line Numbers", 
-                  command=lambda: self.process("Remove Line Numbers")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Remove Line Numbers", 
+                  command=lambda: self.process("Remove Line Numbers")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_reverse_tab(self):
         """Creates the Reverse Lines tab."""
@@ -266,8 +278,11 @@ class LineToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=20)
         
-        ttk.Button(frame, text="Reverse Lines", 
-                  command=lambda: self.process("Reverse Lines")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Reverse Lines", 
+                  command=lambda: self.process("Reverse Lines")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_shuffle_tab(self):
         """Creates the Shuffle Lines tab."""
@@ -278,8 +293,11 @@ class LineToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=20)
         
-        ttk.Button(frame, text="Shuffle Lines", 
-                  command=lambda: self.process("Shuffle Lines")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Shuffle Lines", 
+                  command=lambda: self.process("Shuffle Lines")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def load_settings(self):
         """Load settings from the application."""

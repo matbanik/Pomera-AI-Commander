@@ -590,6 +590,7 @@ class GeneratorToolsWidget:
         generate_btn = ttk.Button(button_frame, text="Generate Password", 
                                 command=lambda: self.generate_password())
         generate_btn.pack(side=tk.LEFT)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # Initialize percentage display
         self.update_percentages()
@@ -627,6 +628,7 @@ class GeneratorToolsWidget:
         repeat_btn = ttk.Button(button_frame, text="Generate Repeated Text", 
                               command=lambda: self.generate_repeated_text())
         repeat_btn.pack(side=tk.LEFT)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_lorem_ipsum_tab(self):
         """Create the Lorem Ipsum Generator tab."""
@@ -695,6 +697,7 @@ class GeneratorToolsWidget:
         lorem_btn = ttk.Button(button_frame, text="Generate", 
                              command=lambda: self.generate_lorem_ipsum())
         lorem_btn.pack(side=tk.LEFT)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_uuid_generator_tab(self):
         """Create the UUID/GUID Generator tab."""
@@ -806,6 +809,7 @@ class GeneratorToolsWidget:
         uuid_btn = ttk.Button(button_frame, text="Generate", 
                             command=lambda: self.generate_uuid())
         uuid_btn.pack(side=tk.LEFT)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # Initialize field visibility
         self.update_uuid_fields()
@@ -882,6 +886,7 @@ class GeneratorToolsWidget:
         email_btn = ttk.Button(button_frame, text="Generate", 
                              command=lambda: self.generate_emails())
         email_btn.pack(side=tk.LEFT)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # Initialize field visibility
         self.update_email_separator_field()
@@ -1179,8 +1184,8 @@ class GeneratorToolsWidget:
         try:
             from tools.ascii_art_generator import ASCIIArtGenerator
             if hasattr(self.main_app, 'ascii_art_generator') and self.main_app.ascii_art_generator:
-                widget = self.main_app.ascii_art_generator.create_widget(tab_frame, self.main_app)
-                widget.pack(fill=tk.BOTH, expand=True)
+                self.ascii_art_widget = self.main_app.ascii_art_generator.create_widget(tab_frame, self.main_app)
+                self.ascii_art_widget.pack(fill=tk.BOTH, expand=True)
             else:
                 ttk.Label(tab_frame, text="ASCII Art Generator module not available").pack(padx=10, pady=10)
         except ImportError:
@@ -1194,8 +1199,8 @@ class GeneratorToolsWidget:
         try:
             from tools.hash_generator import HashGenerator
             if hasattr(self.main_app, 'hash_generator') and self.main_app.hash_generator:
-                widget = self.main_app.hash_generator.create_widget(tab_frame, self.main_app)
-                widget.pack(fill=tk.BOTH, expand=True)
+                self.hash_generator_widget = self.main_app.hash_generator.create_widget(tab_frame, self.main_app)
+                self.hash_generator_widget.pack(fill=tk.BOTH, expand=True)
             else:
                 ttk.Label(tab_frame, text="Hash Generator module not available").pack(padx=10, pady=10)
         except ImportError:
@@ -1209,8 +1214,8 @@ class GeneratorToolsWidget:
         try:
             from tools.slug_generator import SlugGenerator
             if hasattr(self.main_app, 'slug_generator') and self.main_app.slug_generator:
-                widget = self.main_app.slug_generator.create_widget(tab_frame, self.main_app)
-                widget.pack(fill=tk.BOTH, expand=True)
+                self.slug_generator_widget = self.main_app.slug_generator.create_widget(tab_frame, self.main_app)
+                self.slug_generator_widget.pack(fill=tk.BOTH, expand=True)
             else:
                 ttk.Label(tab_frame, text="Slug Generator module not available").pack(padx=10, pady=10)
         except ImportError:

@@ -2335,13 +2335,14 @@ class ToolRegistry:
     
     def _sanitize_text(self, text: str) -> str:
         """
-        Sanitize text by removing invalid UTF-8 surrogate characters.
+        Sanitize text by repairing mojibake and removing invalid UTF-8 surrogates.
         
-        Lone surrogates (U+D800 to U+DFFF) are invalid in UTF-8 and cause
-        encoding errors. This function removes them while preserving valid content.
+        Handles two types of corruption:
+        1. Mojibake: UTF-8 bytes misinterpreted as CP1252 (e.g., em dash — becomes â€")
+        2. Lone surrogates: U+D800-U+DFFF which are invalid in UTF-8
         
         Args:
-            text: Input text that may contain invalid surrogates
+            text: Input text that may contain mojibake or invalid surrogates
             
         Returns:
             Sanitized text safe for UTF-8 encoding and database storage
@@ -2349,17 +2350,47 @@ class ToolRegistry:
         if not text:
             return text
         
-        # Encode to UTF-8 with 'surrogatepass' to handle surrogates,
-        # then decode with 'replace' to replace invalid sequences
+        # Step 1: Repair mojibake (UTF-8→CP1252 double-encoding)
+        text = self._repair_mojibake(text)
+        
+        # Step 2: Handle lone surrogates
         try:
-            # This two-step process handles lone surrogates:
-            # 1. surrogatepass allows encoding surrogates (normally forbidden in UTF-8)
-            # 2. errors='replace' replaces invalid sequences with replacement char
             sanitized = text.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
             return sanitized
         except Exception:
             # Fallback: manually filter out surrogate characters
             return ''.join(c for c in text if not (0xD800 <= ord(c) <= 0xDFFF))
+    
+    def _repair_mojibake(self, text: str) -> str:
+        """
+        Repair UTF-8→CP1252 mojibake via encode/decode roundtrip.
+        
+        When UTF-8 multi-byte characters (like em dash —, U+2014) are
+        misinterpreted as CP1252/Latin-1, they produce mojibake sequences
+        (e.g., â€" for em dash). This repairs them by reversing the process:
+        encode as CP1252 → decode as UTF-8.
+        
+        The roundtrip only succeeds when the text IS mojibake. For normal
+        text (ASCII, clean Unicode, accented Latin), the encode step either
+        fails or produces identical output, so no false positives occur.
+        
+        Args:
+            text: Text that may contain mojibake
+            
+        Returns:
+            Repaired text, or original text if no mojibake detected
+        """
+        try:
+            repaired = text.encode('cp1252').decode('utf-8')
+            if repaired != text:
+                import sys
+                print(
+                    f"[pomera] Mojibake detected and repaired in text ({len(text)} chars)",
+                    file=sys.stderr, flush=True
+                )
+            return repaired
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            return text  # Not mojibake — return as-is
     
     def _load_file_content(self, file_path: str) -> tuple[bool, str]:
         """

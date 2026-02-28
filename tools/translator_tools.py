@@ -228,6 +228,7 @@ executable small and portable."""
             text="Translate", 
             command=self._apply_morse_translator
         ).pack(side=tk.LEFT, padx=5)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(0, 5))
         
         # Audio button (only if PyAudio is available)
         if PYAUDIO_AVAILABLE and self.audio_stream:
@@ -259,6 +260,7 @@ executable small and portable."""
             text="Translate", 
             command=self._apply_binary_translator
         ).pack(side=tk.LEFT, padx=5)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(0, 5))
 
     def _on_setting_change(self):
         """Handle setting changes."""

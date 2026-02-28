@@ -238,8 +238,11 @@ class ASCIIArtGeneratorWidget(ttk.Frame):
         info.pack(pady=10)
         
         # Generate button
-        ttk.Button(self, text="Generate ASCII Art", 
-                  command=self.generate).pack(pady=10)
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Generate ASCII Art", 
+                  command=self.generate).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # Preview area
         preview_frame = ttk.LabelFrame(self, text="Preview", padding=5)

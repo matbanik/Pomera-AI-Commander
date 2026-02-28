@@ -1,7 +1,8 @@
 """
 Tests for Whitespace Tools
 
-Tests whitespace manipulation: trim, remove extra spaces, tabs/spaces conversion, line endings.
+Tests whitespace manipulation operations: trim_lines, remove_extra_spaces,
+tabs_to_spaces, spaces_to_tabs, normalize_line_endings.
 """
 
 import pytest
@@ -13,46 +14,74 @@ from core.mcp.tool_registry import get_registry
 # Unit Tests
 # ============================================================================
 
-class TestWhitespaceTools:
-    """Unit tests for Whitespace Tools operations."""
-    
-    def test_trim_whitespace(self):
-        """Test trimming leading/trailing whitespace."""
+class TestWhitespaceToolsUnit:
+    """Unit tests for WhitespaceToolsProcessor operations."""
+
+    def test_trim_both(self):
+        """Test trimming both leading and trailing whitespace."""
         from tools.whitespace_tools import WhitespaceToolsProcessor
-        text = "  line1  \n  line2  \n  line3  "
-        result = WhitespaceToolsProcessor.trim(text)
-        lines = result.split('\n')
-        assert all(not line.startswith(' ') and not line.endswith(' ') for line in lines if line)
-    
+        text = "  hello  \n  world  "
+        result = WhitespaceToolsProcessor.trim_lines(text, mode="both")
+        lines = result.split("\n")
+        assert lines[0] == "hello"
+        assert lines[1] == "world"
+
+    def test_trim_leading(self):
+        """Test trimming leading whitespace only."""
+        from tools.whitespace_tools import WhitespaceToolsProcessor
+        text = "  hello  \n  world  "
+        result = WhitespaceToolsProcessor.trim_lines(text, mode="leading")
+        lines = result.split("\n")
+        assert lines[0].startswith("hello")
+        assert lines[0].endswith("  ")
+
+    def test_trim_trailing(self):
+        """Test trimming trailing whitespace only."""
+        from tools.whitespace_tools import WhitespaceToolsProcessor
+        text = "  hello  \n  world  "
+        result = WhitespaceToolsProcessor.trim_lines(text, mode="trailing")
+        lines = result.split("\n")
+        assert lines[0].startswith("  ")
+        assert lines[0].endswith("hello")
+
     def test_remove_extra_spaces(self):
-        """Test removing extra spaces."""
+        """Test collapsing multiple spaces to single."""
         from tools.whitespace_tools import WhitespaceToolsProcessor
-        text = "word1    word2     word3"
+        text = "hello   world    test"
         result = WhitespaceToolsProcessor.remove_extra_spaces(text)
-        assert "    " not in result
-    
+        assert "   " not in result
+        assert "hello" in result and "world" in result
+
     def test_tabs_to_spaces(self):
         """Test converting tabs to spaces."""
         from tools.whitespace_tools import WhitespaceToolsProcessor
-        text = "line1\tline2\tline3"
-        result = WhitespaceToolsProcessor.tabs_to_spaces(text)
-        assert '\t' not in result
-    
+        text = "\thello\n\t\tworld"
+        result = WhitespaceToolsProcessor.tabs_to_spaces(text, tab_size=4)
+        assert "\t" not in result
+        assert "hello" in result
+
     def test_spaces_to_tabs(self):
-        """Test converting spaces to tabs."""
+        """Test converting leading spaces to tabs."""
         from tools.whitespace_tools import WhitespaceToolsProcessor
-        text = "    indented line"
-        result = WhitespaceToolsProcessor.spaces_to_tabs(text)
-        # Should have tab char or maintain structure
-        assert isinstance(result, str)
-    
-    def test_normalize_line_endings(self):
-        """Test normalizing line endings."""
+        text = "    hello\n        world"
+        result = WhitespaceToolsProcessor.spaces_to_tabs(text, tab_size=4)
+        assert "\t" in result
+
+    def test_normalize_lf(self):
+        """Test normalizing to LF line endings."""
         from tools.whitespace_tools import WhitespaceToolsProcessor
-        text = "line1\r\nline2\r\nline3"
-        result = WhitespaceToolsProcessor.normalize_endings(text)
-        # Should be normalized
-        assert isinstance(result, str)
+        text = "line1\r\nline2\rline3"
+        result = WhitespaceToolsProcessor.normalize_line_endings(text, ending="lf")
+        assert "\r\n" not in result
+        assert "\r" not in result
+        assert "\n" in result
+
+    def test_normalize_crlf(self):
+        """Test normalizing to CRLF line endings."""
+        from tools.whitespace_tools import WhitespaceToolsProcessor
+        text = "line1\nline2\nline3"
+        result = WhitespaceToolsProcessor.normalize_line_endings(text, ending="crlf")
+        assert "\r\n" in result
 
 
 # ============================================================================
@@ -61,15 +90,21 @@ class TestWhitespaceTools:
 
 class TestWhitespaceToolsProperties:
     """Property-based tests for Whitespace Tools invariants."""
-    
+
     @given(st.text(min_size=1, max_size=100))
-    def test_trim_no_leading_trailing(self, text):
-        """Property: trim removes leading/trailing whitespace."""
+    def test_trim_both_removes_leading_trailing(self, text):
+        """Property: trim both removes leading/trailing whitespace from each line."""
         from tools.whitespace_tools import WhitespaceToolsProcessor
-        result = WhitespaceToolsProcessor.trim(text)
-        for line in result.split('\n'):
-            if line:
-                assert not line.startswith(' ') and not line.endswith(' ')
+        result = WhitespaceToolsProcessor.trim_lines(text, mode="both")
+        for line in result.split("\n"):
+            assert line == line.strip()
+
+    @given(st.text(min_size=1, max_size=50))
+    def test_tabs_to_spaces_removes_all_tabs(self, text):
+        """Property: tabs_to_spaces removes every tab character."""
+        from tools.whitespace_tools import WhitespaceToolsProcessor
+        result = WhitespaceToolsProcessor.tabs_to_spaces(text, tab_size=4)
+        assert "\t" not in result
 
 
 # ============================================================================
@@ -91,12 +126,12 @@ def get_text(result):
 
 class TestWhitespaceToolsMCP:
     """MCP integration tests for pomera_whitespace."""
-    
+
     def test_tool_registration(self, tool_registry):
         """Verify pomera_whitespace is registered."""
         tools = {tool.name for tool in tool_registry.list_tools()}
         assert 'pomera_whitespace' in tools
-    
+
     def test_trim_via_mcp(self, tool_registry):
         """Test trim via MCP."""
         result = tool_registry.execute('pomera_whitespace', {
@@ -107,4 +142,4 @@ class TestWhitespaceToolsMCP:
         assert len(output) > 0
 
 
-# Run with: pytest tests/test_whitespace_tools.py -v
+# Run with: pytest tests/test_whitespace_tools.py -v --hypothesis-show-statistics

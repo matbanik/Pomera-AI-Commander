@@ -1,0 +1,146 @@
+
+============================================================
+ai_tools.py (ΓÜá∩╕Å  NO BaseTool)
+  L202: self.cancel_btn = ttk.Button(main_frame, text="Cancel Research", command=self._on_cancel)
+  L1038: ttk.Button(process_frame, text="Process",
+  L3499: ttk.Button(dialog, text="Save Changes", command=save_research_models).pack(pady=5)
+
+============================================================
+cron_tool.py (≡ƒöº inherits BaseTool)
+  L187: ttk.Button(process_frame, text="Process", command=self.process_data).pack(side=tk.LEFT)
+
+============================================================
+curl_tool.py (ΓÜá∩╕Å  NO BaseTool)
+  L554: ttk.Button(left_buttons, text="Add", command=lambda: self._add_library_entry(library_window)).pack(s
+  L555: ttk.Button(left_buttons, text="Edit", command=lambda: self._edit_library_entry(library_window)).pack
+  L556: ttk.Button(left_buttons, text="Delete", command=self._delete_library_entry).pack(side=tk.LEFT, padx=
+  L560: ttk.Button(left_buttons, text="Move Up", command=self._move_entry_up).pack(side=tk.LEFT, padx=(0, 5)
+  L561: ttk.Button(left_buttons, text="Move Down", command=self._move_entry_down).pack(side=tk.LEFT, padx=(0
+  L567: ttk.Button(right_buttons, text="Import Selected", command=lambda: self._import_selected_command(libr
+  L568: ttk.Button(right_buttons, text="Close", command=library_window.destroy).pack(side=tk.LEFT)
+  L709: ttk.Button(button_frame, text="Save", command=save_entry).pack(side=tk.LEFT, padx=(0, 5))
+  L710: ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT)
+  L806: ttk.Button(presets_frame, text=text, command=command, width=12).pack(side=tk.LEFT, padx=2)
+  L812: ttk.Button(manage_frame, text="Clear All", command=self._clear_headers).pack(side=tk.LEFT)
+  L813: ttk.Button(manage_frame, text="Add Header", command=self._show_add_header_dialog).pack(side=tk.LEFT,
+  L814: ttk.Button(manage_frame, text="Remove Duplicates", command=self._remove_duplicate_headers).pack(side
+  L1123: ttk.Button(buttons_frame, text="Format JSON", command=self._format_json, width=12).pack(side=tk.LEFT
+  L1124: ttk.Button(buttons_frame, text="Validate JSON", command=self._validate_json, width=12).pack(side=tk.
+  L1125: ttk.Button(buttons_frame, text="Minify JSON", command=self._minify_json, width=12).pack(side=tk.LEFT
+  L1126: ttk.Button(buttons_frame, text="Load from File", command=self._load_body_from_file, width=12).pack(s
+  L1371: ttk.Button(left_controls, text="Clear History", command=self._clear_history).pack(side=tk.LEFT, padx
+  L1383: ttk.Button(right_controls, text="Refresh", command=self._refresh_history).pack(side=tk.LEFT)
+  L1480: ttk.Button(left_frame, text="Import cURL", command=self._import_curl).pack(side=tk.LEFT, padx=(0, 5)
+  L1481: ttk.Button(left_frame, text="Export as cURL", command=self._export_curl).pack(side=tk.LEFT, padx=(0,
+  L2663: ttk.Button(controls_frame, text="Add Field", command=self._add_form_field).pack(side=tk.LEFT, padx=(
+  L2664: ttk.Button(controls_frame, text="Clear All", command=self._clear_form_fields).pack(side=tk.LEFT, pad
+  L2665: ttk.Button(controls_frame, text="Load from URL", command=self._load_form_from_url).pack(side=tk.LEFT
+  L2694: ttk.Button(controls_frame, text="Add Text Field", command=self._add_multipart_text_field).pack(side=
+  L2695: ttk.Button(controls_frame, text="Add File Field", command=self._add_multipart_file_field).pack(side=
+  L2696: ttk.Button(controls_frame, text="Clear All", command=self._clear_multipart_fields).pack(side=tk.LEFT
+  L3952: ttk.Button(button_frame, text="Import", command=do_import,
+  L3954: ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT)
+  L3980: ttk.Button(button_frame, text="Help", command=show_help).pack(side=tk.RIGHT)
+  L4374: ttk.Button(buttons_frame, text="Copy to Clipboard", command=copy_to_clipboard).pack(side=tk.LEFT, pa
+  L4375: ttk.Button(buttons_frame, text="Save to File", command=save_to_file).pack(side=tk.LEFT, padx=(0, 5))
+  L4376: ttk.Button(buttons_frame, text="Close", command=export_dialog.destroy).pack(side=tk.RIGHT)
+  L4821: ttk.Button(button_frame, text="Add", command=add_header).pack(side=tk.LEFT, padx=5)
+  L4822: ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+  L4910: ttk.Button(controls_frame, text="Add Field", command=self._add_form_field).pack(side=tk.LEFT)
+  L4911: ttk.Button(controls_frame, text="Clear All", command=self._clear_form_fields).pack(side=tk.LEFT, pad
+
+============================================================
+diff_viewer.py (ΓÜá∩╕Å  NO BaseTool)
+  L185: load_file_btn = ttk.Button(input_controls, text="≡ƒôü", command=self.load_file_to_input, width=3)
+  L189: ttk.Button(input_controls, text="Γî½", command=self.clear_all_input_tabs, width=3).pack(side=tk.LEFT, 
+  L201: ttk.Button(input_filter_frame, text="Γ£ò", command=self._clear_input_filter, width=3).pack(side=tk.LEF
+  L224: ttk.Button(output_controls, text="ΓÄÿ", command=self.copy_to_clipboard, width=3).pack(side=tk.LEFT, pa
+  L227: ttk.Button(output_controls, text="Γî½", command=self.clear_all_output_tabs, width=3).pack(side=tk.LEFT
+  L239: ttk.Button(output_filter_frame, text="Γ£ò", command=self._clear_output_filter, width=3).pack(side=tk.L
+  L285: self.prev_diff_btn = ttk.Button(nav_frame, text="Γ¼å Prev", command=self._goto_prev_diff, width=8)
+  L289: self.next_diff_btn = ttk.Button(nav_frame, text="Γ¼ç Next", command=self._goto_next_diff, width=8)
+  L303: self.export_html_btn = ttk.Button(summary_frame, text="Export HTML", command=self._export_to_html, w
+
+============================================================
+email_extraction_tool.py (≡ƒöº inherits BaseTool)
+  L245: ttk.Button(frame, text="Extract", command=on_apply).pack(side=tk.LEFT, padx=5)
+
+============================================================
+email_header_analyzer.py (≡ƒöº inherits BaseTool)
+  L422: ttk.Button(frame, text="Analyze", command=on_apply).pack(side=tk.LEFT, padx=5)
+
+============================================================
+folder_file_reporter_adapter.py (ΓÜá∩╕Å  NO BaseTool)
+  L123: ttk.Button(input_frame, text="Browse...", command=self._browse_input_folder).pack(side='left')
+  L149: ttk.Button(output_frame, text="Browse...", command=self._browse_output_folder).pack(side='left')
+  L174: process_btn = ttk.Button(middle_column, text="Generate Reports", command=self._generate_reports)
+
+============================================================
+jsonxml_tool.py (≡ƒöº inherits BaseTool)
+  L131: ttk.Button(ai_frame, text="Generate JSON with AI",
+  L133: ttk.Button(ai_frame, text="Generate XML with AI",
+  L154: ttk.Button(process_frame, text="Process", command=self.process_data).pack(side=tk.LEFT)
+
+============================================================
+list_comparator.py (ΓÜá∩╕Å  NO BaseTool)
+  L169: select_path_button = tk.Button(config_labelframe, text="Select...", command=self.select_output_path)
+  L177: compare_button = tk.Button(button_frame, text="Compare & Save", command=self.run_comparison_and_save
+  L180: self.export_button = tk.Button(button_frame, text="Export to CSV", command=self.export_to_csv, state
+  L183: clear_button = tk.Button(button_frame, text="Clear All", command=self.clear_all_fields)
+
+============================================================
+mcp_widget.py (ΓÜá∩╕Å  NO BaseTool)
+  L466: self.start_btn = ttk.Button(btn_row, text="Γû╢ Start Server", command=self.start_server, width=15)
+  L469: self.stop_btn = ttk.Button(btn_row, text="Γûá Stop Server", command=self.stop_server, width=15, state=
+  L472: ttk.Button(btn_row, text="≡ƒöä Refresh Tools", command=self.refresh_tools, width=15).pack(side=tk.LEFT,
+  L563: ttk.Button(path_row, text="Select...", command=self._select_pomera_path).pack(side=tk.LEFT, padx=(0,
+  L564: ttk.Button(path_row, text="Apply", command=self._apply_path_config).pack(side=tk.LEFT)
+  L577: ttk.Button(python_row, text="Select...", command=self._select_python_path).pack(side=tk.LEFT)
+  L1093: ttk.Button(control_frame, text="Clear Log", command=self._clear_log).pack(side=tk.LEFT)
+
+============================================================
+notes_widget.py (ΓÜá∩╕Å  NO BaseTool)
+  L198: help_btn = ttk.Button(search_frame, text="?", width=3, command=self.show_search_help)
+  L206: search_btn = ttk.Button(search_frame, text="Search", command=lambda: self.perform_search())
+  L251: self.download_btn = ttk.Button(self.btn_frame, text="Download", command=self.download_note)
+  L252: self.new_btn = ttk.Button(self.btn_frame, text="New Note", command=self.new_note)
+  L253: self.duplicate_btn = ttk.Button(self.btn_frame, text="Duplicate", command=self.duplicate_note)
+  L254: self.change_btn = ttk.Button(self.btn_frame, text="Change", command=self.change_note)
+  L255: self.delete_btn = ttk.Button(self.btn_frame, text="Delete", command=self.delete_notes)
+  L256: self.save_btn = ttk.Button(self.btn_frame, text="Save", command=self.save_edits)
+  L257: self.cancel_btn = ttk.Button(self.btn_frame, text="Cancel", command=self.cancel_edits)
+  L1218: open_file_btn = ttk.Button(btn_frame, text="Open File", command=open_file)
+  L1221: open_folder_btn = ttk.Button(btn_frame, text="Open Folder", command=open_folder)
+  L1224: change_loc_btn = ttk.Button(btn_frame, text="Change Location", command=change_location)
+  L1227: close_btn = ttk.Button(btn_frame, text="Close", command=dialog.destroy)
+
+============================================================
+regex_extractor.py (≡ƒöº inherits BaseTool)
+  L389: ttk.Button(left_buttons, text="Add", command=add_pattern).pack(side=tk.LEFT, padx=(0,5))
+  L390: ttk.Button(left_buttons, text="Delete", command=delete_pattern).pack(side=tk.LEFT, padx=5)
+  L391: ttk.Button(left_buttons, text="Move Up", command=move_up).pack(side=tk.LEFT, padx=5)
+  L392: ttk.Button(left_buttons, text="Move Down", command=move_down).pack(side=tk.LEFT, padx=5)
+  L408: use_pattern_button = ttk.Button(right_buttons, text="Use Pattern", command=use_pattern)
+  L410: ttk.Button(right_buttons, text="Close", command=popup.destroy).pack(side=tk.LEFT, padx=(5,0))
+  L568: ttk.Button(frame, text="Extract", command=on_apply).pack(side=tk.LEFT, padx=5)
+
+============================================================
+sorter_tools.py (≡ƒöº inherits BaseTool)
+  L414: ttk.Button(frame, text="Sort", command=apply_tool_callback).pack(pady=10)
+
+============================================================
+text_statistics_tool.py (≡ƒöº inherits BaseTool)
+  L198: ttk.Button(buttons_frame, text="Analyze Text",
+  L362: ttk.Button(frame, text="Analyze", command=on_apply).pack(side=tk.LEFT, padx=5)
+
+============================================================
+url_link_extractor.py (≡ƒöº inherits BaseTool)
+  L258: ttk.Button(frame, text="Extract", command=on_apply).pack(side=tk.LEFT, padx=5)
+
+============================================================
+url_parser.py (≡ƒöº inherits BaseTool)
+  L201: ttk.Button(frame, text="Parse", command=on_apply).pack(side=tk.LEFT, padx=5)
+
+============================================================
+word_frequency_counter.py (≡ƒöº inherits BaseTool)
+  L143: ttk.Button(frame, text="Count", command=on_apply).pack(side=tk.LEFT, padx=5)

@@ -64,8 +64,14 @@ class ExtractionToolsWidget:
                 )
             else:
                 ttk.Label(tab_frame, text="Email Extraction Tool module not available").pack(padx=10, pady=10)
-        except ImportError:
-            ttk.Label(tab_frame, text="Email Extraction Tool module not available").pack(padx=10, pady=10)
+        except ImportError as e:
+            import logging
+            logging.getLogger(__name__).error(f"Email Extraction import failed: {e}")
+            ttk.Label(tab_frame, text=f"Email Extraction Tool not available: {e}").pack(padx=10, pady=10)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Email Extraction setup failed: {e}", exc_info=True)
+            ttk.Label(tab_frame, text=f"Error loading Email Extraction: {e}").pack(padx=10, pady=10)
     
     def create_html_extraction_tab(self):
         """Create the HTML Extraction Tool tab."""
@@ -83,8 +89,14 @@ class ExtractionToolsWidget:
                 self.main_app.create_html_extraction_tool_ui(html_frame, settings)
             else:
                 ttk.Label(tab_frame, text="HTML Extraction Tool module not available").pack(padx=10, pady=10)
-        except ImportError:
-            ttk.Label(tab_frame, text="HTML Extraction Tool module not available").pack(padx=10, pady=10)
+        except ImportError as e:
+            import logging
+            logging.getLogger(__name__).error(f"HTML Extraction import failed: {e}")
+            ttk.Label(tab_frame, text=f"HTML Extraction Tool not available: {e}").pack(padx=10, pady=10)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"HTML Extraction setup failed: {e}", exc_info=True)
+            ttk.Label(tab_frame, text=f"Error loading HTML Extraction: {e}").pack(padx=10, pady=10)
     
     def create_regex_extractor_tab(self):
         """Create the Regex Extractor tab."""
@@ -121,8 +133,14 @@ class ExtractionToolsWidget:
                 )
             else:
                 ttk.Label(tab_frame, text="Regex Extractor module not available").pack(padx=10, pady=10)
-        except ImportError:
-            ttk.Label(tab_frame, text="Regex Extractor module not available").pack(padx=10, pady=10)
+        except ImportError as e:
+            import logging
+            logging.getLogger(__name__).error(f"Regex Extractor import failed: {e}")
+            ttk.Label(tab_frame, text=f"Regex Extractor not available: {e}").pack(padx=10, pady=10)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Regex Extractor setup failed: {e}", exc_info=True)
+            ttk.Label(tab_frame, text=f"Error loading Regex Extractor: {e}").pack(padx=10, pady=10)
     
     def _regex_extractor_apply(self):
         """Apply Regex Extractor tool."""
@@ -225,8 +243,14 @@ class ExtractionToolsWidget:
                 )
             else:
                 ttk.Label(tab_frame, text="URL and Link Extractor module not available").pack(padx=10, pady=10)
-        except ImportError:
-            ttk.Label(tab_frame, text="URL and Link Extractor module not available").pack(padx=10, pady=10)
+        except ImportError as e:
+            import logging
+            logging.getLogger(__name__).error(f"URL Link Extractor import failed: {e}")
+            ttk.Label(tab_frame, text=f"URL Link Extractor not available: {e}").pack(padx=10, pady=10)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"URL Link Extractor setup failed: {e}", exc_info=True)
+            ttk.Label(tab_frame, text=f"Error loading URL Link Extractor: {e}").pack(padx=10, pady=10)
 
 
 class ExtractionTools:

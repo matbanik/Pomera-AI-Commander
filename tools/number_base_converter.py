@@ -190,6 +190,7 @@ class NumberBaseConverterWidget(ttk.Frame):
         
         ttk.Button(buttons_frame, text="Convert Numbers", 
                   command=self.convert).pack(side=tk.LEFT, padx=5)
+        ttk.Label(buttons_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(buttons_frame, text="Text to ASCII", 
                   command=self.text_to_ascii).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="ASCII to Text", 

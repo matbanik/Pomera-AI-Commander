@@ -66,6 +66,7 @@ class WordFrequencyCounterUI:
                 text="Count", 
                 command=self.apply_tool_callback
             ).pack(side=tk.LEFT, padx=10)
+            ttk.Label(self.parent, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(0, 5))
 
     def get_current_settings(self):
         """Get the current settings from the UI."""

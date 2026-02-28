@@ -279,6 +279,7 @@ class TimestampConverterWidget(ttk.Frame):
         
         ttk.Button(buttons_frame, text="Convert", 
                   command=self.convert).pack(side=tk.LEFT, padx=5)
+        ttk.Label(buttons_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(buttons_frame, text="Insert Current Time", 
                   command=self.insert_current).pack(side=tk.LEFT, padx=5)
     

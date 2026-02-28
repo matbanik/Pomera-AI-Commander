@@ -342,8 +342,12 @@ class BaseTool(ABC):
         """
         cmd = callback or self._apply_callback
         if cmd:
-            btn = ttk.Button(parent, text=text, command=cmd)
-            btn.pack(side=tk.LEFT, padx=10, pady=10)
+            btn_frame = ttk.Frame(parent)
+            btn_frame.pack(side=tk.LEFT, padx=10, pady=10)
+            btn = ttk.Button(btn_frame, text=text, command=cmd)
+            btn.pack(side=tk.LEFT)
+            hint = ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray")
+            hint.pack(side=tk.LEFT, padx=(5, 0))
             return btn
         return None
 

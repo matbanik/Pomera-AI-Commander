@@ -154,6 +154,93 @@ AI guidance for maximizing **work efficiency**. Detailed workflows via `/workflo
 
 ---
 
+## TDD Protocol
+
+When implementing features or fixes, follow the **Red → Green → Refactor** cycle:
+
+### Red: Write Failing Tests First
+
+1. Design tests that describe the desired behavior
+2. Run them — **all new tests must FAIL** before any implementation
+3. Confirm the failure pattern matches expectations (not import errors or typos)
+
+### Green: Minimal Code to Pass
+
+1. Write the **minimum** code needed to make failing tests pass
+2. Run tests — all must pass, including existing regression tests
+3. No additional features, no premature optimization
+
+### Refactor: Clean Up
+
+1. Improve code structure without changing behavior
+2. Run tests again — still green
+3. Update `task.md` checklist
+
+### TDD Commands
+
+```bash
+# Run specific test file
+python -m pytest tests/test_your_feature.py -v --tb=short
+
+# Run with regression check
+python -m pytest tests/test_your_feature.py tests/test_existing.py -q
+
+# Property-based (when applicable)
+python -m pytest tests/test_your_feature_properties.py --hypothesis-show-statistics
+```
+
+### When to Use TDD
+
+| Scenario | TDD Required? |
+|----------|--------------|
+| Bug fix with known reproduction | **Yes** — write test that reproduces, then fix |
+| New feature (core logic) | **Yes** — define behavior via tests first |
+| Refactoring existing code | **Yes** — ensure tests exist before changing |
+| UI/cosmetic changes | No — manual verification sufficient |
+| Documentation-only changes | No |
+
+---
+
+## Drift Protection
+
+Rules to prevent incomplete, deferred, or phantom completion of tasks.
+
+### Evidence-First Completion
+
+`task.md` items may **never** be marked `[x]` unless the walkthrough contains:
+- Changed files listed
+- Commands executed
+- Test results (pass/fail counts)
+- Artifact references (if applicable)
+
+### No-Deferral Rule
+
+Items containing `TODO`, `FIXME`, `NotImplementedError`, or placeholder stubs may **not** be marked `[x]`. Blocked items must use status `[B]` with a description of what blocks them.
+
+### Anti-Placeholder Enforcement
+
+Before declaring any task complete, verify no placeholders remain:
+
+```bash
+# Search for deferred work markers
+rg "TODO|FIXME|NotImplementedError|pass  # placeholder" core/ tools/ --glob "*.py"
+```
+
+### Targeted Testing After Each Change
+
+- Run **targeted tests** after each code change (not just at the end)
+- Run **full regression** before marking a task complete:
+
+```bash
+# Quick regression
+python -m pytest tests/ -q --tb=line
+
+# Full validation (when available)
+python -m pytest tests/ -v
+```
+
+---
+
 ## Re-Prompting Protocol
 
 **Before each task, AI processes through this checklist:**

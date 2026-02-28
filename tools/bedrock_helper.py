@@ -14,6 +14,10 @@ try:
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
+    # Define placeholder classes so type annotations don't cause NameError at import time
+    ClientError = Exception
+    NoCredentialsError = Exception
+    EndpointConnectionError = Exception
 
 
 # Model ID to inference profile mapping for models that require cross-region profiles

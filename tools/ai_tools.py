@@ -1037,6 +1037,7 @@ class AIToolsWidget(ttk.Frame):
         
         ttk.Button(process_frame, text="Process", 
                   command=self.run_ai_in_thread).pack(padx=5, pady=10)
+        ttk.Label(process_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(padx=(0, 5), pady=10)
         
         # System prompt
         system_frame = ttk.LabelFrame(main_frame, text="System Prompt")

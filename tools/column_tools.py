@@ -209,8 +209,11 @@ class ColumnToolsWidget(ttk.Frame):
         ttk.Spinbox(idx_frame, from_=0, to=100, width=5,
                    textvariable=self.column_index).pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(frame, text="Extract Column", 
-                  command=lambda: self.process("extract")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Extract Column", 
+                  command=lambda: self.process("extract")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_reorder_tab(self):
         """Creates the Reorder Columns tab."""
@@ -228,8 +231,11 @@ class ColumnToolsWidget(ttk.Frame):
                         font=('TkDefaultFont', 8))
         info.pack(pady=5)
         
-        ttk.Button(frame, text="Reorder Columns", 
-                  command=lambda: self.process("reorder")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Reorder Columns", 
+                  command=lambda: self.process("reorder")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_delete_tab(self):
         """Creates the Delete Column tab."""
@@ -243,8 +249,11 @@ class ColumnToolsWidget(ttk.Frame):
         ttk.Spinbox(idx_frame, from_=0, to=100, width=5,
                    textvariable=self.column_index).pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(frame, text="Delete Column", 
-                  command=lambda: self.process("delete")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Delete Column", 
+                  command=lambda: self.process("delete")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_transpose_tab(self):
         """Creates the Transpose tab."""
@@ -256,8 +265,11 @@ class ColumnToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=20)
         
-        ttk.Button(frame, text="Transpose", 
-                  command=lambda: self.process("transpose")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Transpose", 
+                  command=lambda: self.process("transpose")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_fixed_width_tab(self):
         """Creates the Fixed Width tab."""
@@ -269,8 +281,11 @@ class ColumnToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=20)
         
-        ttk.Button(frame, text="Convert to Fixed Width", 
-                  command=lambda: self.process("fixed_width")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Convert to Fixed Width", 
+                  command=lambda: self.process("fixed_width")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def load_settings(self):
         """Load settings from the application."""

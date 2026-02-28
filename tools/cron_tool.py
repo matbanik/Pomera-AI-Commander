@@ -185,6 +185,7 @@ class CronTool:
         process_frame.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Button(process_frame, text="Process", command=self.process_data).pack(side=tk.LEFT)
+        ttk.Label(process_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # Status label
         self.status_label = ttk.Label(process_frame, text="Ready", foreground="green")

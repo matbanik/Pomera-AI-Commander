@@ -172,8 +172,11 @@ class SlugGeneratorWidget(ttk.Frame):
                    command=self.on_setting_change).pack(side=tk.LEFT, padx=5)
         
         # Generate button
-        ttk.Button(self, text="Generate Slug(s)", 
-                  command=self.generate).pack(pady=10)
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Generate Slug(s)", 
+                  command=self.generate).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # Info
         info = ttk.Label(self, text="Enter text on each line to generate multiple slugs",

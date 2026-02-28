@@ -1630,7 +1630,9 @@ class DiffViewerSettingsWidget:
             row2, 
             text="Compare Active Tabs", 
             command=self._run_comparison
-        ).pack(side=tk.LEFT, padx=(0, 10))
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        ttk.Label(row2, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(0, 10))
         
         ttk.Label(row2, text="|").pack(side=tk.LEFT, padx=5)
         

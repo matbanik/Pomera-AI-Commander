@@ -238,6 +238,7 @@ class RegexExtractorUI:
                 text="Extract", 
                 command=self.apply_tool_callback
             ).pack(side=tk.LEFT, padx=5)
+            ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
 
     def _on_setting_change(self):
         """Handle setting changes."""

@@ -197,6 +197,7 @@ class TextStatisticsWidget(ttk.Frame):
         
         ttk.Button(buttons_frame, text="Analyze Text", 
                   command=self.analyze).pack(side=tk.LEFT, padx=5)
+        ttk.Label(buttons_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         ttk.Button(buttons_frame, text="Word Frequency Counter", 
                   command=self.word_frequency).pack(side=tk.LEFT, padx=5)
     

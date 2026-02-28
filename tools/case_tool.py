@@ -108,11 +108,14 @@ class CaseToolUI:
 
         # Process button
         if self.apply_tool_callback:
+            btn_frame = ttk.Frame(self.parent)
+            btn_frame.pack(side=tk.LEFT, padx=10, pady=10)
             ttk.Button(
-                self.parent, 
+                btn_frame, 
                 text="Process", 
                 command=self.apply_tool_callback
-            ).pack(side=tk.LEFT, padx=10, pady=10)
+            ).pack(side=tk.LEFT)
+            ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         # Initialize visibility
         self.on_mode_change()

@@ -120,6 +120,7 @@ class SorterToolsWidget(ttk.Frame):
             command=self._apply_number_sorter
         )
         sort_button.pack(side=tk.LEFT, padx=5)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
 
     def create_alphabetical_sorter_widgets(self):
         """Creates widgets for the Alphabetical Sorter tab."""
@@ -171,6 +172,7 @@ class SorterToolsWidget(ttk.Frame):
             command=self._apply_alphabetical_sorter
         )
         sort_button.pack(side=tk.LEFT, padx=5)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
 
     def _on_setting_change(self):
         """Handle setting changes."""
@@ -411,7 +413,10 @@ try:
             
             # Apply button
             if apply_tool_callback:
-                ttk.Button(frame, text="Sort", command=apply_tool_callback).pack(pady=10)
+                btn_frame = ttk.Frame(frame)
+                btn_frame.pack(pady=10)
+                ttk.Button(btn_frame, text="Sort", command=apply_tool_callback).pack(side=tk.LEFT)
+                ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
             
             self._ui_frame = frame
             self._initializing = False

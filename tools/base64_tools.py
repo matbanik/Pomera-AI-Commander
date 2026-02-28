@@ -97,6 +97,7 @@ class Base64ToolsWidget:
         process_btn = ttk.Button(button_frame, text="Process", 
                                command=self.process_base64)
         process_btn.pack(side=tk.LEFT)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
         
         return main_frame
     

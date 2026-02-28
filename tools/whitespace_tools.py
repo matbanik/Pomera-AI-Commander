@@ -165,8 +165,11 @@ class WhitespaceToolsWidget(ttk.Frame):
                        variable=self.trim_mode, value="trailing",
                        command=self.on_setting_change).pack(anchor=tk.W)
         
-        ttk.Button(frame, text="Trim Lines", 
-                  command=lambda: self.process("Trim Lines")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Trim Lines", 
+                  command=lambda: self.process("Trim Lines")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_extra_spaces_tab(self):
         """Creates the Remove Extra Spaces tab."""
@@ -184,8 +187,11 @@ class WhitespaceToolsWidget(ttk.Frame):
                         justify=tk.CENTER)
         info.pack(pady=10)
         
-        ttk.Button(frame, text="Remove Extra Spaces", 
-                  command=lambda: self.process("Remove Extra Spaces")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Remove Extra Spaces", 
+                  command=lambda: self.process("Remove Extra Spaces")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_tabs_spaces_tab(self):
         """Creates the Tabs/Spaces conversion tab."""
@@ -207,6 +213,7 @@ class WhitespaceToolsWidget(ttk.Frame):
                   command=lambda: self.process("Tabs to Spaces")).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Spaces -> Tabs", 
                   command=lambda: self.process("Spaces to Tabs")).pack(side=tk.LEFT, padx=5)
+        ttk.Label(buttons_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def create_line_endings_tab(self):
         """Creates the Line Endings tab."""
@@ -226,8 +233,11 @@ class WhitespaceToolsWidget(ttk.Frame):
                        variable=self.line_ending, value="cr",
                        command=self.on_setting_change).pack(anchor=tk.W)
         
-        ttk.Button(frame, text="Normalize Line Endings", 
-                  command=lambda: self.process("Normalize Line Endings")).pack(pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Normalize Line Endings", 
+                  command=lambda: self.process("Normalize Line Endings")).pack(side=tk.LEFT)
+        ttk.Label(btn_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 0))
     
     def load_settings(self):
         """Load settings from the application."""

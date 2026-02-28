@@ -230,6 +230,11 @@ class ToolSearchPalette(ttk.Frame):
         self._popup_listbox.bind("<Double-Button-1>", self._on_listbox_select)
         self._popup_listbox.bind("<Return>", self._on_listbox_select)
         
+        # macOS: Also bind single-click since double-click is unreliable
+        # with Aqua focus management. Use ButtonRelease to avoid conflicts.
+        if IS_MACOS:
+            self._popup_listbox.bind("<ButtonRelease-1>", self._on_listbox_click_macos)
+        
         # Close popup when clicking outside
         self._popup.bind("<FocusOut>", self._on_popup_focus_out)
         self.tool_entry.bind("<FocusOut>", self._on_entry_focus_out)
@@ -431,13 +436,25 @@ class ToolSearchPalette(ttk.Frame):
         return "break"
     
     def _on_listbox_select(self, event=None) -> None:
-        """Handle listbox selection."""
+        """Handle listbox selection (double-click or Enter)."""
         if not self._popup_listbox:
             return
         selection = self._popup_listbox.curselection()
         if selection and selection[0] < len(self._filtered_tools):
             tool = self._filtered_tools[selection[0]]
             self._select_tool(tool)
+    
+    def _on_listbox_click_macos(self, event=None) -> None:
+        """Handle single-click selection on macOS.
+        
+        macOS Aqua window manager makes double-click unreliable on popup
+        Toplevel windows. This handler fires on ButtonRelease-1 to select
+        the item under the cursor after the click completes.
+        """
+        if not self._popup_listbox:
+            return
+        # Use after() to let the listbox process the click first
+        self.after(50, self._on_listbox_select)
     
     def _select_tool(self, tool_name: str) -> None:
         """Select a tool and hide popup."""
