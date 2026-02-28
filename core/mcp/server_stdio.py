@@ -180,6 +180,18 @@ class StdioMCPServer:
         
         Simpler alternative to async run() for single-threaded use.
         """
+        # Force UTF-8 for MCP stdio transport.
+        # On Windows, Python defaults to the system locale (cp1252) for
+        # stdin/stdout encoding. MCP JSON-RPC uses UTF-8, so without this
+        # reconfiguration, multi-byte Unicode chars get double-encoded:
+        #   UTF-8 bytes -> misread as cp1252 chars -> re-encoded as UTF-8
+        # This causes mojibake in stored data (e.g. ✅ -> âœ…).
+        try:
+            sys.stdin.reconfigure(encoding='utf-8', errors='replace')
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception as e:
+            logger.warning(f"Could not reconfigure stdio to UTF-8: {e}")
+        
         self.running = True
         global _active_server
         _active_server = self
