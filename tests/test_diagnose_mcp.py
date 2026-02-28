@@ -86,14 +86,21 @@ class TestDiagnoseBasicOutput:
             "config_source", "databases", "encryption", "api_keys",
             "tool_registry", "runtime", "environment",
             "portable_mode", "platformdirs_available", "gui",
+            "dependencies_summary",
         }
         # These keys should always be present
         for key in expected_keys:
             assert key in basic_result, f"Missing top-level key: {key}"
 
     def test_dependencies_not_in_basic(self, basic_result):
-        """Dependencies section should NOT be in non-verbose output."""
+        """Full dependencies section should NOT be in non-verbose output."""
         assert "dependencies" not in basic_result
+    
+    def test_dependencies_summary_in_basic(self, basic_result):
+        """dependencies_summary should always be present (even non-verbose)."""
+        assert "dependencies_summary" in basic_result
+        summary = basic_result["dependencies_summary"]
+        assert "installed_count" in summary or "error" in summary
 
 
 class TestVersionInfo:
@@ -281,9 +288,9 @@ class TestVerboseMode:
         assert isinstance(verbose_result["dependencies"], dict)
 
     def test_dependencies_has_packages(self, verbose_result):
-        """Dependencies should report on expected packages."""
+        """Dependencies should report on expected optional packages."""
         deps = verbose_result["dependencies"]
-        expected_pkgs = ["cryptography", "requests", "deepdiff"]
+        expected_pkgs = ["cryptography", "beautifulsoup4", "boto3"]
         for pkg in expected_pkgs:
             assert pkg in deps, f"Missing package: {pkg}"
             assert "installed" in deps[pkg]

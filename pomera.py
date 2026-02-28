@@ -219,7 +219,6 @@ try:
     SMART_DIFF_WIDGET_AVAILABLE = True
 except ImportError:
     SMART_DIFF_WIDGET_AVAILABLE = False
-    print("Smart Diff widget module not available")
 
 # Folder File Reporter module import
 try:
@@ -886,6 +885,9 @@ class PromeraAIApp(tk.Tk):
         
         # Set window icon (Pomera dog mascot)
         self._set_window_icon()
+        
+        # Set up menu bar
+        self._setup_menu_bar()
 
         self._after_id = None
         self._regex_cache = {}
@@ -1095,6 +1097,16 @@ class PromeraAIApp(tk.Tk):
             self.bind_all("<Control-Shift-p>", lambda e: self.show_load_presets_dialog())
             self.bind_all("<Control-Shift-P>", lambda e: self.show_load_presets_dialog())
         
+        # Set up Ctrl+Enter shortcut to trigger active tool processing
+        # Use bind_class('Text') to intercept BEFORE Text widget inserts newline,
+        # then bind_all as fallback for when focus is on non-Text widgets.
+        self.bind_class('Text', '<Control-Return>', self._on_ctrl_enter)
+        self.bind_all('<Control-Return>', self._on_ctrl_enter)
+        # macOS Command+Enter support
+        if sys.platform == 'darwin':
+            self.bind_class('Text', '<Command-Return>', self._on_ctrl_enter)
+            self.bind_all('<Command-Return>', self._on_ctrl_enter)
+        
         # Set up window focus and minimize event handlers for visibility-aware updates
         if hasattr(self, 'statistics_update_manager') and self.statistics_update_manager:
             self.bind("<FocusIn>", self._on_window_focus_in)
@@ -1204,6 +1216,226 @@ class PromeraAIApp(tk.Tk):
                 self.dialog_manager.show_error("Error", f"Failed to open dialog: {e}")
             else:
                 messagebox.showerror("Error", f"Failed to open dialog: {e}")
+    
+    def _setup_menu_bar(self):
+        """Set up the application menu bar."""
+        menubar = tk.Menu(self)
+        
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(
+            label="Dependencies Check...",
+            command=self.open_dependencies_check
+        )
+        help_menu.add_separator()
+        help_menu.add_command(
+            label="Data Location...",
+            command=self._show_data_location_dialog
+        )
+        help_menu.add_command(
+            label="Check for Updates...",
+            command=self._show_update_dialog
+        )
+        
+        menubar.add_cascade(label="Help", menu=help_menu)
+        self.config(menu=menubar)
+    
+    def open_dependencies_check(self):
+        """Open the Dependencies Check dialog showing all optional dependencies."""
+        try:
+            from core.dependency_registry import (
+                check_all_dependencies,
+                get_install_instructions,
+                OPTIONAL_DEPENDENCIES,
+                DepTier,
+            )
+            
+            report = check_all_dependencies()
+            instructions = get_install_instructions()
+            
+        except ImportError:
+            messagebox.showerror(
+                "Module Not Available",
+                "Dependency registry module not available.\n"
+                "Ensure core/dependency_registry.py exists."
+            )
+            return
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to check dependencies: {e}")
+            return
+        
+        # Create dialog
+        dialog = tk.Toplevel(self)
+        dialog.title("Dependencies Check")
+        dialog.transient(self)
+        dialog.withdraw()
+        dialog.geometry("700x550")
+        dialog.minsize(600, 400)
+        dialog.resizable(True, True)
+        
+        # Main frame
+        main_frame = ttk.Frame(dialog, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Header with summary
+        summary = report["summary"]
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(
+            header_frame,
+            text="Optional Dependencies",
+            font=("Helvetica", 14, "bold")
+        ).pack(side=tk.LEFT)
+        
+        status_text = f"✅ {summary['installed_count']} installed  ·  ❌ {summary['missing_count']} missing  ·  {summary['total']} total"
+        ttk.Label(
+            header_frame,
+            text=status_text,
+            font=("Helvetica", 10)
+        ).pack(side=tk.RIGHT)
+        
+        # Treeview for dependencies
+        tree_frame = ttk.Frame(main_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        columns = ("status", "name", "version", "tier", "description")
+        tree = ttk.Treeview(
+            tree_frame,
+            columns=columns,
+            show="headings",
+            selectmode="browse",
+            height=15
+        )
+        
+        tree.heading("status", text="Status")
+        tree.heading("name", text="Package")
+        tree.heading("version", text="Version")
+        tree.heading("tier", text="Group")
+        tree.heading("description", text="Features")
+        
+        tree.column("status", width=50, minwidth=40, anchor=tk.CENTER)
+        tree.column("name", width=130, minwidth=100)
+        tree.column("version", width=80, minwidth=60, anchor=tk.CENTER)
+        tree.column("tier", width=90, minwidth=70, anchor=tk.CENTER)
+        tree.column("description", width=300, minwidth=200)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Tier display names
+        tier_labels = {
+            "gui": "GUI",
+            "encryption": "Encryption",
+            "ai_provider": "AI Provider",
+            "web": "Web",
+            "advanced": "Advanced",
+            "core": "Core",
+        }
+        
+        # Populate treeview — installed first, then missing
+        for dep in sorted(report["installed"], key=lambda d: d["name"]):
+            tree.insert("", tk.END, values=(
+                "✅",
+                dep["name"],
+                dep.get("version", "?"),
+                tier_labels.get(dep.get("tier", ""), dep.get("tier", "")),
+                dep.get("description", ""),
+            ))
+        
+        for dep in sorted(report["missing"], key=lambda d: d["name"]):
+            tree.insert("", tk.END, values=(
+                "❌",
+                dep["name"],
+                "—",
+                tier_labels.get(dep.get("tier", ""), dep.get("tier", "")),
+                dep.get("description", ""),
+            ))
+        
+        # Install instructions frame
+        install_frame = ttk.LabelFrame(main_frame, text="Install Instructions", padding="8")
+        install_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        if instructions.get("status") == "all_installed":
+            ttk.Label(
+                install_frame,
+                text="✅ All optional dependencies are installed!",
+                font=("Helvetica", 10)
+            ).pack(anchor=tk.W)
+        else:
+            # Show install command
+            install_cmd = instructions.get("commands", {}).get("install_all_missing", "")
+            if install_cmd:
+                cmd_frame = ttk.Frame(install_frame)
+                cmd_frame.pack(fill=tk.X)
+                
+                ttk.Label(cmd_frame, text="Install all missing:").pack(side=tk.LEFT)
+                
+                cmd_entry = ttk.Entry(cmd_frame, width=60)
+                cmd_entry.insert(0, install_cmd)
+                cmd_entry.config(state="readonly")
+                cmd_entry.pack(side=tk.LEFT, padx=(5, 5), fill=tk.X, expand=True)
+                
+                def copy_command():
+                    self.clipboard_clear()
+                    self.clipboard_append(install_cmd)
+                    copy_btn.config(text="Copied!")
+                    dialog.after(1500, lambda: copy_btn.config(text="Copy"))
+                
+                copy_btn = ttk.Button(cmd_frame, text="Copy", width=6, command=copy_command)
+                copy_btn.pack(side=tk.RIGHT)
+            
+            # Group install options
+            group_frame = ttk.Frame(install_frame)
+            group_frame.pack(fill=tk.X, pady=(5, 0))
+            
+            group_cmds = instructions.get("group_install", {})
+            if group_cmds:
+                ttk.Label(group_frame, text="Or install by group:").pack(anchor=tk.W)
+                groups_text = "  ".join([
+                    f"{name}: {cmd.split()[-1]}"
+                    for name, cmd in group_cmds.items()
+                    if name != "everything"
+                ])
+                ttk.Label(
+                    group_frame,
+                    text=groups_text,
+                    font=("Courier", 8),
+                    wraplength=630
+                ).pack(anchor=tk.W, padx=(10, 0))
+            
+            # Platform notes
+            platform_notes = instructions.get("platform_notes", [])
+            if platform_notes:
+                ttk.Label(
+                    install_frame,
+                    text="💡 " + platform_notes[0],
+                    font=("Helvetica", 8),
+                    wraplength=630
+                ).pack(anchor=tk.W, pady=(5, 0))
+        
+        # Button frame
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X)
+        
+        def refresh_check():
+            dialog.destroy()
+            self.open_dependencies_check()
+        
+        ttk.Button(btn_frame, text="Refresh", command=refresh_check).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="Close", command=dialog.destroy).pack(side=tk.RIGHT)
+        
+        # Center on parent
+        dialog.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - dialog.winfo_width()) // 2
+        y = self.winfo_y() + (self.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{x}+{y}")
+        dialog.deiconify()
+        dialog.grab_set()
     
     def _show_data_location_dialog(self):
         """Show the Data Location settings dialog."""
@@ -1831,18 +2063,49 @@ class PromeraAIApp(tk.Tk):
         failed_count = 0
         
         for tool_name, attr_name, legacy_flag, args in tools_to_init:
+            instance = None
+            
             if TOOL_LOADER_AVAILABLE and self.tool_loader:
-                # Use Tool Loader
+                # Try Tool Loader first
                 instance = self._init_tool_with_loader(tool_name, attr_name, *args)
-                if instance:
-                    initialized_count += 1
-                else:
-                    failed_count += 1
+            
+            # If Tool Loader didn't work, fall through to legacy init
+            if instance:
+                initialized_count += 1
             elif legacy_flag:
-                # Fallback to legacy initialization (already imported at top)
-                # The tool classes are already available from imports
-                setattr(self, attr_name, None)  # Will be initialized by legacy code
-                self.logger.debug(f"{tool_name} will use legacy initialization")
+                # Fallback to legacy initialization — instantiate directly
+                try:
+                    tool_class_map = {
+                        "base64_tools": ("tools.base64_tools", "Base64Tools"),
+                        "case_tool": ("tools.case_tool", "CaseTool"),
+                        "email_header_analyzer": ("tools.email_header_analyzer", "EmailHeaderAnalyzerProcessor"),
+                        "url_link_extractor": ("tools.url_link_extractor", "URLLinkExtractorProcessor"),
+                        "regex_extractor": ("tools.regex_extractor", "RegexExtractorProcessor"),
+                        "url_parser": ("tools.url_parser", "URLParserProcessor"),
+                        "word_frequency_counter": ("tools.word_frequency_counter", "WordFrequencyCounter"),
+                        "sorter_tools": ("tools.sorter_tools", "SorterToolsProcessor"),
+                        "translator_tools": ("tools.translator_tools", "TranslatorToolsProcessor"),
+                        "email_extraction_tool": ("tools.email_extraction_tool", "EmailExtractionProcessor"),
+                        "string_escape_tool": ("tools.string_escape_tool", "StringEscapeProcessor"),
+                        "number_base_converter": ("tools.number_base_converter", "NumberBaseConverterV2"),
+                        "text_wrapper": ("tools.text_wrapper", "TextWrapperProcessor"),
+                        "slug_generator": ("tools.slug_generator", "SlugGeneratorProcessor"),
+                        "timestamp_converter": ("tools.timestamp_converter", "TimestampConverterV2"),
+                    }
+                    if attr_name in tool_class_map:
+                        mod_name, cls_name = tool_class_map[attr_name]
+                        import importlib
+                        mod = importlib.import_module(mod_name)
+                        cls = getattr(mod, cls_name)
+                        setattr(self, attr_name, cls())
+                        initialized_count += 1
+                        self.logger.debug(f"{tool_name} initialized via legacy fallback")
+                    else:
+                        setattr(self, attr_name, None)
+                        self.logger.debug(f"{tool_name} has no legacy class mapping")
+                except Exception as e:
+                    setattr(self, attr_name, None)
+                    self.logger.warning(f"{tool_name} legacy init failed: {e}")
             else:
                 setattr(self, attr_name, None)
                 failed_count += 1
@@ -5552,7 +5815,10 @@ class PromeraAIApp(tk.Tk):
             return
 
         # Create and pack the extraction tools widget
-        self.extraction_tools_widget = self.extraction_tools.create_widget(parent, self)
+        # extraction_tools.create_widget returns a Frame; we also need the widget instance
+        from tools.extraction_tools import ExtractionToolsWidget
+        self._extraction_widget_instance = ExtractionToolsWidget(self)
+        self.extraction_tools_widget = self._extraction_widget_instance.create_widget(parent)
         self.extraction_tools_widget.pack(fill=tk.BOTH, expand=True)
 
     def create_translator_tools_widget(self, parent):
@@ -5826,7 +6092,8 @@ class PromeraAIApp(tk.Tk):
                 text="Search",
                 command=lambda k=engine_key: self._do_web_search(k)
             )
-            search_btn.pack(side=tk.LEFT, padx=20)
+            search_btn.pack(side=tk.LEFT, padx=10)
+            ttk.Label(config_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT)
         
         # Bind tab change to save current engine
         self.web_search_notebook.bind("<<NotebookTabChanged>>", self._on_web_search_tab_changed)
@@ -5943,7 +6210,13 @@ class PromeraAIApp(tk.Tk):
         try:
             from ddgs import DDGS
         except ImportError:
-            return [{"title": "Error", "snippet": "DuckDuckGo requires: pip install ddgs", "url": ""}]
+            if sys.platform == 'darwin':
+                install_cmd = "pip3 install ddgs"
+                extra = " (If using system Python, add --break-system-packages flag, or install inside Pomera's venv)"
+            else:
+                install_cmd = "pip install ddgs"
+                extra = ""
+            return [{"title": "Error", "snippet": f"DuckDuckGo requires: {install_cmd}{extra}", "url": "https://pypi.org/project/ddgs/"}]
         
         try:
             with DDGS() as ddgs:
@@ -6339,16 +6612,20 @@ class PromeraAIApp(tk.Tk):
         # Show/hide HTML extraction settings based on current format
         self._update_url_reader_html_settings_visibility()
         
-        # Action row
+        # Action row - pack with side=BOTTOM so button is always visible
+        # even when HTML Extraction Settings panel expands on macOS
         action_frame = ttk.Frame(main_frame)
-        action_frame.pack(fill=tk.X, padx=5, pady=10)
+        action_frame.pack(fill=tk.X, padx=5, pady=10, side=tk.BOTTOM)
         
         # Fetch button (becomes Cancel while fetching)
         self.url_fetch_btn = ttk.Button(action_frame, text="Fetch Content", command=self._toggle_url_fetch)
         self.url_fetch_btn.pack(side=tk.LEFT, padx=5)
         
+        # Keyboard shortcut hint
+        shortcut_key = "\u2318+Enter" if sys.platform == 'darwin' else "Ctrl+Enter"
+        
         # Status label
-        self.url_fetch_status = ttk.Label(action_frame, text="Enter URLs in Input panel (one per line)")
+        self.url_fetch_status = ttk.Label(action_frame, text=f"Enter URLs in Input panel (one per line) | {shortcut_key}")
         self.url_fetch_status.pack(side=tk.LEFT, padx=10)
         
         # Track fetch state
@@ -6609,7 +6886,8 @@ class PromeraAIApp(tk.Tk):
             command=self.extract_html_content,
             style="Accent.TButton"
         )
-        extract_button.pack(side=tk.LEFT, padx=(0, 10))
+        extract_button.pack(side=tk.LEFT)
+        ttk.Label(button_frame, text="⌨ Ctrl+Enter", foreground="gray").pack(side=tk.LEFT, padx=(5, 10))
         
         # Help text
         help_text = ttk.Label(
@@ -7655,6 +7933,240 @@ class PromeraAIApp(tk.Tk):
             self.statistics_update_manager.force_update_all_visible()
             
             self.logger.debug("Window restored - resumed statistics updates")
+    def _on_ctrl_enter(self, event=None):
+        """Handle Ctrl+Enter (or Cmd+Enter on macOS) to trigger active tool processing.
+        
+        Routes to the correct action based on the currently selected tool:
+        - Web Search: triggers search on the active engine tab
+        - URL Reader: triggers Fetch Content
+        - AI/Diff tools: no-op (they have their own interaction model)
+        - All other tools: calls apply_tool()
+        """
+        tool_name = self.tool_var.get()
+        
+        # Diff Viewer: trigger comparison (don't reload content - preserve user edits)
+        if tool_name == "Diff Viewer":
+            self.run_diff_viewer()
+            return "break"
+        
+        # AI Tools / AI provider tabs: trigger AI generate
+        if tool_name in ["Google AI", "Anthropic AI", "OpenAI", "Cohere AI",
+                          "HuggingFace AI", "Groq AI", "OpenRouterAI",
+                          "AI Tools"]:
+            if hasattr(self, 'ai_tools_widget') and self.ai_tools_widget:
+                try:
+                    self.ai_tools_widget.process_ai_request()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter AI request failed: {e}")
+            return "break"
+        
+        # Web Search: trigger search on active engine tab
+        if tool_name == "Web Search":
+            if hasattr(self, 'web_search_notebook') and hasattr(self, 'web_search_engines'):
+                try:
+                    idx = self.web_search_notebook.index(self.web_search_notebook.select())
+                    engine_key = self.web_search_engines[idx][1]
+                    self._do_web_search(engine_key)
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter web search failed: {e}")
+            return "break"
+        
+        # URL Reader: trigger fetch
+        if tool_name == "URL Reader":
+            if hasattr(self, 'url_fetch_btn'):
+                self._toggle_url_fetch()
+            return "break"
+        
+        # JSON/XML Tool: trigger its own process_data directly
+        if tool_name == "JSON/XML Tool":
+            if hasattr(self, 'jsonxml_tool') and self.jsonxml_tool:
+                try:
+                    self.jsonxml_tool.process_data()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter JSON/XML processing failed: {e}")
+            return "break"
+        
+        # Cron Tool: trigger its own process_data directly
+        if tool_name == "Cron Tool":
+            if hasattr(self, 'cron_tool') and self.cron_tool:
+                try:
+                    self.cron_tool.process_data()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Cron processing failed: {e}")
+            return "break"
+        
+        # Extraction Tools: detect active sub-tab and trigger its apply
+        if tool_name == "Extraction Tools":
+            if hasattr(self, '_extraction_widget_instance'):
+                try:
+                    w = self._extraction_widget_instance
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=Email, 1=HTML, 2=Regex, 3=URL
+                    # HTML tab uses main app's extract_html_content (not on widget)
+                    apply_methods = [
+                        w._email_extraction_apply,
+                        self.extract_html_content,
+                        w._regex_extractor_apply,
+                        w._url_link_extractor_apply,
+                    ]
+                    if tab_idx < len(apply_methods) and apply_methods[tab_idx]:
+                        apply_methods[tab_idx]()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Extraction Tools failed: {e}")
+            return "break"
+        
+        # Folder File Reporter: trigger report generation
+        if tool_name == "Folder File Reporter":
+            if FOLDER_FILE_REPORTER_MODULE_AVAILABLE and hasattr(self, 'folder_file_reporter') and self.folder_file_reporter:
+                try:
+                    self.folder_file_reporter._generate_reports()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Folder File Reporter failed: {e}")
+            return "break"
+        
+        # Generator Tools: detect active sub-tab and call widget generate method
+        if tool_name == "Generator Tools":
+            if GENERATOR_TOOLS_MODULE_AVAILABLE and hasattr(self, 'generator_tools_widget'):
+                try:
+                    w = self.generator_tools_widget
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=Password, 1=Repeating, 2=Lorem Ipsum, 3=UUID, 4=Email,
+                    #            5=ASCII Art, 6=Hash, 7=Slug
+                    generate_methods = [
+                        w.generate_password,
+                        w.generate_repeated_text,
+                        w.generate_lorem_ipsum,
+                        w.generate_uuid,
+                        w.generate_emails,
+                        getattr(w, 'ascii_art_widget', None) and w.ascii_art_widget.generate,
+                        getattr(w, 'hash_generator_widget', None) and w.hash_generator_widget.generate,
+                        getattr(w, 'slug_generator_widget', None) and w.slug_generator_widget.generate,
+                    ]
+                    if tab_idx < len(generate_methods) and generate_methods[tab_idx]:
+                        generate_methods[tab_idx]()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Generator Tools failed: {e}")
+            return "break"
+        
+        # Line Tools: detect active sub-tab and call process with correct tool_type
+        if tool_name == "Line Tools":
+            if hasattr(self, 'line_tools_widget') and self.line_tools_widget:
+                try:
+                    w = self.line_tools_widget
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=Remove Duplicates, 1=Remove Empty, 2=Add Numbers,
+                    #            3=Remove Numbers, 4=Reverse, 5=Shuffle
+                    tool_types = [
+                        "Remove Duplicates", "Remove Empty Lines",
+                        "Add Line Numbers", "Remove Line Numbers",
+                        "Reverse Lines", "Shuffle Lines",
+                    ]
+                    if tab_idx < len(tool_types):
+                        w.process(tool_types[tab_idx])
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Line Tools failed: {e}")
+            return "break"
+        
+        # Markdown Tools: detect active sub-tab and call process with correct tool_type
+        if tool_name == "Markdown Tools":
+            if hasattr(self, 'markdown_tools_widget') and self.markdown_tools_widget:
+                try:
+                    w = self.markdown_tools_widget
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=Strip Markdown, 1=Extract Links, 2=Extract Headers,
+                    #            3=Table to CSV, 4=Format Table
+                    tool_types = [
+                        "Strip Markdown", "Extract Links",
+                        "Extract Headers", "Table to CSV",
+                        "Format Table",
+                    ]
+                    if tab_idx < len(tool_types):
+                        w.process(tool_types[tab_idx])
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Markdown Tools failed: {e}")
+            return "break"
+        
+        # Sorter Tools: detect active sub-tab and call _apply_tool with correct tool_type
+        if tool_name == "Sorter Tools":
+            if hasattr(self, 'sorter_tools_widget') and self.sorter_tools_widget:
+                try:
+                    w = self.sorter_tools_widget
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=Number Sorter, 1=Alphabetical Sorter
+                    tool_types = ["Number Sorter", "Alphabetical Sorter"]
+                    if tab_idx < len(tool_types):
+                        w._apply_tool(tool_types[tab_idx])
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Sorter Tools failed: {e}")
+            return "break"
+        
+        # Text Wrapper: detect active sub-tab and call process with correct operation
+        if tool_name == "Text Wrapper":
+            if hasattr(self, 'text_wrapper_widget') and self.text_wrapper_widget:
+                try:
+                    w = self.text_wrapper_widget
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=wrap, 1=justify, 2=prefix_suffix, 3=indent, 4=quote
+                    operations = ["wrap", "justify", "prefix_suffix", "indent", "quote"]
+                    if tab_idx < len(operations):
+                        w.process(operations[tab_idx])
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Text Wrapper failed: {e}")
+            return "break"
+        
+        # Timestamp Converter: call widget convert directly (uses widget settings)
+        if tool_name == "Timestamp Converter":
+            if hasattr(self, 'timestamp_converter_widget') and self.timestamp_converter_widget:
+                try:
+                    self.timestamp_converter_widget.convert()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Timestamp Converter failed: {e}")
+            return "break"
+        
+        # Number Base Converter: call widget convert directly (uses widget settings)
+        if tool_name == "Number Base Converter":
+            if hasattr(self, 'number_base_converter_widget') and self.number_base_converter_widget:
+                try:
+                    self.number_base_converter_widget.convert()
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Number Base Converter failed: {e}")
+            return "break"
+        
+        # Translator Tools: detect active sub-tab and call _apply_tool with correct tool_type
+        if tool_name == "Translator Tools":
+            if hasattr(self, 'translator_tools_widget') and self.translator_tools_widget:
+                try:
+                    w = self.translator_tools_widget
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=Morse Code Translator, 1=Binary Code Translator
+                    tool_types = ["Morse Code Translator", "Binary Code Translator"]
+                    if tab_idx < len(tool_types):
+                        w._apply_tool(tool_types[tab_idx])
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Translator Tools failed: {e}")
+            return "break"
+        
+        # Whitespace Tools: detect active sub-tab and call process with correct operation
+        if tool_name == "Whitespace Tools":
+            if hasattr(self, 'whitespace_tools_widget') and self.whitespace_tools_widget:
+                try:
+                    w = self.whitespace_tools_widget
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    # Tab order: 0=Trim Lines, 1=Remove Extra Spaces,
+                    #            2=Tabs to Spaces, 3=Normalize Line Endings
+                    operations = [
+                        "Trim Lines", "Remove Extra Spaces",
+                        "Tabs to Spaces", "Normalize Line Endings",
+                    ]
+                    if tab_idx < len(operations):
+                        w.process(operations[tab_idx])
+                except Exception as e:
+                    self.logger.error(f"Ctrl+Enter Whitespace Tools failed: {e}")
+            return "break"
+        
+        # All other tools: call apply_tool()
+        self.apply_tool()
+        return "break"
 
     def apply_tool(self):
         """Applies the selected text processing tool to the input text."""
@@ -7690,8 +8202,10 @@ class PromeraAIApp(tk.Tk):
             else:
                 # Process synchronously for small content
                 output_text = self._process_text_with_tool(tool_name, input_text)
-                    
-                self.update_output_text(output_text)
+                
+                # Some tools (JSON/XML, Cron) update output directly and return None
+                if output_text is not None:
+                    self.update_output_text(output_text)
             
         except Exception as e:
             self._handle_error(
@@ -7853,8 +8367,23 @@ class PromeraAIApp(tk.Tk):
             else:
                 return "Find & Replace module not available"
         elif tool_name == "Extraction Tools":
-            # Extraction Tools is a manual tool - processing handled by individual tool widgets
-            return "Extraction Tools processing handled by widget interface"
+            # Extraction Tools: detect active sub-tab and trigger its apply
+            if EXTRACTION_TOOLS_MODULE_AVAILABLE and hasattr(self, '_extraction_widget_instance'):
+                try:
+                    w = self._extraction_widget_instance
+                    tab_idx = w.notebook.index(w.notebook.select())
+                    apply_methods = [
+                        w._email_extraction_apply,
+                        getattr(w, '_html_extraction_apply', None),
+                        w._regex_extractor_apply,
+                        w._url_link_extractor_apply,
+                    ]
+                    if tab_idx < len(apply_methods) and apply_methods[tab_idx]:
+                        apply_methods[tab_idx]()
+                        return "break"
+                except Exception as e:
+                    return f"Extraction Tools error: {e}"
+            return "Extraction Tools module not available"
         elif tool_name == "Email Header Analyzer":
             if EMAIL_HEADER_ANALYZER_MODULE_AVAILABLE and self.email_header_analyzer:
                 settings = self.settings["tool_settings"]["Email Header Analyzer"]
@@ -7886,32 +8415,59 @@ class PromeraAIApp(tk.Tk):
             else:
                 return "URL Parser module not available"
         elif tool_name == "JSON/XML Tool":
+            # Ctrl+Enter routes to process_data() directly via _on_ctrl_enter
+            # This path is only reached via apply_tool() or caching - return info message
             if JSONXML_TOOL_MODULE_AVAILABLE:
-                # JSON/XML Tool uses its own processing method, not this basic text processing
-                return "JSON/XML Tool processing handled by widget interface"
+                return "Press Ctrl+Enter or click the Process button in the JSON/XML panel."
             else:
                 return "JSON/XML Tool module not available"
         elif tool_name == "Cron Tool":
+            # Ctrl+Enter routes to process_data() directly via _on_ctrl_enter
+            # This path is only reached via apply_tool() or caching - return info message
             if CRON_TOOL_MODULE_AVAILABLE:
-                # Cron Tool uses its own processing method, not this basic text processing
-                return "Cron Tool processing handled by widget interface"
+                return "Press Ctrl+Enter or click the Process button in the Cron panel."
             else:
                 return "Cron Tool module not available"
         elif tool_name == "Generator Tools":
-            if GENERATOR_TOOLS_MODULE_AVAILABLE:
-                # Generator Tools uses its own widget interface for processing
-                return "Generator Tools processing handled by widget interface"
+            if GENERATOR_TOOLS_MODULE_AVAILABLE and hasattr(self, 'generator_tools') and self.generator_tools:
+                try:
+                    settings = self.settings["tool_settings"].get("Generator Tools", {})
+                    # Detect active sub-tab to get the correct tool_name
+                    sub_tool_name = "Strong Password Generator"  # default
+                    if hasattr(self, 'generator_tools_widget') and hasattr(self.generator_tools_widget, 'notebook'):
+                        tab_idx = self.generator_tools_widget.notebook.index(self.generator_tools_widget.notebook.select())
+                        tab_names = [
+                            "Strong Password Generator", "Repeating Text Generator",
+                            "Lorem Ipsum Generator", "UUID/GUID Generator",
+                            "Random Email Generator", "ASCII Art Generator",
+                            "Hash Generator", "Slug Generator",
+                        ]
+                        if tab_idx < len(tab_names):
+                            sub_tool_name = tab_names[tab_idx]
+                    tool_settings = settings.get(sub_tool_name, {})
+                    return self.generator_tools.process_text(input_text, sub_tool_name, tool_settings)
+                except Exception as e:
+                    return f"Generator Tools error: {e}"
             else:
                 return "Generator Tools module not available"
         elif tool_name == "Sorter Tools":
             if SORTER_TOOLS_MODULE_AVAILABLE and self.sorter_tools:
                 settings = self.settings["tool_settings"].get("Sorter Tools", {})
-                return self.sorter_tools.process_text(input_text, settings)
+                # Detect active sub-tab for correct tool_type
+                sub_tool_name = "Number Sorter"  # default
+                if hasattr(self, 'sorter_tools_widget') and hasattr(self.sorter_tools_widget, 'notebook'):
+                    try:
+                        tab_idx = self.sorter_tools_widget.notebook.index(self.sorter_tools_widget.notebook.select())
+                        sub_tool_name = ["Number Sorter", "Alphabetical Sorter"][tab_idx]
+                    except Exception:
+                        pass
+                sub_settings = settings.get(sub_tool_name, {})
+                return self.sorter_tools.process_text(input_text, sub_tool_name, sub_settings)
             else:
                 return "Sorter Tools module not available"
         elif tool_name == "Folder File Reporter":
-            # Folder File Reporter uses its own widget interface
-            return "Folder File Reporter processing handled by widget interface"
+            # Folder File Reporter requires folder path selection - no single-text processing
+            return "Use the Generate Report button in the tool panel above. The Folder File Reporter requires selecting a folder to analyze."
         elif tool_name == "Translator Tools":
             if TRANSLATOR_TOOLS_MODULE_AVAILABLE and self.translator_tools:
                 # Get the active tool type from settings
@@ -7922,7 +8478,7 @@ class PromeraAIApp(tk.Tk):
                 return "Translator Tools module not available"
         elif tool_name == "Base64 Encoder/Decoder":
             if BASE64_TOOLS_MODULE_AVAILABLE and self.base64_tools:
-                settings = self.settings["tool_settings"].get("Base64 Tools", {})
+                settings = self.settings["tool_settings"].get("Base64 Encoder/Decoder", {})
                 return self.base64_tools.process_text(input_text, settings)
             else:
                 return "Base64 Tools module not available"
@@ -7971,6 +8527,137 @@ class PromeraAIApp(tk.Tk):
                 return "URL Content Reader module not available"
             except Exception as e:
                 return f"URL Reader error: {str(e)}"
+        elif tool_name == "Hash Generator":
+            if HASH_GENERATOR_MODULE_AVAILABLE and hasattr(self, 'hash_generator') and self.hash_generator:
+                try:
+                    settings = self.settings["tool_settings"].get("Hash Generator", {})
+                    return self.hash_generator.process_text(input_text, settings)
+                except Exception as e:
+                    return f"Hash Generator error: {e}"
+            else:
+                return "Hash Generator module not available"
+        elif tool_name == "Text Statistics":
+            if TEXT_STATISTICS_MODULE_AVAILABLE and hasattr(self, 'text_statistics') and self.text_statistics:
+                try:
+                    settings = self.settings["tool_settings"].get("Text Statistics", {})
+                    return self.text_statistics.process_text(input_text, settings)
+                except Exception as e:
+                    return f"Text Statistics error: {e}"
+            else:
+                return "Text Statistics module not available"
+        elif tool_name == "HTML Tool":
+            if HTML_EXTRACTION_TOOL_MODULE_AVAILABLE and self.html_extraction_tool:
+                try:
+                    settings = self.settings["tool_settings"].get("HTML Tool", {})
+                    return self.html_extraction_tool.process_text(input_text, settings)
+                except Exception as e:
+                    return f"HTML Tool error: {e}"
+            else:
+                return "HTML Tool module not available"
+        elif tool_name == "Line Tools":
+            if LINE_TOOLS_MODULE_AVAILABLE and hasattr(self, 'line_tools') and self.line_tools:
+                try:
+                    tool_settings = self.settings["tool_settings"].get("Line Tools", {})
+                    tool_type = tool_settings.get("active_tool", "Remove Duplicates")
+                    sub_settings = tool_settings.get(tool_type, {})
+                    return self.line_tools.process_text(input_text, tool_type, sub_settings)
+                except Exception as e:
+                    return f"Line Tools error: {e}"
+            else:
+                return "Line Tools module not available"
+        elif tool_name == "Whitespace Tools":
+            if WHITESPACE_TOOLS_MODULE_AVAILABLE and hasattr(self, 'whitespace_tools') and self.whitespace_tools:
+                try:
+                    tool_settings = self.settings["tool_settings"].get("Whitespace Tools", {})
+                    tool_type = tool_settings.get("active_tool", "Trim Lines")
+                    sub_settings = tool_settings.get(tool_type, {})
+                    return self.whitespace_tools.process_text(input_text, tool_type, sub_settings)
+                except Exception as e:
+                    return f"Whitespace Tools error: {e}"
+            else:
+                return "Whitespace Tools module not available"
+        elif tool_name == "Markdown Tools":
+            if MARKDOWN_TOOLS_MODULE_AVAILABLE and hasattr(self, 'markdown_tools') and self.markdown_tools:
+                try:
+                    tool_settings = self.settings["tool_settings"].get("Markdown Tools", {})
+                    tool_type = tool_settings.get("active_tool", "Strip Markdown")
+                    sub_settings = tool_settings.get(tool_type, {})
+                    return self.markdown_tools.process_text(input_text, tool_type, sub_settings)
+                except Exception as e:
+                    return f"Markdown Tools error: {e}"
+            else:
+                return "Markdown Tools module not available"
+        elif tool_name == "String Escape Tool":
+            if STRING_ESCAPE_TOOL_MODULE_AVAILABLE and hasattr(self, 'string_escape_tool') and self.string_escape_tool:
+                try:
+                    tool_settings = self.settings["tool_settings"].get("String Escape Tool", {})
+                    format_type = tool_settings.get("format_type", "json")
+                    mode = tool_settings.get("mode", "escape")
+                    return self.string_escape_tool.process_text(input_text, format_type, mode, tool_settings)
+                except Exception as e:
+                    return f"String Escape Tool error: {e}"
+            else:
+                return "String Escape Tool module not available"
+        elif tool_name == "Number Base Converter":
+            if NUMBER_BASE_CONVERTER_MODULE_AVAILABLE:
+                try:
+                    from tools.number_base_converter import NumberBaseConverterV2
+                    settings = self.settings["tool_settings"].get("Number Base Converter", {})
+                    return NumberBaseConverterV2().process_text(input_text, settings)
+                except Exception as e:
+                    return f"Number Base Converter error: {e}"
+            else:
+                return "Number Base Converter module not available"
+        elif tool_name == "Timestamp Converter":
+            if TIMESTAMP_CONVERTER_MODULE_AVAILABLE:
+                try:
+                    from tools.timestamp_converter import TimestampConverterV2
+                    settings = self.settings["tool_settings"].get("Timestamp Converter", {})
+                    return TimestampConverterV2().process_text(input_text, settings)
+                except Exception as e:
+                    return f"Timestamp Converter error: {e}"
+            else:
+                return "Timestamp Converter module not available"
+        elif tool_name == "Column Tools":
+            if COLUMN_TOOLS_MODULE_AVAILABLE:
+                try:
+                    from tools.column_tools import ColumnToolsV2
+                    settings = self.settings["tool_settings"].get("Column Tools", {})
+                    return ColumnToolsV2().process_text(input_text, settings)
+                except Exception as e:
+                    return f"Column Tools error: {e}"
+            else:
+                return "Column Tools module not available"
+        elif tool_name == "Text Wrapper":
+            if TEXT_WRAPPER_MODULE_AVAILABLE:
+                try:
+                    from tools.text_wrapper import TextWrapperV2
+                    settings = self.settings["tool_settings"].get("Text Wrapper", {})
+                    return TextWrapperV2().process_text(input_text, settings)
+                except Exception as e:
+                    return f"Text Wrapper error: {e}"
+            else:
+                return "Text Wrapper module not available"
+        elif tool_name == "Slug Generator":
+            if SLUG_GENERATOR_MODULE_AVAILABLE:
+                try:
+                    from tools.slug_generator import SlugGeneratorProcessor
+                    return SlugGeneratorProcessor.generate_slug(input_text)
+                except Exception as e:
+                    return f"Slug Generator error: {e}"
+            else:
+                return "Slug Generator module not available"
+        elif tool_name == "ASCII Art Generator":
+            if ASCII_ART_GENERATOR_MODULE_AVAILABLE:
+                try:
+                    from tools.ascii_art_generator import ASCIIArtGeneratorProcessor
+                    settings = self.settings["tool_settings"].get("ASCII Art Generator", {})
+                    font = settings.get("font", "standard")
+                    return ASCIIArtGeneratorProcessor.generate_ascii_art(input_text, font)
+                except Exception as e:
+                    return f"ASCII Art Generator error: {e}"
+            else:
+                return "ASCII Art Generator module not available"
         else: 
             return f"Unknown tool: {tool_name}"
 
@@ -8324,6 +9011,8 @@ class PromeraAIApp(tk.Tk):
         if DIFF_VIEWER_MODULE_AVAILABLE and hasattr(self, 'diff_viewer_widget'):
             # Use the new modular diff viewer
             option = self.settings.get("tool_settings", {}).get("Diff Viewer", {}).get("option", "ignore_case")
+            # Reset cached source text so current widget content is used (matches button behavior)
+            self.diff_viewer_widget.reset_comparison_source()
             self.diff_viewer_widget.run_comparison(option)
         else:
             self.logger.warning("Diff Viewer module not available")

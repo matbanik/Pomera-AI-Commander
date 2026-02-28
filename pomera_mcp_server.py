@@ -142,6 +142,15 @@ def main():
         logger.error(f"Failed to create tool registry: {e}")
         sys.exit(1)
     
+    # Startup dependency check — log missing optional deps to stderr
+    try:
+        from core.dependency_registry import get_startup_summary
+        dep_summary = get_startup_summary()
+        if dep_summary:
+            print(dep_summary, file=sys.stderr, flush=True)
+    except Exception:
+        pass  # Non-critical — don't block startup
+    
     # List tools mode
     if args.list_tools:
         print("Available Pomera MCP Tools:")

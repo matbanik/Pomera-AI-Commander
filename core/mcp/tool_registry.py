@@ -3274,6 +3274,20 @@ class ToolRegistry:
                 )
                 result["recommended_action"] = "get_update_command"
             
+            # Include dependency status summary
+            try:
+                from core.dependency_registry import check_all_dependencies, get_install_instructions
+                dep_report = check_all_dependencies()
+                result["dependencies"] = dep_report["summary"]
+                if dep_report["summary"]["missing_count"] > 0:
+                    result["dependencies"]["missing_names"] = [
+                        d["name"] for d in dep_report["missing"]
+                    ]
+                    inst = get_install_instructions()
+                    result["dependencies"]["install_command"] = inst.get("commands", {}).get("install_all_missing", "")
+            except Exception:
+                pass
+            
             return json.dumps(result, indent=2)
         
         elif action == "backup":
@@ -3315,12 +3329,15 @@ class ToolRegistry:
             return json.dumps(result, indent=2)
         
         elif action == "get_update_command":
-            # Return appropriate update command
+            # Return appropriate update command with dependency install instructions
+            plat = platform.system()
+            pip_cmd = "pip" if plat == "Windows" else "pip3"
+            
             result = {
                 "npm_update": "npm update pomera-ai-commander",
-                "pip_update": "pip install --upgrade pomera-ai-commander",
+                "pip_update": f"{pip_cmd} install --upgrade pomera-ai-commander",
                 "github_releases": "https://github.com/matbanik/Pomera-AI-Commander/releases",
-                "note": "After updating, run the application to trigger automatic data migration."
+                "note": "After updating, run the application to trigger automatic data migration.",
             }
             
             if portable and databases_found:
@@ -3328,6 +3345,59 @@ class ToolRegistry:
                     "Data in installation directory detected! "
                     "Ensure you have backed up (action='backup') before running update."
                 )
+            
+            # Dependency install instructions
+            result["dependency_install_commands"] = {
+                "all_optional": f"{pip_cmd} install pomera-ai-commander[full]",
+                "gui_only": f"{pip_cmd} install pomera-ai-commander[gui]",
+                "encryption": f"{pip_cmd} install pomera-ai-commander[encryption]",
+                "ai_providers": f"{pip_cmd} install pomera-ai-commander[ai]",
+                "web": f"{pip_cmd} install pomera-ai-commander[web]",
+                "individual": {
+                    "google": f"{pip_cmd} install google-auth google-auth-oauthlib google-genai",
+                    "azure": f"{pip_cmd} install azure-ai-inference azure-core",
+                    "aws": f"{pip_cmd} install boto3 botocore",
+                    "huggingface": f"{pip_cmd} install huggingface-hub",
+                    "encryption": f"{pip_cmd} install cryptography detect-secrets",
+                    "web_search": f"{pip_cmd} install beautifulsoup4",
+                },
+            }
+            
+            # Platform-specific notes for the AI agent
+            if plat == "Darwin":
+                result["platform_notes"] = [
+                    "macOS: Use 'pip3' or 'python3 -m pip' instead of 'pip'.",
+                    "If using Homebrew Python: may need --break-system-packages flag.",
+                    "If installed via npm: deps go into .venv — use '.venv/bin/pip' to install.",
+                    "For pyaudio: run 'brew install portaudio' first.",
+                ]
+            elif plat == "Linux":
+                result["platform_notes"] = [
+                    "Linux: Use 'pip3' or 'python3 -m pip'.",
+                    "If PEP 668 error: use virtual environment or --break-system-packages.",
+                    "tkinter is separate: 'sudo apt install python3-tk' (Ubuntu/Debian).",
+                    "For pyaudio: 'sudo apt install portaudio19-dev' (Ubuntu/Debian).",
+                    "If installed via npm: deps go into .venv — use '.venv/bin/pip' to install.",
+                ]
+            else:  # Windows
+                result["platform_notes"] = [
+                    "Windows: Use 'pip' or 'python -m pip'.",
+                    "If installed via npm: deps go into .venv — use '.venv\\Scripts\\pip' to install.",
+                ]
+            
+            # Include current missing dependency info
+            try:
+                from core.dependency_registry import get_install_instructions
+                inst = get_install_instructions()
+                if inst.get("status") != "all_installed":
+                    result["missing_dependencies"] = {
+                        "count": inst["missing_count"],
+                        "install_all_missing": inst["commands"]["install_all_missing"],
+                    }
+                    if inst.get("special_notes"):
+                        result["missing_dependencies"]["special_notes"] = inst["special_notes"]
+            except Exception:
+                pass
             
             return json.dumps(result, indent=2)
         
@@ -5329,6 +5399,10 @@ class ToolRegistry:
                 "gui": gui_diagnostics,
             }
             
+            # Always include dependency summary (quick check)
+            dep_summary = self._diagnose_dependencies_summary()
+            result["dependencies_summary"] = dep_summary
+            
             if verbose:
                 result["dependencies"] = self._diagnose_dependencies()
                 result["config_values"] = config
@@ -5374,6 +5448,19 @@ class ToolRegistry:
                 recommendations.append(
                     "Configure API keys via the Pomera GUI (Settings > AI Tools) "
                     "or set them in settings.db"
+                )
+            
+            # Dependency warnings
+            if dep_summary.get("missing_count", 0) > 0:
+                missing_names = dep_summary.get("missing_names", [])
+                warnings.append(
+                    f"{dep_summary['missing_count']} optional dependencies not installed: "
+                    f"{', '.join(missing_names[:5])}"
+                    + (f" (+{len(missing_names) - 5} more)" if len(missing_names) > 5 else "")
+                )
+                recommendations.append(
+                    "Install missing dependencies: pip install pomera-ai-commander[full] "
+                    "or use pomera_safe_update action='get_update_command' for detailed instructions."
                 )
             
             # Performance warnings
@@ -5565,27 +5652,54 @@ class ToolRegistry:
             "architecture": platform.architecture()[0],
         }
     
+    def _diagnose_dependencies_summary(self) -> Dict[str, Any]:
+        """Quick dependency summary for always-on output."""
+        try:
+            from core.dependency_registry import check_all_dependencies
+            report = check_all_dependencies()
+            summary = report["summary"]
+            missing_names = [d["name"] for d in report["missing"]]
+            return {
+                "installed_count": summary["installed_count"],
+                "missing_count": summary["missing_count"],
+                "total": summary["total"],
+                "missing_names": missing_names,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
     def _diagnose_dependencies(self) -> Dict[str, Any]:
-        """Check availability and versions of key dependencies (verbose only)."""
-        import importlib.metadata
-        
-        packages = [
-            "cryptography", "requests", "deepdiff", "detect-secrets",
-            "platformdirs", "google-auth", "boto3", "mcp",
-            "jsonschema", "pyyaml", "toml",
-        ]
-        
-        deps = {}
-        for pkg in packages:
-            try:
-                version = importlib.metadata.version(pkg)
-                deps[pkg] = {"installed": True, "version": version}
-            except importlib.metadata.PackageNotFoundError:
-                deps[pkg] = {"installed": False, "version": None}
-            except Exception:
-                deps[pkg] = {"installed": False, "version": None}
-        
-        return deps
+        """Full dependency details (verbose only). Uses central registry."""
+        try:
+            from core.dependency_registry import check_all_dependencies
+            report = check_all_dependencies()
+            # Return per-dep detail keyed by name
+            deps = {}
+            for name, detail in report["details"].items():
+                deps[name] = {
+                    "installed": detail["installed"],
+                    "version": detail.get("version"),
+                    "tier": detail.get("tier"),
+                    "description": detail.get("description"),
+                    "features_affected": detail.get("features_affected", []),
+                }
+            return deps
+        except Exception:
+            # Fallback to minimal check if registry not available
+            import importlib.metadata
+            packages = [
+                "cryptography", "requests", "deepdiff", "detect-secrets",
+                "platformdirs", "google-auth", "boto3",
+                "jsonschema", "pyyaml", "json5",
+            ]
+            deps = {}
+            for pkg in packages:
+                try:
+                    version = importlib.metadata.version(pkg)
+                    deps[pkg] = {"installed": True, "version": version}
+                except Exception:
+                    deps[pkg] = {"installed": False, "version": None}
+            return deps
     
     def _diagnose_encryption(self) -> Dict[str, Any]:
         """Diagnose encryption subsystem health."""

@@ -60,15 +60,32 @@ gui = [
     "reportlab>=3.6.0",
     "python-docx>=0.8.0",
     "rapidfuzz>=3.0.0",
+    "Pillow>=8.0.0",
+]
+encryption = [
+    "cryptography>=45.0.0",
+    "detect-secrets>=1.5.0",
+]
+ai = [
+    "huggingface-hub>=0.16.0",
+    "google-auth>=2.23.0",
+    "google-auth-oauthlib>=1.1.0",
+    "google-genai>=1.0.0",
+    "azure-ai-inference>=1.0.0b1",
+    "azure-core>=1.30.0",
+    "tenacity>=8.2.0",
+    "boto3>=1.26.0",
+]
+web = [
+    "beautifulsoup4>=4.9.0",
+    "aiohttp>=3.9.0",
+    "lxml>=4.6.0",
 ]
 full = [
-    "reportlab>=3.6.0",
-    "python-docx>=0.8.0",
-    "rapidfuzz>=3.0.0",
+    "pomera-ai-commander[gui,encryption,ai,web]",
     "pyaudio>=0.2.0",
     "numpy>=1.20.0",
     "psutil>=5.8.0",
-    "huggingface-hub>=0.10.0",
 ]
 dev = [
     "pytest>=7.0.0",
