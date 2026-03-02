@@ -59,6 +59,16 @@ class DependencyInfo:
 # ============================================================
 
 OPTIONAL_DEPENDENCIES: Dict[str, DependencyInfo] = {
+    # ---- Tier: CORE ----
+    "deepdiff": DependencyInfo(
+        pypi_name="deepdiff",
+        import_name="deepdiff",
+        tier=DepTier.CORE,
+        description="Semantic diff engine for Smart Diff and 3-way merge",
+        min_version="6.0.0",
+        features_affected=["Smart Diff 2-way", "Smart Diff 3-way merge"],
+    ),
+
     # ---- Tier: GUI ----
     "reportlab": DependencyInfo(
         pypi_name="reportlab",
@@ -109,6 +119,14 @@ OPTIONAL_DEPENDENCIES: Dict[str, DependencyInfo] = {
         description="Auto-detect sensitive data in notes",
         min_version="1.5.0",
         features_affected=["Auto-encrypt sensitive data detection"],
+    ),
+    "bcrypt": DependencyInfo(
+        pypi_name="bcrypt",
+        import_name="bcrypt",
+        tier=DepTier.ENCRYPTION,
+        description="MCP security password hashing",
+        min_version="4.0.0",
+        features_affected=["MCP security manager"],
     ),
 
     # ---- Tier: AI_PROVIDER ----
@@ -186,6 +204,14 @@ OPTIONAL_DEPENDENCIES: Dict[str, DependencyInfo] = {
     ),
 
     # ---- Tier: WEB ----
+    "duckduckgo-search": DependencyInfo(
+        pypi_name="duckduckgo-search",
+        import_name="ddgs",
+        tier=DepTier.WEB,
+        description="DuckDuckGo search engine (free, no API key)",
+        min_version="6.0.0",
+        features_affected=["DuckDuckGo web search"],
+    ),
     "beautifulsoup4": DependencyInfo(
         pypi_name="beautifulsoup4",
         import_name="bs4",

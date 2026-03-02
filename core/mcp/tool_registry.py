@@ -5971,8 +5971,16 @@ class ToolRegistry:
             except Exception as e:
                 web_keys[engine] = {"configured": None, "status": f"error: {e}"}
         
-        # DuckDuckGo needs no key
-        web_keys["duckduckgo"] = {"configured": True, "status": "no key required"}
+        # DuckDuckGo needs no key — but validate package is installed
+        try:
+            import importlib
+            importlib.import_module("ddgs")
+            web_keys["duckduckgo"] = {"configured": True, "status": "no key required"}
+        except ImportError:
+            web_keys["duckduckgo"] = {
+                "configured": False,
+                "status": "ddgs package not installed (pip install duckduckgo-search)"
+            }
         api_keys["_web_search"] = web_keys
         
         return api_keys

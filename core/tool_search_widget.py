@@ -453,11 +453,28 @@ class ToolSearchPalette(ttk.Frame):
         """
         if not self._popup_listbox:
             return
-        # Use after() to let the listbox process the click first
-        self.after(50, self._on_listbox_select)
+        # Stop focus sentinel immediately to prevent it from
+        # reclaiming entry focus mid-selection
+        self._stop_focus_sentinel()
+        
+        # Capture the selected index NOW before the 50ms delay,
+        # in case focus events change the listbox selection
+        selection = self._popup_listbox.curselection()
+        if selection and selection[0] < len(self._filtered_tools):
+            tool = self._filtered_tools[selection[0]]
+            # Use after() to let the listbox finish processing the click
+            self.after(50, lambda: self._select_tool(tool))
+        else:
+            # No valid selection — restart sentinel
+            self._start_focus_sentinel()
     
     def _select_tool(self, tool_name: str) -> None:
         """Select a tool and hide popup."""
+        # Set closing flag BEFORE modifying StringVar to prevent
+        # _on_search_change from re-opening the popup
+        self._closing = True
+        self._stop_focus_sentinel()
+        
         self._current_tool = tool_name
         
         # Update entry to show selected tool (use StringVar)
@@ -484,6 +501,9 @@ class ToolSearchPalette(ttk.Frame):
                 self._on_tool_selected(tool_name)
             except Exception as e:
                 logger.error(f"Error in on_tool_selected callback: {e}")
+        
+        # Reset closing flag after a delay to allow UI to settle
+        self.after(200, self._reset_closing_flag)
     
     def _hide_popup(self, event=None) -> str:
         """Hide the popup dropdown and restore tool name."""
