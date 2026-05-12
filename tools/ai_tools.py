@@ -1894,7 +1894,7 @@ class AIToolsWidget(ttk.Frame):
             return
         
         provider_name = self.current_provider
-        if provider_name not in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
+        if provider_name not in ["OpenAI", "Anthropic AI", "OpenRouterAI", "Google AI"]:
             self.app.update_output_text(f"Error: Research is not supported for {provider_name}.")
             return
         
@@ -2791,7 +2791,7 @@ class AIToolsWidget(ttk.Frame):
             url = provider_config["url_template"].format(model=settings.get("MODEL"), api_key=api_key)
         else:
             # Check if using GPT-5.2 (needs Responses API)
-            if provider_name == "OpenAI" and self._is_gpt52_model(settings.get("MODEL", "")):
+            if provider_name == "OpenAI" and self._is_openai_reasoning_model(settings.get("MODEL", "")):
                 url = provider_config["url_responses"]
             else:
                 url = provider_config["url"]
@@ -2913,6 +2913,16 @@ class AIToolsWidget(ttk.Frame):
         payload = {}
         
         if provider_name in ["Google AI", "Vertex AI"]:
+            # Block deep-research models — they require the Interactions API
+            model = settings.get("MODEL", "")
+            if "deep-research" in model.lower():
+                raise ValueError(
+                    f"Model '{model}' requires the Google Interactions API (not generateContent). "
+                    "This model is designed for async, long-running research tasks. "
+                    "Support for the Interactions API is planned for a future release. "
+                    "See .agent/context/known-issues.md for details."
+                )
+            
             system_prompt = settings.get("system_prompt", "").strip()
             
             # Use proper systemInstruction field instead of prepending to prompt
@@ -2940,25 +2950,27 @@ class AIToolsWidget(ttk.Frame):
                 payload['generationConfig'] = gen_config
         
         elif provider_name == "Anthropic AI":
-            payload = {"model": settings.get("MODEL"), "messages": [{"role": "user", "content": prompt}]}
+            model = settings.get("MODEL", "")
+            payload = {"model": model, "messages": [{"role": "user", "content": prompt}]}
             if settings.get("system"):
                 payload["system"] = settings.get("system")
             
             self._add_param_if_valid(payload, settings, 'max_tokens', int)
             
-            # Anthropic API: Some models don't allow both temperature AND top_p
-            # If both are set, prefer temperature and skip top_p to avoid API error:
-            # "temperature and top_p cannot both be specified for this model"
-            has_temperature = settings.get('temperature') is not None and settings.get('temperature') != ''
-            has_top_p = settings.get('top_p') is not None and settings.get('top_p') != ''
-            
-            if has_temperature:
-                self._add_param_if_valid(payload, settings, 'temperature', float)
-                # Skip top_p when temperature is set to avoid conflict
-            elif has_top_p:
-                self._add_param_if_valid(payload, settings, 'top_p', float)
-            
-            self._add_param_if_valid(payload, settings, 'top_k', int)
+            # Claude Opus 4.7+ deprecates temperature, top_p, top_k
+            # Sending these causes: 400 "temperature is deprecated for this model"
+            if not self._is_anthropic_no_sampling_model(model):
+                # Anthropic API: Some models don't allow both temperature AND top_p
+                # If both are set, prefer temperature and skip top_p to avoid API error
+                has_temperature = settings.get('temperature') is not None and settings.get('temperature') != ''
+                has_top_p = settings.get('top_p') is not None and settings.get('top_p') != ''
+                
+                if has_temperature:
+                    self._add_param_if_valid(payload, settings, 'temperature', float)
+                elif has_top_p:
+                    self._add_param_if_valid(payload, settings, 'top_p', float)
+                
+                self._add_param_if_valid(payload, settings, 'top_k', int)
             
             stop_seq_str = str(settings.get('stop_sequences', '')).strip()
             if stop_seq_str:
@@ -3018,12 +3030,12 @@ class AIToolsWidget(ttk.Frame):
             model = settings.get("MODEL", "")
             
             # GPT-5.2 uses Responses API with different format
-            if provider_name == "OpenAI" and self._is_gpt52_model(model):
+            if provider_name == "OpenAI" and self._is_openai_reasoning_model(model):
                 payload = {"model": model, "input": prompt}
                 
-                # Optional parameters for Responses API (limited support)
-                self._add_param_if_valid(payload, settings, 'temperature', float)
-                self._add_param_if_valid(payload, settings, 'top_p', float)
+                # Reasoning models (GPT-5.2+, GPT-5.5+) do NOT support sampling parameters
+                # Sending temperature causes: 400 "temperature does not support 0 with this model"
+                # Do NOT add temperature, top_p, frequency_penalty, presence_penalty
                 
                 # Note: Responses API doesn't support max_tokens, frequency_penalty, presence_penalty, or seed
             else:
@@ -3150,12 +3162,30 @@ class AIToolsWidget(ttk.Frame):
         
         return payload
     
-    def _is_gpt52_model(self, model: str) -> bool:
-        """Check if model is GPT-5.2 which requires Responses API."""
+    def _is_openai_reasoning_model(self, model: str) -> bool:
+        """Check if model is an OpenAI reasoning model requiring Responses API.
+        
+        These models (GPT-5.2+, GPT-5.5+) do not support sampling parameters
+        like temperature, top_p, frequency_penalty, presence_penalty.
+        """
         if not model:
             return False
         model_lower = model.lower()
-        return 'gpt-5.2' in model_lower or 'gpt5.2' in model_lower or model_lower.startswith('gpt-52')
+        return any(m in model_lower for m in [
+            'gpt-5.2', 'gpt5.2', 'gpt-5.5', 'gpt5.5',
+            'gpt-5.5-pro', 'gpt-5.5-instant'
+        ]) or model_lower.startswith('gpt-52') or model_lower.startswith('gpt-55')
+    
+    def _is_anthropic_no_sampling_model(self, model: str) -> bool:
+        """Check if Anthropic model deprecates sampling parameters.
+        
+        Claude Opus 4.7+ deprecates temperature, top_p, top_k.
+        Sending these parameters will cause a 400 Bad Request error.
+        """
+        if not model:
+            return False
+        model_lower = model.lower()
+        return any(m in model_lower for m in ['claude-opus-4-7', 'claude-mythos'])
     
     def _add_param_if_valid(self, param_dict, settings, key, param_type):
         """Add parameter to dict if it's valid."""
@@ -3503,9 +3533,17 @@ class AIToolsWidget(ttk.Frame):
         """Get parameter configuration for AI provider."""
         configs = {
             "Google AI": {
+                # Research tab (first) - Deep Research via Interactions API
+                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Deep Research mode (overrides other tabs). Requires google-genai SDK."},
+                "research_model": {"tab": "research", "type": "combo", "values": ["deep-research-preview-04-2026", "deep-research-max-preview-04-2026"], "default": "deep-research-preview-04-2026", "label": "model", "tip": "Deep Research model. 'max' variant is more exhaustive but slower (2-10 min)."},
+                "research_style": {"tab": "research", "type": "combo", "values": ["analytical", "concise", "creative", "report"], "default": "analytical", "label": "style", "tip": "Output style preset."},
+                "research_timeout": {"tab": "research", "type": "entry", "default": "600", "label": "timeout_sec", "tip": "Max seconds to wait for research completion (typical: 120-600)."},
+                "research_poll_interval": {"tab": "research", "type": "entry", "default": "10", "label": "poll_sec", "tip": "Seconds between status checks (5-60)."},
+                # Sampling tab
                 "temperature": {"tab": "sampling", "type": "scale", "range": (0.0, 2.0), "res": 0.1, "tip": "Controls randomness. Higher is more creative."},
                 "topP": {"tab": "sampling", "type": "scale", "range": (0.0, 1.0), "res": 0.05, "tip": "Cumulative probability threshold for token selection."},
                 "topK": {"tab": "sampling", "type": "scale", "range": (1, 100), "res": 1, "tip": "Limits token selection to top K candidates."},
+                # Content tab
                 "maxOutputTokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
                 "candidateCount": {"tab": "content", "type": "scale", "range": (1, 8), "res": 1, "tip": "Number of response candidates to generate."},
                 "stopSequences": {"tab": "content", "type": "entry", "tip": "Comma-separated list of strings to stop generation."}

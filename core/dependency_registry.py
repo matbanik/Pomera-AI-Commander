@@ -158,9 +158,9 @@ OPTIONAL_DEPENDENCIES: Dict[str, DependencyInfo] = {
         pypi_name="google-genai",
         import_name="google.genai",
         tier=DepTier.AI_PROVIDER,
-        description="Google AI SDK (recommended for streaming)",
-        min_version="1.0.0",
-        features_affected=["Google AI SDK mode"],
+        description="Google AI SDK for Deep Research (Interactions API) and streaming",
+        min_version="2.0.0",
+        features_affected=["Google AI Deep Research", "Google AI SDK streaming"],
     ),
     "azure-ai-inference": DependencyInfo(
         pypi_name="azure-ai-inference",

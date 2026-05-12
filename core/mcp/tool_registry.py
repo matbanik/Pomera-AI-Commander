@@ -4761,13 +4761,14 @@ class ToolRegistry:
                 "- list_providers: Get list of available AI providers\\n"
                 "- list_models: Get models for a specific provider\\n"
                 "- generate: Generate text using AI (default action)\\n"
-                "- research: Research with deep reasoning + web search (OpenAI/Anthropic/OpenRouter)\\n"
+                "- research: Research with deep reasoning + web search (OpenAI/Anthropic/OpenRouter/Google AI)\\n"
                 "- deepreasoning: Extended thinking with 6-step protocol (Anthropic only)\\n\\n"
                 
-                "**RESEARCH ACTION** (OpenAI, Anthropic AI & OpenRouterAI):\\n"
-                "- OpenAI: GPT-5.2 with reasoning_effort (xhigh)\\n"
-                "- Anthropic: Claude Opus 4.6 with adaptive thinking and search_count\\n"
+                "**RESEARCH ACTION** (OpenAI, Anthropic AI, OpenRouterAI & Google AI):\\n"
+                "- OpenAI: GPT-5.5 with reasoning_effort (xhigh)\\n"
+                "- Anthropic: Claude Opus 4.7 with adaptive thinking and search_count\\n"
                 "- OpenRouter: Various models (gemini-3-flash, sonar-deep-research) with max_results\\n"
+                "- Google AI: Deep Research via Interactions API (deep-research-preview, async polling)\\n"
                 "- Mode: two-stage (search → reason) or single (combined)\\n"
                 "- Style presets: analytical, concise, creative, report\\n\\n"
                 
@@ -4815,7 +4816,7 @@ class ToolRegistry:
                     "provider": {
                         "type": "string",
                         "description": "AI provider name (e.g., 'OpenAI', 'Anthropic AI', 'Google AI'). "
-                                     "For 'research': OpenAI, Anthropic AI, or OpenRouterAI. "
+                                     "For 'research': OpenAI, Anthropic AI, OpenRouterAI, or Google AI. "
                                      "For 'deepreasoning': Anthropic AI only."
                     },
                     "model": {
@@ -4858,7 +4859,8 @@ class ToolRegistry:
                     # Research-specific parameters
                     "research_model": {
                         "type": "string",
-                        "description": "Model for research/deepreasoning. OpenAI: gpt-5.2, Anthropic: claude-opus-4-6, OpenRouter: perplexity/sonar-deep-research"
+                        "description": "Model for research/deepreasoning. OpenAI: gpt-5.5, Anthropic: claude-opus-4-7, "
+                                     "OpenRouter: perplexity/sonar-deep-research, Google AI: deep-research-preview-04-2026"
                     },
                     "research_mode": {
                         "type": "string",
@@ -5066,10 +5068,10 @@ class ToolRegistry:
         if action == "research":
             # Validate provider
             provider = args.get("provider", "")
-            if provider not in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
+            if provider not in ["OpenAI", "Anthropic AI", "OpenRouterAI", "Google AI"]:
                 return json.dumps({
                     "success": False,
-                    "error": f"research action only supports OpenAI, Anthropic AI, and OpenRouterAI, got: '{provider}'"
+                    "error": f"research action only supports OpenAI, Anthropic AI, OpenRouterAI, and Google AI, got: '{provider}'"
                 }, ensure_ascii=False)
             
             # Process file input for prompt
@@ -5121,7 +5123,7 @@ class ToolRegistry:
             
             if provider == "OpenAI":
                 # OpenAI-specific settings - always uses native search
-                research_model = get_setting("research_model", "research_model", "gpt-5.2")
+                research_model = get_setting("research_model", "research_model", "gpt-5.5")
                 reasoning_effort = get_setting("reasoning_effort", "reasoning_effort", "xhigh")
                 thinking_budget = 0  # Not used for OpenAI
                 search_count = 0  # OpenAI doesn't support search count
@@ -5133,9 +5135,16 @@ class ToolRegistry:
                 max_results = get_setting("max_results", "research_max_results", 10)
                 thinking_budget = get_setting("thinking_budget", "research_thinking_budget", 32000)  # For Claude models via OpenRouter
                 search_count = 0  # OpenRouter uses max_results instead
+            elif provider == "Google AI":
+                # Google AI Deep Research - uses Interactions API (async polling)
+                research_model = get_setting("research_model", "research_model", "deep-research-preview-04-2026")
+                reasoning_effort = "xhigh"  # Not used for Google AI
+                thinking_budget = 0  # Not used for Google AI
+                search_count = 0  # Not used for Google AI
+                max_results = 0  # Not used for Google AI
             else:  # Anthropic AI
                 # Anthropic-specific settings - always uses Claude native search
-                research_model = get_setting("research_model", "research_model", "claude-opus-4-6")
+                research_model = get_setting("research_model", "research_model", "claude-opus-4-7")
                 thinking_budget = get_setting("thinking_budget", "research_thinking_budget", 32000)
                 search_count = get_setting("search_count", "research_search_count", 20)
                 reasoning_effort = "xhigh"  # Not used for Anthropic
@@ -5156,13 +5165,17 @@ class ToolRegistry:
             elif provider == "OpenRouterAI":
                 print(f"   Max Results: {max_results}", file=sys.stderr, flush=True)
                 print(f"   Reasoning Effort: {reasoning_effort}", file=sys.stderr, flush=True)
+            elif provider == "Google AI":
+                timeout_val = get_setting("timeout", "research_timeout", 600)
+                poll_val = get_setting("poll_interval", "research_poll_interval", 10)
+                print(f"   Timeout: {timeout_val}s, Poll Interval: {poll_val}s", file=sys.stderr, flush=True)
             print(f"   Force Search: {force_search}", file=sys.stderr, flush=True)
             if gui_settings:
                 print(f"   (Using GUI defaults from settings)", file=sys.stderr, flush=True)
 
             
-            # Execute research - always use native search
-            result = engine.generate_research(
+            # Build kwargs for generate_research
+            research_kwargs = dict(
                 prompt=prompt,
                 provider=provider,
                 model=research_model,
@@ -5176,8 +5189,16 @@ class ToolRegistry:
                 allowed_domains=args.get("allowed_domains"),
                 blocked_domains=args.get("blocked_domains"),
                 max_tokens=max_tokens,
-                progress_callback=research_progress
+                progress_callback=research_progress,
             )
+            
+            # Add Google AI-specific params
+            if provider == "Google AI":
+                research_kwargs["timeout"] = get_setting("timeout", "research_timeout", 600)
+                research_kwargs["poll_interval"] = get_setting("poll_interval", "research_poll_interval", 10)
+            
+            # Execute research
+            result = engine.generate_research(**research_kwargs)
             
             if result.success:
                 print(f"✅ Research complete!", file=sys.stderr, flush=True)

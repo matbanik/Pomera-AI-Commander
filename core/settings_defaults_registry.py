@@ -360,21 +360,26 @@ class SettingsDefaultsRegistry:
             description="Word frequency analysis tool"
         ))
         
-        # Google AI - Updated December 2025
-        # Latest: Gemini 2.5 series (Pro, Flash, Flash-Lite), Gemini 2.0 series
+        # Google AI - Updated May 2026
+        # Latest: Gemini 3.1 series, Gemini 3 Flash, Deep Research, Gemini 2.5 series
         self.register_tool(ToolDefaultsSpec(
             tool_name="Google AI",
             defaults={
                 "API_KEY": "putinyourkey",
                 "MODEL": "gemini-2.5-pro",
                 "MODELS_LIST": [
+                    "gemini-3.1-pro",
+                    "gemini-3-flash",
+                    "gemini-3.1-flash-lite",
                     "gemini-2.5-pro",
                     "gemini-2.5-flash",
                     "gemini-2.5-flash-lite",
                     "gemini-2.0-flash",
                     "gemini-2.0-flash-lite",
                     "gemini-1.5-pro-latest",
-                    "gemini-1.5-flash-latest"
+                    "gemini-1.5-flash-latest",
+                    "deep-research-preview-04-2026",
+                    "deep-research-max-preview-04-2026"
                 ],
                 "system_prompt": "You are a helpful assistant.",
                 "temperature": 0.7,
@@ -382,7 +387,13 @@ class SettingsDefaultsRegistry:
                 "topP": 0.95,
                 "candidateCount": 1,
                 "maxOutputTokens": 8192,
-                "stopSequences": ""
+                "stopSequences": "",
+                # Deep Research defaults (Interactions API)
+                "research_mode_enabled": False,
+                "research_model": "deep-research-preview-04-2026",
+                "research_style": "analytical",
+                "research_timeout": 600,
+                "research_poll_interval": 10,
             },
             required_keys={"API_KEY", "MODEL"},
             description="Google AI (Gemini) integration"
@@ -418,14 +429,15 @@ class SettingsDefaultsRegistry:
             description="Azure OpenAI integration"
         ))
         
-        # Anthropic AI - Updated February 2026
-        # Latest: Claude 4 series (Opus 4.6, Opus 4.5, Sonnet 4.5, Sonnet 4, Opus 4)
+        # Anthropic AI - Updated May 2026
+        # Latest: Claude 4 series (Opus 4.7, Opus 4.6, Opus 4.5, Sonnet 4.5, Sonnet 4, Opus 4)
         self.register_tool(ToolDefaultsSpec(
             tool_name="Anthropic AI",
             defaults={
                 "API_KEY": "putinyourkey",
                 "MODEL": "claude-sonnet-4-5-20250929",
                 "MODELS_LIST": [
+                    "claude-opus-4-7",
                     "claude-opus-4-6",
                     "claude-sonnet-4-5-20250929",
                     "claude-opus-4-5-20251124",
@@ -468,6 +480,9 @@ class SettingsDefaultsRegistry:
                 "API_KEY": "putinyourkey",
                 "MODEL": "gpt-5.2",
                 "MODELS_LIST": [
+                    "gpt-5.5",
+                    "gpt-5.5-pro",
+                    "gpt-5.5-instant",
                     "gpt-5.2",
                     "gpt-5.2-instant-2025-12-11",
                     "gpt-5.2-thinking-2025-12-11",
@@ -700,8 +715,8 @@ class SettingsDefaultsRegistry:
             description="AWS Bedrock AI integration"
         ))
         
-        # Vertex AI - Updated December 2025
-        # Latest: Gemini 2.5 series (Pro, Flash, Flash-Lite)
+        # Vertex AI - Updated May 2026
+        # Latest: Gemini 3.1 series, Gemini 3 Flash, Deep Research, Gemini 2.5 series
         self.register_tool(ToolDefaultsSpec(
             tool_name="Vertex AI",
             defaults={
@@ -709,13 +724,18 @@ class SettingsDefaultsRegistry:
                 "LOCATION": "us-central1",
                 "MODEL": "gemini-2.5-pro",
                 "MODELS_LIST": [
+                    "gemini-3.1-pro",
+                    "gemini-3-flash",
+                    "gemini-3.1-flash-lite",
                     "gemini-2.5-pro",
                     "gemini-2.5-flash",
                     "gemini-2.5-flash-lite",
                     "gemini-2.0-flash",
                     "gemini-2.0-flash-lite",
                     "gemini-1.5-pro",
-                    "gemini-1.5-flash"
+                    "gemini-1.5-flash",
+                    "deep-research-preview-04-2026",
+                    "deep-research-max-preview-04-2026"
                 ],
                 "system_prompt": "You are a helpful assistant.",
                 "temperature": 0.7,

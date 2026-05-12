@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 # Research models
-OPENAI_RESEARCH_MODEL = "gpt-5.2"
-ANTHROPIC_RESEARCH_MODEL = "claude-opus-4-6"
+OPENAI_RESEARCH_MODEL = "gpt-5.5"
+ANTHROPIC_RESEARCH_MODEL = "claude-opus-4-7"
 OPENROUTER_RESEARCH_MODEL = "perplexity/sonar-deep-research"
 
 # Reasoning levels

@@ -421,17 +421,22 @@ class AIToolsEngine:
         blocked_domains: Optional[List[str]] = None,  # Anthropic only
         # Output options
         max_tokens: int = 64000,
-        progress_callback: Optional[Callable[[int, int], None]] = None
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        # Google Deep Research options
+        timeout: int = 600,               # Google AI only (seconds)
+        poll_interval: int = 10,          # Google AI only (seconds)
+        cancel_check: Optional[Callable[[], bool]] = None,  # Google AI only
     ) -> AIToolsResult:
         """
         Execute research query with deep reasoning and native web search.
         
-        Only supports OpenAI and Anthropic AI providers.
-        Uses provider-native web search (OpenAI web_search, Claude web_search_20250305).
+        Supports OpenAI, Anthropic AI, OpenRouterAI, and Google AI providers.
+        - OpenAI/Anthropic: Uses provider-native web search
+        - Google AI: Uses Interactions API for deep research (async polling)
         
         Args:
             prompt: Research query
-            provider: "OpenAI" or "Anthropic AI"
+            provider: "OpenAI", "Anthropic AI", "OpenRouterAI", or "Google AI"
             research_mode: "two-stage" (search → reason) or "single"
             reasoning_effort: OpenAI reasoning level (none/low/medium/high/xhigh)
             thinking_budget: Anthropic thinking token budget
@@ -442,25 +447,31 @@ class AIToolsEngine:
             blocked_domains: Anthropic native search domain blacklist
             max_tokens: Maximum output tokens
             progress_callback: Progress notification (current, total)
+            timeout: Google AI polling timeout in seconds (default 600)
+            poll_interval: Google AI polling interval in seconds (default 10)
+            cancel_check: Google AI cancellation check callable
             
         Returns:
             AIToolsResult with research response
         """
-        # Validate research engine
+        # Validate research engine (not needed for Google AI — has its own engine)
         self.logger.info(f"[TRACE] generate_research called: provider={provider}, mode={research_mode}")
-        if not RESEARCH_ENGINE_AVAILABLE or not self._research_engine:
-            self.logger.error(f"[TRACE] Research engine not available: AVAILABLE={RESEARCH_ENGINE_AVAILABLE}, engine={self._research_engine}")
-            return AIToolsResult(
-                success=False,
-                error="Research engine not available",
-                provider=provider
-            )
+        
+        # Google AI uses its own engine, not the research engine
+        if provider != "Google AI":
+            if not RESEARCH_ENGINE_AVAILABLE or not self._research_engine:
+                self.logger.error(f"[TRACE] Research engine not available: AVAILABLE={RESEARCH_ENGINE_AVAILABLE}, engine={self._research_engine}")
+                return AIToolsResult(
+                    success=False,
+                    error="Research engine not available",
+                    provider=provider
+                )
         
         # Validate provider
-        if provider not in ["OpenAI", "Anthropic AI", "OpenRouterAI"]:
+        if provider not in ["OpenAI", "Anthropic AI", "OpenRouterAI", "Google AI"]:
             return AIToolsResult(
                 success=False,
-                error=f"research action only supports OpenAI, Anthropic AI, and OpenRouterAI, got: {provider}",
+                error=f"research action only supports OpenAI, Anthropic AI, OpenRouterAI, and Google AI, got: {provider}",
                 provider=provider
             )
         
@@ -506,6 +517,27 @@ class AIToolsEngine:
                     blocked_domains=blocked_domains,
                     max_tokens=max_tokens,
                     progress_callback=progress_callback
+                )
+            elif provider == "Google AI":
+                # Google Deep Research via Interactions API
+                from core.google_deep_research_engine import GoogleDeepResearchEngine
+                if not GoogleDeepResearchEngine.is_available():
+                    return AIToolsResult(
+                        success=False,
+                        error="google-genai SDK not installed. Install with: pip install google-genai>=2.0.0",
+                        provider=provider
+                    )
+                
+                google_model = model or "deep-research-preview-04-2026"
+                dr_engine = GoogleDeepResearchEngine(api_key=api_key)
+                result = dr_engine.create_research(
+                    prompt=prompt,
+                    model=google_model,
+                    style=style,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
+                    progress_callback=progress_callback,
+                    cancel_check=cancel_check,
                 )
             else:  # OpenRouterAI
                 # Use provided model or default - uses OpenRouter web plugin
@@ -693,12 +725,30 @@ class AIToolsEngine:
         # Return empty settings if no database
         return {}
     
-    def _is_gpt52_model(self, model: str) -> bool:
-        """Check if model is GPT-5.2 which requires Responses API."""
+    def _is_openai_reasoning_model(self, model: str) -> bool:
+        """Check if model is an OpenAI reasoning model requiring Responses API.
+        
+        These models (GPT-5.2+, GPT-5.5+) do not support sampling parameters
+        like temperature, top_p, frequency_penalty, presence_penalty.
+        """
         if not model:
             return False
         model_lower = model.lower()
-        return 'gpt-5.2' in model_lower or 'gpt5.2' in model_lower or model_lower.startswith('gpt-52')
+        return any(m in model_lower for m in [
+            'gpt-5.2', 'gpt5.2', 'gpt-5.5', 'gpt5.5',
+            'gpt-5.5-pro', 'gpt-5.5-instant'
+        ]) or model_lower.startswith('gpt-52') or model_lower.startswith('gpt-55')
+    
+    def _is_anthropic_no_sampling_model(self, model: str) -> bool:
+        """Check if Anthropic model deprecates sampling parameters.
+        
+        Claude Opus 4.7+ deprecates temperature, top_p, top_k.
+        Sending these parameters will cause a 400 Bad Request error.
+        """
+        if not model:
+            return False
+        model_lower = model.lower()
+        return any(m in model_lower for m in ['claude-opus-4-7', 'claude-mythos'])
     
     def _get_api_key(self, provider: str, settings: Dict[str, Any]) -> str:
         """Get decrypted API key for a provider."""
@@ -845,7 +895,7 @@ class AIToolsEngine:
             )
         else:
             # Check if using GPT-5.2 (needs Responses API)
-            if provider == "OpenAI" and self._is_gpt52_model(settings.get("MODEL", "")):
+            if provider == "OpenAI" and self._is_openai_reasoning_model(settings.get("MODEL", "")):
                 url = provider_config["url_responses"]
             else:
                 url = provider_config["url"]
@@ -882,6 +932,16 @@ class AIToolsEngine:
         payload = {}
         
         if provider in ["Google AI", "Vertex AI"]:
+            # Block deep-research models — they require the Interactions API
+            model = settings.get("MODEL", "")
+            if "deep-research" in model.lower():
+                raise ValueError(
+                    f"Model '{model}' requires the Google Interactions API (not generateContent). "
+                    "This model is designed for async, long-running research tasks. "
+                    "Support for the Interactions API is planned for a future release. "
+                    "See .agent/context/known-issues.md for details."
+                )
+            
             system_prompt = settings.get("system_prompt", "").strip()
             payload = {"contents": [{"parts": [{"text": prompt}], "role": "user"}]}
             
@@ -906,7 +966,8 @@ class AIToolsEngine:
                 payload['generationConfig'] = gen_config
         
         elif provider == "Anthropic AI":
-            payload = {"model": settings.get("MODEL"), "messages": [{"role": "user", "content": prompt}]}
+            model = settings.get("MODEL", "")
+            payload = {"model": model, "messages": [{"role": "user", "content": prompt}]}
             if settings.get("system_prompt"):
                 payload["system"] = settings.get("system_prompt")
             
@@ -915,20 +976,21 @@ class AIToolsEngine:
             else:
                 payload['max_tokens'] = 4096  # Required for Anthropic
             
-            # Anthropic API: Some models don't allow both temperature AND top_p
-            # If both are set, prefer temperature and skip top_p to avoid API error:
-            # "temperature and top_p cannot both be specified for this model"
-            has_temperature = settings.get('temperature') is not None
-            has_top_p = settings.get('top_p') is not None
-            
-            if has_temperature:
-                payload['temperature'] = float(settings['temperature'])
-                # Skip top_p when temperature is set to avoid conflict
-            elif has_top_p:
-                payload['top_p'] = float(settings['top_p'])
-            
-            if settings.get('top_k') is not None:
-                payload['top_k'] = int(settings['top_k'])
+            # Claude Opus 4.7+ deprecates temperature, top_p, top_k
+            # Sending these causes: 400 "temperature is deprecated for this model"
+            if not self._is_anthropic_no_sampling_model(model):
+                # Anthropic API: Some models don't allow both temperature AND top_p
+                # If both are set, prefer temperature and skip top_p to avoid API error
+                has_temperature = settings.get('temperature') is not None
+                has_top_p = settings.get('top_p') is not None
+                
+                if has_temperature:
+                    payload['temperature'] = float(settings['temperature'])
+                elif has_top_p:
+                    payload['top_p'] = float(settings['top_p'])
+                
+                if settings.get('top_k') is not None:
+                    payload['top_k'] = int(settings['top_k'])
         
         elif provider == "Cohere AI":
             payload = {"model": settings.get("MODEL"), "message": prompt}
@@ -963,14 +1025,12 @@ class AIToolsEngine:
             model = settings.get("MODEL", "")
             
             # GPT-5.2 uses Responses API with different format
-            if provider == "OpenAI" and self._is_gpt52_model(model):
+            if provider == "OpenAI" and self._is_openai_reasoning_model(model):
                 payload = {"model": model, "input": prompt}
                 
-                # Optional parameters for Responses API (limited support)
-                if settings.get('temperature') is not None:
-                    payload['temperature'] = float(settings['temperature'])
-                if settings.get('top_p') is not None:
-                    payload['top_p'] = float(settings['top_p'])
+                # Reasoning models (GPT-5.2+, GPT-5.5+) do NOT support sampling parameters
+                # Sending temperature causes: 400 "temperature does not support 0 with this model"
+                # Do NOT add temperature, top_p, frequency_penalty, presence_penalty
                 
                 # Note: Responses API doesn't support max_tokens, frequency_penalty, presence_penalty, or seed
             else:
@@ -1034,12 +1094,8 @@ class AIToolsEngine:
         
         return payload
     
-    def _is_gpt52_model(self, model: str) -> bool:
-        """Check if model is GPT-5.2 which requires Responses API."""
-        if not model:
-            return False
-        model_lower = model.lower()
-        return 'gpt-5.2' in model_lower or 'gpt5.2' in model_lower or model_lower.startswith('gpt-52')
+    # NOTE: _is_gpt52_model was renamed to _is_openai_reasoning_model (see above)
+    # This duplicate definition has been removed.
     
     def _extract_response_text(self, provider: str, data: Dict[str, Any]) -> str:
         """Extract response text from API response."""
