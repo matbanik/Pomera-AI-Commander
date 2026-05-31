@@ -136,7 +136,7 @@ def is_encrypted(content: str) -> bool:
     Returns:
         True if content starts with "ENC:" prefix
     """
-    return content and content.startswith("ENC:")
+    return bool(content and content.startswith("ENC:"))
 
 
 # Try to import detect-secrets library (optional enhancement)
@@ -162,11 +162,13 @@ SENSITIVE_PATTERNS_FALLBACK = {
     ],
     'token': [
         r'(?i)bearer\s+[a-zA-Z0-9_\-\.]{20,}',
+        r'(?i)(?:access|refresh|id)[_\s-]?token\s*[:=]',
         r'(?i)\btoken\b',
         r'(?i)\bjwt\b',
     ],
     'secret': [
-        r'(?i)secret',
+        r'(?i)(?:client|api|auth)[_\s-]?secret\s*[:=]',
+        r'(?i)secret[_\s-]?key\s*[:=]',
         r'(?i)private[_\s-]?key',
     ],
 }
@@ -287,11 +289,35 @@ def detect_sensitive_data(content: str, case_sensitive: bool = False) -> Dict[st
             'detection_method': 'none'
         }
     
-    # Use detect-secrets if available, otherwise use regex
-    if DETECT_SECRETS_AVAILABLE:
-        return _detect_with_library(content)
-    else:
-        return _detect_with_regex(content)
+    regex_result = _detect_with_regex(content)
+
+    if not DETECT_SECRETS_AVAILABLE:
+        return regex_result
+
+    library_result = _detect_with_library(content)
+    if not library_result['is_sensitive']:
+        return regex_result
+    if not regex_result['is_sensitive']:
+        return library_result
+
+    patterns_found = list(dict.fromkeys(
+        library_result.get('patterns_found', []) + regex_result.get('patterns_found', [])
+    ))
+    matches = dict(library_result.get('matches', {}))
+    matches.update(regex_result.get('matches', {}))
+    categories_str = ", ".join(patterns_found)
+
+    return {
+        'is_sensitive': True,
+        'patterns_found': patterns_found,
+        'matches': matches,
+        'recommendation': (
+            f"⚠️ SENSITIVE DATA DETECTED: Found {len(patterns_found)} pattern(s) "
+            f"({categories_str}). Consider encrypting this note with encrypt_input=True "
+            f"or encrypt_output=True to protect sensitive information at rest."
+        ),
+        'detection_method': 'detect-secrets library + regex fallback'
+    }
 
 
 def get_encryption_status(input_content: str, output_content: str) -> Dict[str, bool]:

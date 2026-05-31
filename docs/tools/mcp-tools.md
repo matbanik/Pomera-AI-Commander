@@ -6,7 +6,7 @@
 
 ## MCP (Model Context Protocol) Tools
 
-Pomera AI Commander exposes 24 tools via MCP for use with AI assistants like Claude Desktop, Cursor, and Antigravity.
+Pomera AI Commander exposes 12 public tools via MCP for use with AI assistants like Claude Desktop, Cursor, and Antigravity. Legacy per-feature names remain as hidden execution aliases.
 
 ### AI Agent Workflow Tools
 
@@ -63,41 +63,26 @@ pomera_find_replace_diff(operation="recall", note_id=42)
 - **Recoverable**: Auto-backup to Notes with recall by note_id
 - **No Git required**: Lightweight rollback without version control
 
-### Text Processing Tools (21 via MCP)
+### Public MCP Tools (12)
 
-All core text tools are exposed via MCP with consistent JSON input/output:
-
-| Tool | Description |
-|------|-------------|
-| `pomera_case_transform` | Transform text case |
-| `pomera_encode` | Base64, hash, number base conversion |
-| `pomera_line_tools` | Line manipulation |
-| `pomera_whitespace` | Whitespace processing |
-| `pomera_string_escape` | Escape/unescape strings |
-| `pomera_sort` | Sort lines |
-| `pomera_text_stats` | Text statistics |
-| `pomera_json_xml` | JSON/XML processing |
-| `pomera_url_parse` | URL parsing |
-| `pomera_text_wrap` | Text wrapping |
-| `pomera_timestamp` | Timestamp conversion |
-| `pomera_extract` | Regex/email/URL extraction |
-| `pomera_markdown` | Markdown processing |
-| `pomera_translator` | Morse/binary translation |
-| `pomera_cron` | Cron expression parsing |
-| `pomera_word_frequency` | Word frequency analysis |
-| `pomera_column_tools` | CSV/column tools |
-| `pomera_generators` | UUID/password/slug generation |
-| `pomera_email_header_analyzer` | Email header analysis |
-| `pomera_html` | HTML processing |
-| `pomera_list_compare` | List comparison |
-
-### Notes Tool
+Pomera exposes 12 public MCP tools. Legacy per-feature names still execute as hidden aliases for older clients, but they are not returned by `list_tools()`.
 
 | Tool | Description |
 |------|-------------|
 | `pomera_notes` | Save, get, list, search, update, delete notes |
+| `pomera_find_replace_diff` | Regex find/replace with diff preview and Notes backup |
+| `pomera_safe_update` | Update safety checks and backups |
+| `pomera_web_search` | Web search across configured engines |
+| `pomera_read_url` | Fetch URL content as Markdown |
+| `pomera_ai_tools` | AI provider/model access |
+| `pomera_smart_diff` | Semantic 2-way diff and 3-way merge |
+| `pomera_text_tools` | Case, line, whitespace, sort, wrap actions |
+| `pomera_data_tools` | JSON/XML, columns, encoding, generation, timestamp actions |
+| `pomera_analysis` | Stats, frequency, list comparison, HTML actions |
+| `pomera_specialist` | Extraction, escaping, Markdown, URL parse, translation, cron, email header actions |
+| `pomera_system` | Diagnose and launch GUI actions |
 
-**Actions**: `save`, `get`, `list`, `search`, `update`, `delete`
+`pomera_notes` actions: `save`, `get`, `list`, `search`, `update`, `delete`.
 
 See [MCP_SERVER_GUIDE.md](./MCP_SERVER_GUIDE.md) for configuration and usage examples.
 

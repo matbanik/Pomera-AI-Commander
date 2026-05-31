@@ -35,9 +35,9 @@ AI operations (research, deepreasoning). Default MCP client timeout is 60s,
 but AI calls with web search + reasoning can take 60-300s.
 
 Available Tools:
-    - pomera_case_transform: Transform text case (sentence, lower, upper, title)
-    - pomera_base64: Encode/decode Base64
-    - pomera_hash: Generate MD5, SHA-1, SHA-256, SHA-512, CRC32 hashes
+    Run `python pomera_mcp_server.py --list-tools` for the current tool list.
+    The public MCP surface is consolidated into 12 tools; legacy tool names
+    still work as hidden execution aliases for backwards compatibility.
 
 Author: Pomera AI Commander
 License: MIT
@@ -71,6 +71,12 @@ except ImportError:
 
 def main():
     """Main entry point for the Pomera MCP server."""
+    # MCP JSON-RPC is UTF-8, and several tool descriptions/results contain
+    # Unicode symbols. Windows consoles can default to cp1252 and fail on print().
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(
         description="Pomera MCP Server - Expose text tools via Model Context Protocol"
     )

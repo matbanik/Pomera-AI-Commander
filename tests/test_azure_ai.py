@@ -8,13 +8,15 @@ import json
 import sys
 import requests
 import re
-import io
 import argparse
+
+__test__ = False
 
 # Fix Windows console encoding issues
 if sys.platform == 'win32':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding='utf-8', errors='replace')
 
 # Default configuration
 DEFAULT_API_VERSION = "2024-10-21"

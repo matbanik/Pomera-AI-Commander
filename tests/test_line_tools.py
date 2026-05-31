@@ -8,6 +8,12 @@ import pytest
 from hypothesis import given, strategies as st
 from core.mcp.tool_registry import get_registry
 
+LINE_TEXT = st.text(
+    alphabet=st.characters(whitelist_categories=("Ll", "Lu", "Nd")),
+    min_size=1,
+    max_size=10,
+)
+
 
 # ============================================================================
 # Unit Tests
@@ -69,7 +75,7 @@ class TestLineTools:
 class TestLineToolsProperties:
     """Property-based tests for Line Tools invariants."""
     
-    @given(st.lists(st.text(min_size=1, max_size=10), min_size=2, max_size=10))
+    @given(st.lists(LINE_TEXT, min_size=2, max_size=10))
     def test_reverse_reverses_order(self, lines_list):
         """Property: reverse actually reverses line order."""
         from tools.line_tools import LineToolsProcessor
@@ -82,7 +88,7 @@ class TestLineToolsProperties:
         result_lines = [l for l in result.strip().split('\n') if l.strip()]
         assert result_lines == list(reversed(lines_list))
     
-    @given(st.lists(st.text(min_size=1, max_size=10), min_size=1, max_size=10))
+    @given(st.lists(LINE_TEXT, min_size=1, max_size=10))
     def test_shuffle_preserves_content(self, lines_list):
         """Property: shuffle preserves all lines."""
         from tools.line_tools import LineToolsProcessor
@@ -117,9 +123,10 @@ class TestLineToolsMCP:
     """MCP integration tests for pomera_line_tools."""
     
     def test_tool_registration(self, tool_registry):
-        """Verify pomera_line_tools is registered."""
+        """Verify the public compound tool is registered and legacy alias works."""
         tools = {tool.name for tool in tool_registry.list_tools()}
-        assert 'pomera_line_tools' in tools
+        assert 'pomera_text_tools' in tools
+        assert 'pomera_line_tools' in tool_registry
     
     def test_remove_duplicates_via_mcp(self, tool_registry):
         """Test remove duplicates via MCP."""

@@ -557,9 +557,10 @@ class TestToolAttributeCorrectness:
                              ids=[t[0] for t in TOOL_CLASS_ATTRS])
     def test_uses_tool_class_not_widget(self, tool_name, correct_attr, wrong_attr):
         """_process_text_basic must use self.{correct_attr}, NOT self.{wrong_attr}."""
-        # Find the section for this tool
-        tool_start = self.method_source.find(f'"{tool_name}"')
-        assert tool_start != -1, f"Tool '{tool_name}' not found in _process_text_basic"
+        # Find the elif handler section for this tool (not just the name string)
+        handler_marker = f'tool_name == "{tool_name}"'
+        tool_start = self.method_source.find(handler_marker)
+        assert tool_start != -1, f"Tool handler '{handler_marker}' not found in _process_text_basic"
         
         # Get section between this tool and next elif/else
         next_elif = self.method_source.find("elif", tool_start + 1)

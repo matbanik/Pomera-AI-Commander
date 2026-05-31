@@ -105,7 +105,7 @@ class AIToolsEngine:
         },
         "OpenAI": {
             "url": "https://api.openai.com/v1/chat/completions",
-            "url_responses": "https://api.openai.com/v1/responses",  # For GPT-5.2 models
+            "url_responses": "https://api.openai.com/v1/responses",  # For GPT-5 reasoning models
             "headers_template": {"Authorization": "Bearer {api_key}", "Content-Type": "application/json"},
         },
         "Cohere AI": {
@@ -407,7 +407,7 @@ class AIToolsEngine:
         prompt: str,
         provider: str,
         # Model selection
-        model: Optional[str] = None,  # OpenAI: gpt-5.2, Anthropic: claude-opus-4-6
+        model: Optional[str] = None,  # OpenAI: gpt-5.5, Anthropic: claude-opus-4-8
         # Research options
         research_mode: str = "two-stage",
         reasoning_effort: str = "xhigh",  # OpenAI only
@@ -489,7 +489,7 @@ class AIToolsEngine:
         try:
             if provider == "OpenAI":
                 # Use provided model or default - always uses native web search
-                openai_model = model or "gpt-5.2"
+                openai_model = model or "gpt-5.5"
                 result = self._research_engine.research_openai(
                     prompt=prompt,
                     api_key=api_key,
@@ -503,7 +503,7 @@ class AIToolsEngine:
                 )
             elif provider == "Anthropic AI":
                 # Use provided model or default - always uses Claude native search
-                anthropic_model = model or "claude-opus-4-6"
+                anthropic_model = model or "claude-opus-4-8"
                 result = self._research_engine.research_anthropic(
                     prompt=prompt,
                     api_key=api_key,
@@ -579,7 +579,7 @@ class AIToolsEngine:
         self,
         prompt: str,
         # Model selection
-        model: Optional[str] = None,  # Default: claude-opus-4-6
+        model: Optional[str] = None,  # Default: claude-opus-4-8
         # Thinking options
         thinking_budget: int = 32000,
         # Web search options
@@ -640,7 +640,7 @@ class AIToolsEngine:
         
         try:
             # Use provided model or default
-            anthropic_model = model or "claude-opus-4-6"
+            anthropic_model = model or "claude-opus-4-8"
             result = self._research_engine.deep_reasoning_anthropic(
                 prompt=prompt,
                 api_key=api_key,
@@ -728,7 +728,7 @@ class AIToolsEngine:
     def _is_openai_reasoning_model(self, model: str) -> bool:
         """Check if model is an OpenAI reasoning model requiring Responses API.
         
-        These models (GPT-5.2+, GPT-5.5+) do not support sampling parameters
+        These models (GPT-5.2+, GPT-5.5) do not support sampling parameters
         like temperature, top_p, frequency_penalty, presence_penalty.
         """
         if not model:
@@ -742,13 +742,10 @@ class AIToolsEngine:
     def _is_anthropic_no_sampling_model(self, model: str) -> bool:
         """Check if Anthropic model deprecates sampling parameters.
         
-        Claude Opus 4.7+ deprecates temperature, top_p, top_k.
-        Sending these parameters will cause a 400 Bad Request error.
+        Delegates to centralized core.anthropic_compat module.
         """
-        if not model:
-            return False
-        model_lower = model.lower()
-        return any(m in model_lower for m in ['claude-opus-4-7', 'claude-mythos'])
+        from core.anthropic_compat import is_anthropic_no_sampling_model
+        return is_anthropic_no_sampling_model(model)
     
     def _get_api_key(self, provider: str, settings: Dict[str, Any]) -> str:
         """Get decrypted API key for a provider."""
@@ -894,7 +891,7 @@ class AIToolsEngine:
                 api_key=api_key
             )
         else:
-            # Check if using GPT-5.2 (needs Responses API)
+            # Check if using GPT-5 reasoning model (needs Responses API)
             if provider == "OpenAI" and self._is_openai_reasoning_model(settings.get("MODEL", "")):
                 url = provider_config["url_responses"]
             else:
@@ -1024,11 +1021,11 @@ class AIToolsEngine:
         elif provider in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio"]:
             model = settings.get("MODEL", "")
             
-            # GPT-5.2 uses Responses API with different format
+            # GPT-5 reasoning models use Responses API with different format
             if provider == "OpenAI" and self._is_openai_reasoning_model(model):
                 payload = {"model": model, "input": prompt}
                 
-                # Reasoning models (GPT-5.2+, GPT-5.5+) do NOT support sampling parameters
+                # Reasoning models (GPT-5.2+, GPT-5.5) do NOT support sampling parameters
                 # Sending temperature causes: 400 "temperature does not support 0 with this model"
                 # Do NOT add temperature, top_p, frequency_penalty, presence_penalty
                 
@@ -1124,7 +1121,7 @@ class AIToolsEngine:
         elif provider == "Anthropic AI":
             result_text = data.get('content', [{}])[0].get('text', result_text)
         elif provider in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio", "Azure AI"]:
-            # Check for Responses API format (GPT-5.2)
+            # Check for Responses API format (GPT-5 reasoning models)
             # Format: {"output": [{"content": [{"type": "output_text", "text": "..."}]}]}
             if 'output' in data and isinstance(data.get('output'), list) and len(data['output']) > 0:
                 # Responses API format
@@ -1161,7 +1158,7 @@ class AIToolsEngine:
             elif 'text' in data:
                 result_text = data['text']
             elif 'item' in data and isinstance(data['item'], dict):
-                # Responses API format (GPT-5.2)
+                # Responses API format (GPT-5 reasoning models)
                 result_text = data['item'].get('content', result_text)
             elif 'choices' in data and len(data['choices']) > 0:
                 choice = data['choices'][0]

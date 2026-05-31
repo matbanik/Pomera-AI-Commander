@@ -73,9 +73,10 @@ class TestStringEscapeToolMCP:
     """MCP integration tests for pomera_string_escape."""
     
     def test_tool_registration(self, tool_registry):
-        """Verify pomera_string_escape is registered."""
+        """Verify the public compound tool is registered and legacy alias works."""
         tools = {tool.name for tool in tool_registry.list_tools()}
-        assert 'pomera_string_escape' in tools
+        assert 'pomera_specialist' in tools
+        assert 'pomera_string_escape' in tool_registry
     
     def test_json_escape_via_mcp(self, tool_registry):
         """Test JSON escaping via MCP."""

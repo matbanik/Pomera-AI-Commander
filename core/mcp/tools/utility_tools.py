@@ -1,14 +1,11 @@
-"""Utility tools: url_parse, translator, cron, email_header_analyzer."""
+"""Specialist/utility tools: extract, escape, markdown, url_parse, translate, cron, email_header (compound)."""
 
 from .base import register_from_v1
 
 TOOLS = {
-    "pomera_url_parse",
-    "pomera_translator",
-    "pomera_cron",
-    "pomera_email_header_analyzer",
+    "pomera_specialist",
 }
 
 def register_tools(registry) -> None:
-    """Register utility tools into the given registry."""
+    """Register specialist/utility tools into the given registry."""
     register_from_v1(registry, TOOLS)

@@ -10,12 +10,52 @@ allowing external MCP clients to discover and execute them.
 """
 
 import logging
-from typing import Dict, Any, List, Callable, Optional
+from typing import Dict, Any, List, Callable, Optional, Tuple
 from dataclasses import dataclass
 
 from .schema import MCPTool, MCPToolResult, MCPToolAnnotations
 
 logger = logging.getLogger(__name__)
+
+LEGACY_TOOL_ALIASES: Dict[str, Tuple[str, Dict[str, Any]]] = {
+    # Text tools
+    "pomera_case_transform": ("pomera_text_tools", {"action": "case"}),
+    "pomera_line_tools": ("pomera_text_tools", {"action": "lines"}),
+    "pomera_whitespace": ("pomera_text_tools", {"action": "whitespace"}),
+    "pomera_sort": ("pomera_text_tools", {"action": "sort"}),
+    "pomera_text_wrap": ("pomera_text_tools", {"action": "wrap"}),
+
+    # Data tools
+    "pomera_json_xml": ("pomera_data_tools", {"action": "json_xml"}),
+    "pomera_column_tools": ("pomera_data_tools", {"action": "columns"}),
+    "pomera_encode": ("pomera_data_tools", {"action": "encode"}),
+    "pomera_number_base": ("pomera_data_tools", {"action": "encode", "type": "number_base"}),
+    "pomera_generators": ("pomera_data_tools", {"action": "generate"}),
+    "pomera_timestamp": ("pomera_data_tools", {"action": "timestamp"}),
+
+    # Analysis tools
+    "pomera_text_stats": ("pomera_analysis", {"action": "stats"}),
+    "pomera_word_frequency": ("pomera_analysis", {"action": "frequency"}),
+    "pomera_list_compare": ("pomera_analysis", {"action": "compare_lists"}),
+    "pomera_html": ("pomera_analysis", {"action": "html"}),
+    "pomera_smart_diff_2way": ("pomera_smart_diff", {"action": "compare_2way"}),
+    "pomera_smart_diff_3way": ("pomera_smart_diff", {"action": "compare_3way"}),
+
+    # Specialist tools
+    "pomera_extract": ("pomera_specialist", {"action": "extract"}),
+    "pomera_extract_emails": ("pomera_specialist", {"action": "extract", "type": "emails"}),
+    "pomera_extract_urls": ("pomera_specialist", {"action": "extract", "type": "urls"}),
+    "pomera_string_escape": ("pomera_specialist", {"action": "escape"}),
+    "pomera_markdown": ("pomera_specialist", {"action": "markdown"}),
+    "pomera_url_parse": ("pomera_specialist", {"action": "url_parse"}),
+    "pomera_translator": ("pomera_specialist", {"action": "translate"}),
+    "pomera_cron": ("pomera_specialist", {"action": "cron"}),
+    "pomera_email_header_analyzer": ("pomera_specialist", {"action": "email_header"}),
+
+    # System tools
+    "pomera_diagnose": ("pomera_system", {"action": "diagnose"}),
+    "pomera_launch_gui": ("pomera_system", {"action": "launch_gui"}),
+}
 
 
 @dataclass
@@ -82,7 +122,7 @@ class ToolRegistry:
         """
         self._tools: Dict[str, MCPToolAdapter] = {}
         self._logger = logging.getLogger(__name__)
-        self._enabled_tools = enabled_tools  # None = all tools enabled
+        self._enabled_tools = self._normalize_enabled_tools(enabled_tools)
         
         if register_builtins:
             self._register_builtin_tools()
@@ -127,7 +167,14 @@ class ToolRegistry:
         Returns:
             MCPToolAdapter or None if not found
         """
-        return self._tools.get(name)
+        adapter = self._tools.get(name)
+        if adapter is not None:
+            return adapter
+
+        alias = LEGACY_TOOL_ALIASES.get(name)
+        if alias:
+            return self._tools.get(alias[0])
+        return None
     
     def list_tools(self) -> List[MCPTool]:
         """
@@ -153,6 +200,14 @@ class ToolRegistry:
             KeyError: If tool not found
         """
         adapter = self._tools.get(name)
+        if adapter is None and name in LEGACY_TOOL_ALIASES:
+            target_name, injected_args = LEGACY_TOOL_ALIASES[name]
+            adapter = self._tools.get(target_name)
+            if adapter is not None:
+                aliased_arguments = dict(arguments)
+                aliased_arguments.update(injected_args)
+                arguments = aliased_arguments
+
         if adapter is None:
             return MCPToolResult.error(f"Tool not found: {name}")
         
@@ -168,7 +223,22 @@ class ToolRegistry:
     
     def __contains__(self, name: str) -> bool:
         """Check if tool is registered."""
-        return name in self._tools
+        if name in self._tools:
+            return True
+
+        alias = LEGACY_TOOL_ALIASES.get(name)
+        return bool(alias and alias[0] in self._tools)
+
+    def _normalize_enabled_tools(self, enabled_tools: Optional[set]) -> Optional[set]:
+        """Accept legacy tool names in filters while registering consolidated tools."""
+        if enabled_tools is None:
+            return None
+
+        normalized = set()
+        for name in enabled_tools:
+            alias = LEGACY_TOOL_ALIASES.get(name)
+            normalized.add(alias[0] if alias else name)
+        return normalized
     
     def _get_or_create_db_settings_manager(self):
         """
@@ -205,61 +275,931 @@ class ToolRegistry:
     # =========================================================================
     
     def _register_builtin_tools(self) -> None:
-        """Register all built-in Pomera tools."""
-        # Core text transformation tools
-        self._register_case_tool()
-        self._register_encode_tool()  # Consolidated: base64, hash, number_base
-        self._register_line_tools()
-        self._register_whitespace_tools()
-        self._register_string_escape_tool()
-        self._register_sorter_tools()
-        self._register_text_stats_tool()
-        self._register_json_xml_tool()
-        self._register_url_parser_tool()
-        self._register_text_wrapper_tool()
-        self._register_timestamp_tool()
+        """Register all built-in Pomera tools.
         
-        # Additional tools (Phase 2)
-        self._register_extract_tool()  # Consolidated: regex, emails, urls
-        self._register_markdown_tools()
-        self._register_translator_tools()
-        self._register_cron_tool()
-        self._register_word_frequency_tool()
-        self._register_column_tools()
-        self._register_generator_tools()
+        Consolidation v2: 31 tools → 12 compound tools.
+        High-frequency tools kept standalone. Low-frequency/specialized tools
+        grouped into compound tools using action-based dispatch.
         
-        # Notes tools (Phase 3)
+        Architecture:
+            - 6 standalone tools (high-frequency, distinct purpose)
+            - 6 compound tools (grouped by domain/usage pattern)
+        """
+        # === TIER 1: Standalone high-frequency tools (unchanged) ===
+        
+        # Notes - session memory backbone (already compound: save/load/list/delete/search)
         self._register_notes_tools()
         
-        # Additional tools (Phase 4)
-        self._register_email_header_analyzer_tool()
-        self._register_html_tool()
-        self._register_list_comparator_tool()
-        
-        # Safe Update Tool (Phase 5) - for AI-initiated updates
-        self._register_safe_update_tool()
-        
-        # Find & Replace Diff Tool (Phase 6) - regex find/replace with diff preview and Notes backup
+        # Find & Replace Diff - primary text editing tool
         self._register_find_replace_diff_tool()
         
-        # Web Search and URL Reader Tools (Phase 7)
+        # Safe Update - file mutation (security isolation)
+        self._register_safe_update_tool()
+        
+        # Web Search - research tool
         self._register_web_search_tool()
+        
+        # URL Reader - content fetching
         self._register_read_url_tool()
         
-        # Smart Diff tools (Phase 1: 2-way and 3-way)
-        self._register_smart_diff_2way_tool()
-        self._register_smart_diff_3way_tool()
-        
-        # AI Tools (Phase 8) - AI model access via MCP
+        # AI Tools - AI model access (protected)
         self._register_ai_tools_tool()
         
-        # Diagnostic Tool (Phase 9) - Cross-IDE path troubleshooting
-        self._register_diagnose_tool()
+        # === TIER 2: Compound tools (grouped by domain) ===
         
-        # GUI Launcher Tool (Phase 10) - Launch Pomera GUI from agentic IDE
-        self._register_launch_gui_tool()
+        # Smart Diff - merge 2way + 3way
+        self._register_compound_smart_diff()
         
-        self._logger.info(f"Registered {len(self._tools)} built-in MCP tools")
+        # Text Tools - merge case, lines, whitespace, sort, wrap
+        self._register_compound_text_tools()
+        
+        # Data Tools - merge json_xml, columns, encode, generate, timestamp
+        self._register_compound_data_tools()
+        
+        # Analysis - merge text_stats, word_frequency, list_compare, html
+        self._register_compound_analysis()
+        
+        # Specialist - merge extract, string_escape, markdown, url_parse, translator, cron, email_header
+        self._register_compound_specialist()
+        
+        # System - merge diagnose, launch_gui
+        self._register_compound_system()
+        
+        self._logger.info(f"Registered {len(self._tools)} built-in MCP tools (consolidated)")
+    
+    # =========================================================================
+    # Compound Tool Registration (v2 consolidation)
+    # =========================================================================
+    
+    def _register_compound_smart_diff(self) -> None:
+        """Register compound Smart Diff tool (merges 2way + 3way)."""
+        self.register(MCPToolAdapter(
+            name="pomera_smart_diff",
+            description=(
+                "Semantic diff and merge tool for structured data (JSON/YAML/ENV/TOML). "
+                "Actions: compare_2way (compare before vs after), "
+                "compare_3way (3-way merge with base/yours/theirs). "
+                "Format-aware: ignores formatting, focuses on semantic changes. "
+                "Supports JSON5/JSONC, auto-repair, case-insensitive mode, "
+                "order-independent arrays, schema validation, and Notes integration."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["compare_2way", "compare_3way"],
+                        "description": "compare_2way: Compare before vs after versions. "
+                                     "compare_3way: 3-way merge with base/yours/theirs."
+                    },
+                    "before": {
+                        "type": "string",
+                        "description": "For compare_2way: original content (before changes)"
+                    },
+                    "before_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'before' as file path"
+                    },
+                    "after": {
+                        "type": "string",
+                        "description": "For compare_2way: modified content (after changes)"
+                    },
+                    "after_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'after' as file path"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "For compare_3way: base/original version (common ancestor)"
+                    },
+                    "base_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'base' as file path"
+                    },
+                    "yours": {
+                        "type": "string",
+                        "description": "For compare_3way: your version with changes"
+                    },
+                    "yours_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'yours' as file path"
+                    },
+                    "theirs": {
+                        "type": "string",
+                        "description": "For compare_3way: their version with changes"
+                    },
+                    "theirs_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'theirs' as file path"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["json", "json5", "jsonc", "yaml", "env", "toml", "auto"],
+                        "description": "Data format (auto-detect if 'auto')",
+                        "default": "auto"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["semantic", "strict"],
+                        "description": "semantic=lenient, strict=detect all differences",
+                        "default": "semantic"
+                    },
+                    "ignore_order": {
+                        "type": "boolean",
+                        "description": "Ignore array/list ordering",
+                        "default": False
+                    },
+                    "case_insensitive": {
+                        "type": "boolean",
+                        "description": "Ignore string case differences",
+                        "default": False
+                    },
+                    "include_stats": {
+                        "type": "boolean",
+                        "description": "For compare_2way: include before/after statistics",
+                        "default": False
+                    },
+                    "schema": {
+                        "type": "object",
+                        "description": "Optional JSON Schema for validation"
+                    },
+                    "save_to_notes": {
+                        "type": "boolean",
+                        "description": "Save result to Notes database",
+                        "default": False
+                    },
+                    "note_title": {
+                        "type": "string",
+                        "description": "Title for saved note (if save_to_notes=true)"
+                    },
+                    "auto_merge": {
+                        "type": "boolean",
+                        "description": "For compare_3way: auto-merge non-conflicting changes",
+                        "default": True
+                    },
+                    "conflict_strategy": {
+                        "type": "string",
+                        "enum": ["report", "keep_yours", "keep_theirs"],
+                        "description": "For compare_3way: conflict resolution strategy",
+                        "default": "report"
+                    }
+                },
+                "required": ["action"]
+            },
+            handler=self._handle_compound_smart_diff,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+        ))
+    
+    def _handle_compound_smart_diff(self, args: Dict[str, Any]) -> str:
+        """Route smart diff compound tool to appropriate handler."""
+        action = args.get("action", "")
+        if action == "compare_2way":
+            return self._handle_smart_diff_2way(args)
+        elif action == "compare_3way":
+            return self._handle_smart_diff_3way(args)
+        else:
+            return f"Error: Unknown action '{action}'. Valid actions: compare_2way, compare_3way"
+    
+    def _register_compound_text_tools(self) -> None:
+        """Register compound Text Tools (merges case, lines, whitespace, sort, wrap)."""
+        self.register(MCPToolAdapter(
+            name="pomera_text_tools",
+            description=(
+                "Text manipulation tools. Actions: "
+                "case (transform case: sentence/lower/upper/title), "
+                "lines (line manipulation: dedup, remove empty, add/remove numbers, reverse, shuffle), "
+                "whitespace (trim, remove extra spaces, tabs↔spaces, normalize endings), "
+                "sort (sort lines numerically or alphabetically), "
+                "wrap (wrap text to specified width). "
+                "All actions support file input/output via text_is_file and output_to_file params."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["case", "lines", "whitespace", "sort", "wrap"],
+                        "description": "case: Transform text case. "
+                                     "lines: Line manipulation (dedup, reverse, etc.). "
+                                     "whitespace: Whitespace operations (trim, tabs/spaces). "
+                                     "sort: Sort lines. "
+                                     "wrap: Wrap text to width."
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text to process (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["sentence", "lower", "upper", "capitalized", "title"],
+                        "description": "For action=case: case transformation mode"
+                    },
+                    "exclusions": {
+                        "type": "string",
+                        "description": "For action=case, mode=title: words to exclude from title case",
+                        "default": "a\nan\nthe\nand\nbut\nor\nfor\nnor\non\nat\nto\nfrom\nby\nwith\nin\nof"
+                    },
+                    "operation": {
+                        "type": "string",
+                        "description": "For action=lines: remove_duplicates|remove_empty|add_numbers|remove_numbers|reverse|shuffle. "
+                                     "For action=whitespace: trim|remove_extra_spaces|tabs_to_spaces|spaces_to_tabs|normalize_endings."
+                    },
+                    "keep_mode": {
+                        "type": "string",
+                        "enum": ["keep_first", "keep_last"],
+                        "description": "For action=lines, operation=remove_duplicates",
+                        "default": "keep_first"
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "For action=lines, operation=remove_duplicates",
+                        "default": True
+                    },
+                    "number_format": {
+                        "type": "string",
+                        "enum": ["1. ", "1) ", "[1] ", "1: "],
+                        "description": "For action=lines, operation=add_numbers",
+                        "default": "1. "
+                    },
+                    "trim_mode": {
+                        "type": "string",
+                        "enum": ["both", "leading", "trailing"],
+                        "description": "For action=whitespace, operation=trim",
+                        "default": "both"
+                    },
+                    "tab_size": {
+                        "type": "integer",
+                        "description": "For action=whitespace: tab width in spaces",
+                        "default": 4
+                    },
+                    "line_ending": {
+                        "type": "string",
+                        "enum": ["lf", "crlf", "cr"],
+                        "description": "For action=whitespace, operation=normalize_endings",
+                        "default": "lf"
+                    },
+                    "sort_type": {
+                        "type": "string",
+                        "enum": ["number", "alphabetical"],
+                        "description": "For action=sort: type of sorting"
+                    },
+                    "order": {
+                        "type": "string",
+                        "enum": ["ascending", "descending"],
+                        "description": "For action=sort: sort order",
+                        "default": "ascending"
+                    },
+                    "unique_only": {
+                        "type": "boolean",
+                        "description": "For action=sort, sort_type=alphabetical: remove duplicates",
+                        "default": False
+                    },
+                    "trim": {
+                        "type": "boolean",
+                        "description": "For action=sort, sort_type=alphabetical: trim whitespace",
+                        "default": False
+                    },
+                    "width": {
+                        "type": "integer",
+                        "description": "For action=wrap: maximum line width",
+                        "default": 80
+                    }
+                },
+                "required": ["action", "text"]
+            },
+            handler=self._handle_compound_text_tools,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+        ))
+    
+    def _handle_compound_text_tools(self, args: Dict[str, Any]) -> str:
+        """Route text tools compound to appropriate handler."""
+        action = args.get("action", "")
+        if action == "case":
+            # Map to case transform handler — needs 'mode' param
+            return self._handle_case_transform(args)
+        elif action == "lines":
+            return self._handle_line_tools(args)
+        elif action == "whitespace":
+            return self._handle_whitespace_tools(args)
+        elif action == "sort":
+            return self._handle_sorter(args)
+        elif action == "wrap":
+            return self._handle_text_wrap(args)
+        else:
+            return f"Error: Unknown action '{action}'. Valid actions: case, lines, whitespace, sort, wrap"
+    
+    def _register_compound_data_tools(self) -> None:
+        """Register compound Data Tools (merges json_xml, columns, encode, generate, timestamp)."""
+        self.register(MCPToolAdapter(
+            name="pomera_data_tools",
+            description=(
+                "Data conversion and encoding tools. Actions: "
+                "json_xml (prettify/minify/validate/convert JSON and XML), "
+                "columns (extract, reorder, delete, transpose, or fixed-width CSV columns), "
+                "encode (base64 encode/decode, hash generation, number base conversion), "
+                "generate (passwords, UUIDs, lorem ipsum, random emails, URL slugs), "
+                "timestamp (Unix timestamp/date conversion). "
+                "All actions support file input/output where applicable."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["json_xml", "columns", "encode", "generate", "timestamp"],
+                        "description": "json_xml: JSON/XML format/convert. "
+                                     "columns: Column manipulation. "
+                                     "encode: Base64/hash/number base. "
+                                     "generate: UUID/password/lorem/email/slug. "
+                                     "timestamp: Timestamp conversion."
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text/data to process"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
+                    },
+                    "operation": {
+                        "type": "string",
+                        "description": "Sub-operation (varies by action). "
+                                     "json_xml: json_prettify|json_minify|json_validate|xml_prettify|xml_minify|xml_validate|json_to_xml|xml_to_json|jsonpath_query. "
+                                     "columns: extract|reorder|delete|transpose|to_fixed_width. "
+                                     "timestamp: to_date|to_timestamp|now. "
+                                     "generate also accepts operation aliases: uuid|password|lorem|random_email|slug."
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["base64", "hash", "number_base"],
+                        "description": "For action=encode: encoding type"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "For action=encode, type=number_base: number to convert"
+                    },
+                    "algorithm": {
+                        "type": "string",
+                        "enum": ["md5", "sha1", "sha256", "sha512", "crc32"],
+                        "description": "For action=encode, type=hash: hash algorithm",
+                        "default": "sha256"
+                    },
+                    "uppercase": {
+                        "type": "boolean",
+                        "description": "For action=encode, type=hash: uppercase output",
+                        "default": False
+                    },
+                    "from_base": {
+                        "type": "string",
+                        "enum": ["binary", "octal", "decimal", "hex", "auto"],
+                        "description": "For action=encode, type=number_base: source base",
+                        "default": "auto"
+                    },
+                    "to_base": {
+                        "type": "string",
+                        "enum": ["binary", "octal", "decimal", "hex", "all"],
+                        "description": "For action=encode, type=number_base: target base",
+                        "default": "all"
+                    },
+                    "delimiter": {
+                        "type": "string",
+                        "description": "For action=columns: column delimiter"
+                    },
+                    "column_index": {
+                        "type": "integer",
+                        "description": "For action=columns, operation=extract/delete: zero-based column index",
+                        "default": 0
+                    },
+                    "column_order": {
+                        "type": "string",
+                        "description": "For action=columns, operation=reorder: comma-separated indices (e.g., '2,0,1')"
+                    },
+                    "indent": {
+                        "type": "integer",
+                        "description": "For action=json_xml: indentation level",
+                        "default": 2
+                    },
+                    "json_path": {
+                        "type": "string",
+                        "description": "For action=json_xml, operation=jsonpath_query: JSONPath expression"
+                    },
+                    "generator": {
+                        "type": "string",
+                        "enum": ["password", "uuid", "lorem_ipsum", "random_email", "slug"],
+                        "description": "For action=generate: generator type"
+                    },
+                    "uuid_version": {
+                        "type": "integer",
+                        "enum": [1, 4],
+                        "description": "For action=generate, generator=uuid: UUID version",
+                        "default": 4
+                    },
+                    "timestamp_value": {
+                        "type": "string",
+                        "description": "For action=timestamp: timestamp or date string to convert (alias for value)"
+                    },
+                    "input_format": {
+                        "type": "string",
+                        "description": "For action=timestamp: accepted for compatibility; value is auto-parsed by the current handler"
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "description": "For action=timestamp: output format alias for format"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["iso", "us", "eu", "long", "short"],
+                        "description": "For action=timestamp: output date format",
+                        "default": "iso"
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "description": "For action=timestamp: timezone"
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "For action=generate: number of items to generate",
+                        "default": 1
+                    },
+                    "length": {
+                        "type": "integer",
+                        "description": "For action=generate, operation=password: password length",
+                        "default": 16
+                    },
+                    "include_special": {
+                        "type": "boolean",
+                        "description": "For action=generate, operation=password: include special characters",
+                        "default": True
+                    },
+                    "lorem_type": {
+                        "type": "string",
+                        "enum": ["words", "sentences", "paragraphs"],
+                        "description": "For action=generate, generator=lorem_ipsum: unit type",
+                        "default": "paragraphs"
+                    },
+                    "words": {
+                        "type": "integer",
+                        "description": "For action=generate, operation=lorem: number of words",
+                        "default": 50
+                    },
+                    "paragraphs": {
+                        "type": "integer",
+                        "description": "For action=generate, operation=lorem: number of paragraphs",
+                        "default": 1
+                    },
+                    "separator": {
+                        "type": "string",
+                        "description": "For action=generate, generator=slug: word separator",
+                        "default": "-"
+                    },
+                    "lowercase": {
+                        "type": "boolean",
+                        "description": "For action=generate, generator=slug: convert to lowercase",
+                        "default": True
+                    },
+                    "transliterate": {
+                        "type": "boolean",
+                        "description": "For action=generate, generator=slug: convert accented characters to ASCII",
+                        "default": True
+                    },
+                    "max_length": {
+                        "type": "integer",
+                        "description": "For action=generate, generator=slug: maximum slug length (0 = unlimited)",
+                        "default": 0
+                    },
+                    "remove_stopwords": {
+                        "type": "boolean",
+                        "description": "For action=generate, generator=slug: remove common stop words",
+                        "default": False
+                    }
+                },
+                "required": ["action"]
+            },
+            handler=self._handle_compound_data_tools,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+        ))
+    
+    def _handle_compound_data_tools(self, args: Dict[str, Any]) -> str:
+        """Route data tools compound to appropriate handler."""
+        action = args.get("action", "")
+        if action == "json_xml":
+            routed_args = dict(args)
+            operation_aliases = {
+                "format_json": "json_prettify",
+                "minify_json": "json_minify",
+                "validate_json": "json_validate",
+                "format_xml": "xml_prettify",
+                "minify_xml": "xml_minify",
+                "validate_xml": "xml_validate",
+                "json_path": "jsonpath_query",
+            }
+            operation = routed_args.get("operation")
+            if operation in operation_aliases:
+                routed_args["operation"] = operation_aliases[operation]
+            return self._handle_json_xml(routed_args)
+        elif action == "columns":
+            return self._handle_column_tools(args)
+        elif action == "encode":
+            return self._handle_encode(args)
+        elif action == "generate":
+            routed_args = dict(args)
+            if "generator" not in routed_args:
+                generator_aliases = {
+                    "uuid": "uuid",
+                    "password": "password",
+                    "lorem": "lorem_ipsum",
+                    "lorem_ipsum": "lorem_ipsum",
+                    "random_email": "random_email",
+                    "email": "random_email",
+                    "slug": "slug",
+                }
+                operation = routed_args.get("operation")
+                if operation in generator_aliases:
+                    routed_args["generator"] = generator_aliases[operation]
+            if routed_args.get("generator") == "lorem_ipsum":
+                if "words" in routed_args and "count" not in routed_args:
+                    routed_args["count"] = routed_args["words"]
+                    routed_args["lorem_type"] = "words"
+                elif "paragraphs" in routed_args and "count" not in routed_args:
+                    routed_args["count"] = routed_args["paragraphs"]
+                    routed_args["lorem_type"] = "paragraphs"
+            return self._handle_generators(routed_args)
+        elif action == "timestamp":
+            routed_args = dict(args)
+            if "value" not in routed_args and "timestamp_value" in routed_args:
+                routed_args["value"] = routed_args["timestamp_value"]
+            if "format" not in routed_args and "output_format" in routed_args:
+                routed_args["format"] = routed_args["output_format"]
+            if "operation" not in routed_args:
+                if not routed_args.get("value"):
+                    routed_args["operation"] = "now"
+                elif routed_args.get("output_format") == "unix":
+                    routed_args["operation"] = "to_timestamp"
+                else:
+                    routed_args["operation"] = "to_date"
+            return self._handle_timestamp(routed_args)
+        else:
+            return f"Error: Unknown action '{action}'. Valid actions: json_xml, columns, encode, generate, timestamp"
+    
+    def _register_compound_analysis(self) -> None:
+        """Register compound Analysis tool (merges text_stats, word_frequency, list_compare, html)."""
+        self.register(MCPToolAdapter(
+            name="pomera_analysis",
+            description=(
+                "Text analysis and comparison tools. Actions: "
+                "stats (character/word/line/sentence counts, reading time), "
+                "frequency (word frequency analysis with sorting), "
+                "compare_lists (compare two lists: all/only_a/only_b/in_both), "
+                "html (HTML visible text, cleaning, links, images, headings, tables, forms). "
+                "Can save selected outputs to files."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["stats", "frequency", "compare_lists", "html"],
+                        "description": "stats: Text statistics (counts, reading time). "
+                                     "frequency: Word frequency analysis. "
+                                     "compare_lists: Compare two lists. "
+                                     "html: HTML parsing and extraction."
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text to analyze (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path"
+                    },
+                    "words_per_minute": {
+                        "type": "integer",
+                        "description": "For action=stats: reading speed for time estimate",
+                        "default": 200
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "For action=frequency: optional number of top words to show"
+                    },
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["frequency", "alphabetical"],
+                        "description": "For action=frequency: sort order",
+                        "default": "frequency"
+                    },
+                    "min_length": {
+                        "type": "integer",
+                        "description": "For action=frequency: minimum word length",
+                        "default": 1
+                    },
+                    "list_a": {
+                        "type": "string",
+                        "description": "For action=compare_lists: first list (one item per line)"
+                    },
+                    "list_a_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "For action=compare_lists: treat list_a as a file path"
+                    },
+                    "list_b": {
+                        "type": "string",
+                        "description": "For action=compare_lists: second list (one item per line)"
+                    },
+                    "list_b_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "For action=compare_lists: treat list_b as a file path"
+                    },
+                    "operation": {
+                        "type": "string",
+                        "description": "For action=compare_lists: aliases intersection|difference_a|difference_b. "
+                                     "For action=html: visible_text|clean_html|extract_links|extract_images|extract_headings|extract_tables|extract_forms."
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["all", "only_a", "only_b", "in_both"],
+                        "description": "For action=compare_lists: result subset to return",
+                        "default": "all"
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "For action=compare_lists: case-sensitive comparison alias",
+                        "default": True
+                    },
+                    "case_insensitive": {
+                        "type": "boolean",
+                        "description": "For action=compare_lists: perform case-insensitive comparison",
+                        "default": False
+                    },
+                    "html_content": {
+                        "type": "string",
+                        "description": "For action=html: HTML content to parse (alias for text)"
+                    },
+                    "selector": {
+                        "type": "string",
+                        "description": "Reserved for future CSS selector support"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
+                    }
+                },
+                "required": ["action"]
+            },
+            handler=self._handle_compound_analysis,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+        ))
+    
+    def _handle_compound_analysis(self, args: Dict[str, Any]) -> str:
+        """Route analysis compound to appropriate handler."""
+        action = args.get("action", "")
+        if action == "stats":
+            return self._handle_text_stats(args)
+        elif action == "frequency":
+            return self._handle_word_frequency(args)
+        elif action == "compare_lists":
+            routed_args = dict(args)
+            operation_aliases = {
+                "intersection": "in_both",
+                "difference_a": "only_a",
+                "difference_b": "only_b",
+            }
+            operation = routed_args.get("operation")
+            if operation in operation_aliases and "output_format" not in routed_args:
+                routed_args["output_format"] = operation_aliases[operation]
+            if "case_sensitive" in routed_args and "case_insensitive" not in routed_args:
+                routed_args["case_insensitive"] = not routed_args["case_sensitive"]
+            return self._handle_list_comparator(routed_args)
+        elif action == "html":
+            routed_args = dict(args)
+            if "text" not in routed_args and "html_content" in routed_args:
+                routed_args["text"] = routed_args["html_content"]
+            operation_aliases = {
+                "extract_text": "visible_text",
+                "strip_tags": "visible_text",
+            }
+            operation = routed_args.get("operation")
+            if operation in operation_aliases:
+                routed_args["operation"] = operation_aliases[operation]
+            return self._handle_html_tool(routed_args)
+        else:
+            return f"Error: Unknown action '{action}'. Valid actions: stats, frequency, compare_lists, html"
+    
+    def _register_compound_specialist(self) -> None:
+        """Register compound Specialist tool (merges rarely-used specialized tools)."""
+        self.register(MCPToolAdapter(
+            name="pomera_specialist",
+            description=(
+                "Specialized text tools for uncommon tasks. Actions: "
+                "extract (regex/email/URL/IP/phone/date extraction from text), "
+                "escape (escape/unescape strings: JSON/HTML/URL/XML), "
+                "markdown (strip formatting, extract links/headers, table conversion/formatting), "
+                "url_parse (parse URL into components: scheme, host, path, query, fragment), "
+                "translate (Morse code/binary text encoding/decoding), "
+                "cron (parse/explain cron expressions, calculate next runs), "
+                "email_header (analyze email headers: routing, SPF/DKIM, delays)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["extract", "escape", "markdown", "url_parse", "translate", "cron", "email_header"],
+                        "description": "extract: Regex/email/URL extraction. "
+                                     "escape: JSON/HTML/URL/XML escape/unescape. "
+                                     "markdown: Markdown processing/TOC. "
+                                     "url_parse: Parse URL components. "
+                                     "translate: Morse/binary encoding. "
+                                     "cron: Cron expression parsing. "
+                                     "email_header: Email header analysis."
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text to process (or file path if text_is_file=true)"
+                    },
+                    "text_is_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "If true, treat 'text' as file path"
+                    },
+                    "output_to_file": {
+                        "type": "string",
+                        "description": "If provided, save result to this file path"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "regex", "emails", "urls", "ip_addresses", "phone_numbers", "dates",
+                            "to_morse", "from_morse", "to_binary", "from_binary"
+                        ],
+                        "description": "For action=extract: extraction type. For action=translate: translation mode."
+                    },
+                    "pattern": {
+                        "type": "string",
+                        "description": "For action=extract, type=regex: regex pattern"
+                    },
+                    "group": {
+                        "type": "integer",
+                        "description": "For action=extract, type=regex: capture group number",
+                        "default": 0
+                    },
+                    "operation": {
+                        "type": "string",
+                        "description": "For action=escape: json_escape|json_unescape|html_escape|html_unescape|url_encode|url_decode|xml_escape|xml_unescape. "
+                                     "For action=markdown: strip|extract_links|extract_headers|table_to_csv|format_table."
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["morse", "binary"],
+                        "description": "For action=translate: translation format"
+                    },
+                    "direction": {
+                        "type": "string",
+                        "enum": ["encode", "decode", "auto"],
+                        "description": "For action=translate: translation direction",
+                        "default": "encode"
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "For action=url_parse: URL to parse"
+                    },
+                    "expression": {
+                        "type": "string",
+                        "description": "For action=cron: cron expression to parse/explain"
+                    },
+                    "next_runs": {
+                        "type": "integer",
+                        "description": "For action=cron: number of next run times to calculate",
+                        "default": 5
+                    },
+                    "headers": {
+                        "type": "string",
+                        "description": "For action=email_header: raw email headers to analyze"
+                    }
+                },
+                "required": ["action"]
+            },
+            handler=self._handle_compound_specialist,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+        ))
+    
+    def _handle_compound_specialist(self, args: Dict[str, Any]) -> str:
+        """Route specialist compound to appropriate handler."""
+        action = args.get("action", "")
+        if action == "extract":
+            return self._handle_extract(args)
+        elif action == "escape":
+            return self._handle_string_escape(args)
+        elif action == "markdown":
+            routed_args = dict(args)
+            operation_aliases = {
+                "strip_formatting": "strip",
+                "extract_headings": "extract_headers",
+                "generate_toc": "extract_headers",
+                "format": "format_table",
+            }
+            operation = routed_args.get("operation")
+            if operation in operation_aliases:
+                routed_args["operation"] = operation_aliases[operation]
+            return self._handle_markdown_tools(routed_args)
+        elif action == "url_parse":
+            return self._handle_url_parse(args)
+        elif action == "translate":
+            routed_args = dict(args)
+            mode = routed_args.get("type")
+            translate_aliases = {
+                "to_morse": ("morse", "encode"),
+                "from_morse": ("morse", "decode"),
+                "to_binary": ("binary", "encode"),
+                "from_binary": ("binary", "decode"),
+            }
+            if mode in translate_aliases:
+                routed_args["format"], routed_args["direction"] = translate_aliases[mode]
+            return self._handle_translator(routed_args)
+        elif action == "cron":
+            routed_args = dict(args)
+            if "next_runs" in routed_args and "operation" not in routed_args:
+                routed_args["operation"] = "next_runs"
+                routed_args["count"] = routed_args["next_runs"]
+            return self._handle_cron(routed_args)
+        elif action == "email_header":
+            routed_args = dict(args)
+            if "text" not in routed_args and "headers" in routed_args:
+                routed_args["text"] = routed_args["headers"]
+            return self._handle_email_header_analyzer(routed_args)
+        else:
+            return (f"Error: Unknown action '{action}'. Valid actions: "
+                    "extract, escape, markdown, url_parse, translate, cron, email_header")
+    
+    def _register_compound_system(self) -> None:
+        """Register compound System tool (merges diagnose + launch_gui)."""
+        self.register(MCPToolAdapter(
+            name="pomera_system",
+            description=(
+                "System operations. Actions: "
+                "diagnose (check MCP config, database paths, API keys, GUI availability, "
+                "performance metrics with per-tool latency p50/p95/p99, error rates), "
+                "launch_gui (launch Pomera GUI application in separate process)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["diagnose", "launch_gui"],
+                        "description": "diagnose: System diagnostics (paths, keys, performance). "
+                                     "launch_gui: Launch Pomera GUI application."
+                    },
+                    "verbose": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "For action=diagnose: include detailed path info"
+                    },
+                    "wait_for_close": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "For action=launch_gui: wait for GUI to close before returning"
+                    },
+                    "tool_tab": {
+                        "type": "string",
+                        "description": "For action=launch_gui: tab to focus (e.g., 'Notes', 'AI Tools')"
+                    }
+                },
+                "required": ["action"]
+            },
+            handler=self._handle_compound_system,
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+        ))
+    
+    def _handle_compound_system(self, args: Dict[str, Any]) -> str:
+        """Route system compound to appropriate handler."""
+        action = args.get("action", "")
+        if action == "diagnose":
+            return self._handle_diagnose(args)
+        elif action == "launch_gui":
+            return self._handle_launch_gui(args)
+        else:
+            return f"Error: Unknown action '{action}'. Valid actions: diagnose, launch_gui"
 
     
     def _register_case_tool(self) -> None:
@@ -300,7 +1240,7 @@ class ToolRegistry:
                 "required": ["text", "mode"]
             },
             handler=self._handle_case_transform,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_case_transform(self, args: Dict[str, Any]) -> str:
@@ -516,7 +1456,7 @@ class ToolRegistry:
                 "required": ["text", "operation"]
             },
             handler=self._handle_line_tools,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_line_tools(self, args: Dict[str, Any]) -> str:
@@ -601,7 +1541,7 @@ class ToolRegistry:
                 "required": ["text", "operation"]
             },
             handler=self._handle_whitespace_tools,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_whitespace_tools(self, args: Dict[str, Any]) -> str:
@@ -667,7 +1607,7 @@ class ToolRegistry:
                 "required": ["text", "operation"]
             },
             handler=self._handle_string_escape,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_string_escape(self, args: Dict[str, Any]) -> str:
@@ -747,7 +1687,7 @@ class ToolRegistry:
                 "required": ["text", "sort_type"]
             },
             handler=self._handle_sorter,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_sorter(self, args: Dict[str, Any]) -> str:
@@ -876,7 +1816,7 @@ class ToolRegistry:
                 "required": ["text", "operation"]
             },
             handler=self._handle_json_xml,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_json_xml(self, args: Dict[str, Any]) -> str:
@@ -928,6 +1868,21 @@ class ToolRegistry:
                 root = ET.fromstring(text)
                 data = self._xml_to_dict(root)
                 result = json.dumps(data, indent=indent, ensure_ascii=False)
+
+            elif operation == "jsonpath_query":
+                try:
+                    from jsonpath_ng import parse
+                except ImportError:
+                    return "Error: JSONPath support requires the 'jsonpath-ng' package"
+
+                data = json.loads(text)
+                query = args.get("json_path", "$")
+                matches = parse(query).find(data)
+                result = json.dumps(
+                    [match.value for match in matches],
+                    indent=indent,
+                    ensure_ascii=False
+                )
             
             else:
                 result = f"Unknown operation: {operation}"
@@ -1061,7 +2016,7 @@ class ToolRegistry:
                 "required": ["text"]
             },
             handler=self._handle_text_wrap,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_text_wrap(self, args: Dict[str, Any]) -> str:
@@ -1334,7 +2289,8 @@ class ToolRegistry:
     
     def _handle_extract(self, args: Dict[str, Any]) -> str:
         """Route extraction to appropriate handler."""
-        from .file_io_helpers import process_file_args
+        from .file_io_helpers import process_file_args, handle_file_output
+        import re
         
         # Process file input
         success, args, error = process_file_args(args, {"text": "text_is_file"})
@@ -1344,13 +2300,26 @@ class ToolRegistry:
         extract_type = args.get("type", "")
         
         if extract_type == "regex":
-            return self._handle_regex_extract(args)
+            return handle_file_output(args, self._handle_regex_extract(args))
         elif extract_type == "emails":
             return self._handle_email_extraction(args)
         elif extract_type == "urls":
             return self._handle_url_extraction(args)
+        elif extract_type in ("ip_addresses", "phone_numbers", "dates"):
+            patterns = {
+                "ip_addresses": r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+                "phone_numbers": r"\b\+?\d[\d\s().-]{7,}\d\b",
+                "dates": r"\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})\b",
+            }
+            matches = re.findall(patterns[extract_type], args.get("text", ""))
+            if args.get("omit_duplicates", False):
+                matches = list(dict.fromkeys(matches))
+            if args.get("sort_results", False):
+                matches = sorted(matches)
+            return handle_file_output(args, "\n".join(matches) if matches else "No matches found.")
         else:
-            return f"Unknown extraction type: {extract_type}. Valid types: regex, emails, urls"
+            return ("Unknown extraction type: "
+                    f"{extract_type}. Valid types: regex, emails, urls, ip_addresses, phone_numbers, dates")
     
     def _handle_regex_extract(self, args: Dict[str, Any]) -> str:
         """Handle regex extractor tool execution."""
@@ -1419,7 +2388,7 @@ class ToolRegistry:
                 "required": ["text", "operation"]
             },
             handler=self._handle_markdown_tools,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_markdown_tools(self, args: Dict[str, Any]) -> str:
@@ -1489,7 +2458,7 @@ class ToolRegistry:
                 "required": ["text", "format"]
             },
             handler=self._handle_translator,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_translator(self, args: Dict[str, Any]) -> str:
@@ -1510,8 +2479,15 @@ class ToolRegistry:
             mode = "morse" if direction == "encode" else "text"
             result = TranslatorToolsProcessor.morse_translator(text, mode)
         elif fmt == "binary":
-            # Binary translator auto-detects direction
-            result = TranslatorToolsProcessor.binary_translator(text)
+            if direction == "encode":
+                result = ' '.join(format(ord(char), '08b') for char in text)
+            elif direction == "decode":
+                try:
+                    result = ''.join(chr(int(part, 2)) for part in text.split())
+                except (ValueError, TypeError):
+                    result = "Error: Invalid binary sequence."
+            else:
+                result = TranslatorToolsProcessor.binary_translator(text)
         else:
             result = f"Unknown format: {fmt}"
         
@@ -1842,6 +2818,8 @@ class ToolRegistry:
         """Handle word frequency counter tool execution."""
         from .file_io_helpers import process_file_args
         from tools.word_frequency_counter import WordFrequencyCounterProcessor
+        from collections import Counter
+        import re
         
         # Process file input
         success, args, error = process_file_args(args, {"text": "text_is_file"})
@@ -1849,6 +2827,33 @@ class ToolRegistry:
             return error
         
         text = args.get("text", "")
+        top_n = args.get("top_n")
+        sort_by = args.get("sort_by", "frequency")
+        min_length = args.get("min_length", 1)
+
+        if top_n is not None or sort_by != "frequency" or min_length > 1:
+            words = [
+                word.lower()
+                for word in re.findall(r"\b\w+\b", text)
+                if len(word) >= min_length
+            ]
+            if not words:
+                return "No words found."
+
+            counts = Counter(words)
+            total_words = len(words)
+            if sort_by == "alphabetical":
+                items = sorted(counts.items())
+            else:
+                items = counts.most_common()
+            if top_n is not None:
+                items = items[:top_n]
+
+            return "\n".join(
+                f"{word} ({count} / {(count / total_words) * 100:.2f}%)"
+                for word, count in items
+            )
+
         return WordFrequencyCounterProcessor.word_frequency(text)
     
     def _register_column_tools(self) -> None:
@@ -1896,7 +2901,7 @@ class ToolRegistry:
                 "required": ["text", "operation"]
             },
             handler=self._handle_column_tools,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_column_tools(self, args: Dict[str, Any]) -> str:
@@ -2004,7 +3009,7 @@ class ToolRegistry:
                 "required": ["generator"]
             },
             handler=self._handle_generators,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_generators(self, args: Dict[str, Any]) -> str:
@@ -2019,8 +3024,11 @@ class ToolRegistry:
         
         if generator == "password":
             length = args.get("length", 20)
+            include_special = args.get("include_special", True)
             results = []
-            chars = string.ascii_letters + string.digits + string.punctuation
+            chars = string.ascii_letters + string.digits
+            if include_special:
+                chars += string.punctuation
             for _ in range(count):
                 results.append(''.join(random.choices(chars, k=length)))
             result = "\n".join(results)
@@ -2919,7 +3927,7 @@ class ToolRegistry:
                 "required": ["text"]
             },
             handler=self._handle_email_header_analyzer,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_email_header_analyzer(self, args: Dict[str, Any]) -> str:
@@ -3031,7 +4039,7 @@ class ToolRegistry:
                 "required": ["text"]
             },
             handler=self._handle_html_tool,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_html_tool(self, args: Dict[str, Any]) -> str:
@@ -3116,7 +4124,7 @@ class ToolRegistry:
                 "required": ["list_a", "list_b"]
             },
             handler=self._handle_list_comparator,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_list_comparator(self, args: Dict[str, Any]) -> str:
@@ -3782,7 +4790,7 @@ class ToolRegistry:
                 "required": ["query"]
             },
             handler=self._handle_web_search,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
         ))
     
     def _handle_web_search(self, args: Dict[str, Any]) -> str:
@@ -4173,7 +5181,7 @@ class ToolRegistry:
                 "required": ["url"]
             },
             handler=self._handle_read_url,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
         ))
     
     def _handle_read_url(self, args: Dict[str, Any]) -> str:
@@ -4385,7 +5393,7 @@ class ToolRegistry:
                 "required": ["before", "after"]
             },
             handler=self._handle_smart_diff_2way,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_smart_diff_2way(self, args: Dict[str, Any]) -> str:
@@ -4644,7 +5652,7 @@ class ToolRegistry:
                 "required": ["base", "yours", "theirs"]
             },
             handler=self._handle_smart_diff_3way,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
         ))
     
     def _handle_smart_diff_3way(self, args: Dict[str, Any]) -> str:
@@ -4766,14 +5774,14 @@ class ToolRegistry:
                 
                 "**RESEARCH ACTION** (OpenAI, Anthropic AI, OpenRouterAI & Google AI):\\n"
                 "- OpenAI: GPT-5.5 with reasoning_effort (xhigh)\\n"
-                "- Anthropic: Claude Opus 4.7 with adaptive thinking and search_count\\n"
+                "- Anthropic: Claude Opus 4.8 with adaptive thinking and search_count\\n"
                 "- OpenRouter: Various models (gemini-3-flash, sonar-deep-research) with max_results\\n"
                 "- Google AI: Deep Research via Interactions API (deep-research-preview, async polling)\\n"
                 "- Mode: two-stage (search → reason) or single (combined)\\n"
                 "- Style presets: analytical, concise, creative, report\\n\\n"
                 
                 "**DEEPREASONING ACTION** (Anthropic AI only):\\n"
-                "- Uses Claude Opus 4.6 Adaptive Thinking\\n"
+                "- Uses Claude Opus 4.8 Adaptive Thinking\\n"
                 "- 6-step protocol: Decompose → Search → Decide → Analyze → Verify → Synthesize\\n"
                 "- Optional web search during reasoning\\n"
                 "- Thinking budget control (1K-128K tokens)\\n\\n"
@@ -4859,7 +5867,7 @@ class ToolRegistry:
                     # Research-specific parameters
                     "research_model": {
                         "type": "string",
-                        "description": "Model for research/deepreasoning. OpenAI: gpt-5.5, Anthropic: claude-opus-4-7, "
+                        "description": "Model for research/deepreasoning. OpenAI: gpt-5.5, Anthropic: claude-opus-4-8, "
                                      "OpenRouter: perplexity/sonar-deep-research, Google AI: deep-research-preview-04-2026"
                     },
                     "research_mode": {
@@ -4917,7 +5925,7 @@ class ToolRegistry:
                 "required": []
             },
             handler=self._handle_ai_tools,
-            annotations=MCPToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+            annotations=MCPToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
         ))
     
     def _handle_ai_tools(self, args: Dict[str, Any]) -> str:
@@ -5144,7 +6152,7 @@ class ToolRegistry:
                 max_results = 0  # Not used for Google AI
             else:  # Anthropic AI
                 # Anthropic-specific settings - always uses Claude native search
-                research_model = get_setting("research_model", "research_model", "claude-opus-4-7")
+                research_model = get_setting("research_model", "research_model", "claude-opus-4-8")
                 thinking_budget = get_setting("thinking_budget", "research_thinking_budget", 32000)
                 search_count = get_setting("search_count", "research_search_count", 20)
                 reasoning_effort = "xhigh"  # Not used for Anthropic
@@ -5267,7 +6275,7 @@ class ToolRegistry:
                 return default
             
             # Get settings with GUI defaults (MCP args override)
-            deepreasoning_model = get_dr_setting("research_model", "deepreasoning_model", "claude-opus-4-6")
+            deepreasoning_model = get_dr_setting("research_model", "deepreasoning_model", "claude-opus-4-8")
             thinking_budget = get_dr_setting("thinking_budget", "deepreasoning_thinking_budget", 32000)
             enable_search = get_dr_setting("enable_search", "deepreasoning_enable_search", False)
             search_engine = get_dr_setting("web_search_engine", "deepreasoning_search_engine", "tavily")
@@ -6325,6 +7333,10 @@ class ToolRegistry:
 # Singleton instance for convenience
 
 _default_registry: Optional[ToolRegistry] = None
+
+
+# Backward-compatible import name used by older direct MCP scripts/tests.
+MCPToolRegistry = ToolRegistry
 
 
 def get_registry() -> ToolRegistry:

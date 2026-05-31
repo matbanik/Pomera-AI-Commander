@@ -3,8 +3,13 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from core.semantic_diff import SemanticDiffEngine
+
+if "pytest" in sys.modules and __name__ != "__main__":
+    import pytest
+    pytest.skip("Manual real-world fixture script.", allow_module_level=True)
 
 # Setup paths
 fixtures_dir = Path("tests/fixtures/realworld")

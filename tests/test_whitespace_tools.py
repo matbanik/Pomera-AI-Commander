@@ -128,9 +128,10 @@ class TestWhitespaceToolsMCP:
     """MCP integration tests for pomera_whitespace."""
 
     def test_tool_registration(self, tool_registry):
-        """Verify pomera_whitespace is registered."""
+        """Verify the public compound tool is registered and legacy alias works."""
         tools = {tool.name for tool in tool_registry.list_tools()}
-        assert 'pomera_whitespace' in tools
+        assert 'pomera_text_tools' in tools
+        assert 'pomera_whitespace' in tool_registry
 
     def test_trim_via_mcp(self, tool_registry):
         """Test trim via MCP."""

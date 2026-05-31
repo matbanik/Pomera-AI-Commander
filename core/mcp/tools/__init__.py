@@ -8,7 +8,7 @@ Usage:
     from core.mcp.tools import ToolRegistryV2
     
     registry = ToolRegistryV2()  # loads all tools
-    registry = ToolRegistryV2(enabled_tools={"pomera_diagnose"})  # filtered
+    registry = ToolRegistryV2(enabled_tools={"pomera_system"})  # filtered
 """
 
 import logging

@@ -1,9 +1,9 @@
 """
-MCP integration tests for Smart Diff tools
+MCP integration tests for Smart Diff tools (pomera_smart_diff compound)
 
 Tests the MCP tool registration and execution for:
-- pomera_smart_diff_2way
-- pomera_smart_diff_3way (when implemented)
+- pomera_smart_diff action=compare_2way
+- pomera_smart_diff action=compare_3way
 - Format detection
 - Error handling
 """
@@ -58,36 +58,35 @@ def temp_notes_db():
 
 
 class TestSmartDiff2WayMCP:
-    """Test pomera_smart_diff_2way MCP tool"""
+    """Test pomera_smart_diff MCP tool (2-way comparison)"""
 
     def test_tool_registration(self, tool_registry):
-        """Test that pomera_smart_diff_2way is registered"""
-        assert 'pomera_smart_diff_2way' in tool_registry
+        """Test that pomera_smart_diff is registered"""
+        assert 'pomera_smart_diff' in tool_registry
 
     def test_tool_schema(self, tool_registry):
         """Test that tool has correct schema"""
-        # Tool exists and can be called
-        result = tool_registry.execute('pomera_smart_diff_2way', {
+        result = tool_registry.execute('pomera_smart_diff', {
+            "action": "compare_2way",
             "before": '{}',
             "after": '{}'
         })
-        # If it executes without error, the schema is valid
         assert result is not None
 
     def test_2way_json_comparison(self, tool_registry):
         """Test basic 2-way JSON comparison via MCP"""
         before = '{"name": "John", "age": 30}'
         after = '{"name": "John", "age": 31}'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json"
         })
-        
-        # Parse JSON result
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
         assert result_data["format"] == "json"
         modified = [c for c in result_data["changes"] if c['type'] == 'modified']
@@ -98,15 +97,16 @@ class TestSmartDiff2WayMCP:
         """Test 2-way YAML comparison via MCP"""
         before = "name: John\nage: 30"
         after = "name: John\nage: 31"
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "yaml"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
         assert result_data["format"] == "yaml"
         modified = [c for c in result_data["changes"] if c['type'] == 'modified']
@@ -116,15 +116,16 @@ class TestSmartDiff2WayMCP:
         """Test 2-way ENV comparison via MCP"""
         before = "API_KEY=old_key\nDEBUG=true"
         after = "API_KEY=new_key\nDEBUG=true"
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "env"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
         assert result_data["format"] == "env"
         modified = [c for c in result_data["changes"] if c['type'] == 'modified']
@@ -134,15 +135,16 @@ class TestSmartDiff2WayMCP:
         """Test automatic format detection"""
         before = '{"key": "value1"}'
         after = '{"key": "value2"}'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "auto"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
         assert result_data["format"] == "json"
 
@@ -150,43 +152,42 @@ class TestSmartDiff2WayMCP:
         """Test semantic mode ignoring formatting differences"""
         before = '{"name":"John","age":30}'
         after = '{\n  "name": "John",\n  "age": 30\n}'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json",
             "mode": "semantic"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
-        # Similarity score is string-based, so won't be perfect despite semantic equivalence
-        assert result_data["similarity_score"] >= 80.0  # High similarity
+        assert result_data["similarity_score"] >= 80.0
         modified = [c for c in result_data["changes"] if c['type'] == 'modified']
         assert len(modified) == 0
 
     def test_strict_mode(self, tool_registry):
-        """Test strict mode (may detect formatting as different)"""
+        """Test strict mode"""
         before = '{"name":"John"}'
         after = '{ "name": "John" }'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json",
             "mode": "strict"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
-        # Strict mode might detect differences, but semantic parsing should still work
         assert result_data["format"] == "json"
 
     def test_notes_integration(self, tool_registry, temp_notes_db, monkeypatch):
         """Test saving diff results to notes"""
-        # Monkeypatch the registry's DB path to use our temp database
         monkeypatch.setattr(
             type(tool_registry), '_get_notes_db_path',
             lambda self: temp_notes_db
@@ -195,7 +196,8 @@ class TestSmartDiff2WayMCP:
         before = '{"name": "John", "age": 30}'
         after = '{"name": "John", "age": 31}'
 
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json",
@@ -209,7 +211,6 @@ class TestSmartDiff2WayMCP:
         assert "note_id" in result_data
         assert result_data["note_id"] > 0
 
-        # Verify note was saved in the temp database
         note_id = result_data["note_id"]
         conn = sqlite3.connect(temp_notes_db)
         row = conn.execute(
@@ -219,28 +220,29 @@ class TestSmartDiff2WayMCP:
 
         assert row is not None
         assert row[0] == "Test Diff Result"
-        assert "age" in row[2]  # Output contains the diff text mentioning 'age'
+        assert "age" in row[2]
 
     def test_error_invalid_json(self, tool_registry):
         """Test error handling for invalid JSON"""
         before = '{"broken": }'
         after = '{"valid": "json"}'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is False
         assert "Invalid JSON" in result_data["error"]
 
     def test_error_missing_parameters(self, tool_registry):
         """Test error handling for missing required parameters"""
-        # MCP tools return error results, they don't raise exceptions
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": '{"key": "value"}'
             # Missing 'after' parameter
         })
@@ -251,15 +253,16 @@ class TestSmartDiff2WayMCP:
         """Test error handling for unsupported format"""
         before = '{"key": "value"}'
         after = '{"key": "value2"}'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
-            "format": "xml"  # Unsupported
+            "format": "xml"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is False
         assert "Unsupported format" in result_data["error"]
 
@@ -267,15 +270,16 @@ class TestSmartDiff2WayMCP:
         """Test that similarity score is included in output"""
         before = '{"a": 1, "b": 2, "c": 3}'
         after = '{"a": 1, "b": 99, "c": 3}'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
         assert "similarity_score" in result_data
         assert 0.0 <= result_data["similarity_score"] <= 100.0
@@ -284,16 +288,16 @@ class TestSmartDiff2WayMCP:
         """Test compact output format for AI consumption"""
         before = '{"name": "John", "age": 30, "city": "NYC"}'
         after = '{"name": "John", "age": 31, "city": "NYC"}'
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
-        # Should have structured output
+
         assert "changes" in result_data
         assert "summary" in result_data
         assert "text_output" in result_data
@@ -307,7 +311,7 @@ class TestSmartDiff2WayMCP:
             ],
             "settings": {"theme": "dark", "lang": "en"}
         })
-        
+
         after = json.dumps({
             "users": [
                 {"id": 1, "name": "Alice"},
@@ -316,148 +320,152 @@ class TestSmartDiff2WayMCP:
             ],
             "settings": {"theme": "light", "lang": "en"}
         })
-        
-        result = tool_registry.execute("pomera_smart_diff_2way", {
+
+        result = tool_registry.execute("pomera_smart_diff", {
+            "action": "compare_2way",
             "before": before,
             "after": after,
             "format": "json"
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data["success"] is True
         assert len(result_data["changes"]) > 0
 
 
 # 3-Way Merge Tests
 class TestSmartDiff3WayMCP:
-    """Test pomera_smart_diff_3way MCP tool"""
+    """Test pomera_smart_diff MCP tool (3-way merge)"""
 
     def test_3way_tool_registration(self, tool_registry):
-        """Test that pomera_smart_diff_3way is registered"""
-        assert 'pomera_smart_diff_3way' in tool_registry
-    
+        """Test that pomera_smart_diff is registered"""
+        assert 'pomera_smart_diff' in tool_registry
+
     def test_3way_non_conflicting_merge(self, tool_registry):
         """Test auto-merge of non-conflicting changes"""
         base = '{"host": "localhost", "port": 8080}'
-        yours = '{"host": "localhost", "port": 9000}'  # Changed port
-        theirs = '{"host": "prod.example.com", "port": 8080}'  # Changed host
-        
-        result = tool_registry.execute('pomera_smart_diff_3way', {
+        yours = '{"host": "localhost", "port": 9000}'
+        theirs = '{"host": "prod.example.com", "port": 8080}'
+
+        result = tool_registry.execute('pomera_smart_diff', {
+            'action': 'compare_3way',
             'base': base,
             'yours': yours,
             'theirs': theirs,
             'format': 'json'
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data['success'] is True
         assert result_data['conflict_count'] == 0
         assert result_data['auto_merged_count'] == 2
-        
-        # Verify merged content has both changes
+
         merged = json.loads(result_data['merged'])
-        assert merged['host'] == 'prod.example.com'  # From theirs
-        assert merged['port'] == 9000  # From yours
-    
+        assert merged['host'] == 'prod.example.com'
+        assert merged['port'] == 9000
+
     def test_3way_conflict_detection(self, tool_registry):
         """Test detection of conflicting changes"""
         base = '{"port": 8080}'
         yours = '{"port": 9000}'
         theirs = '{"port": 5000}'
-        
-        result = tool_registry.execute('pomera_smart_diff_3way', {
+
+        result = tool_registry.execute('pomera_smart_diff', {
+            'action': 'compare_3way',
             'base': base,
             'yours': yours,
             'theirs': theirs,
             'format': 'json'
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data['success'] is True
         assert result_data['conflict_count'] == 1
         assert len(result_data['conflicts']) == 1
-        
+
         conflict = result_data['conflicts'][0]
         assert conflict['path'] == 'port'
         assert conflict['base'] == 8080
         assert conflict['yours'] == 9000
         assert conflict['theirs'] == 5000
-    
+
     def test_3way_keep_yours_strategy(self, tool_registry):
         """Test conflict resolution with keep_yours strategy"""
         base = '{"port": 8080}'
         yours = '{"port": 9000}'
         theirs = '{"port": 5000}'
-        
-        result = tool_registry.execute('pomera_smart_diff_3way', {
+
+        result = tool_registry.execute('pomera_smart_diff', {
+            'action': 'compare_3way',
             'base': base,
             'yours': yours,
             'theirs': theirs,
             'format': 'json',
             'conflict_strategy': 'keep_yours'
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data['success'] is True
         assert result_data['conflict_count'] == 1
-        
-        # Merged should use 'yours' value
+
         merged = json.loads(result_data['merged'])
         assert merged['port'] == 9000
-    
+
     def test_3way_keep_theirs_strategy(self, tool_registry):
         """Test conflict resolution with keep_theirs strategy"""
         base = '{"port": 8080}'
         yours = '{"port": 9000}'
         theirs = '{"port": 5000}'
-        
-        result = tool_registry.execute('pomera_smart_diff_3way', {
+
+        result = tool_registry.execute('pomera_smart_diff', {
+            'action': 'compare_3way',
             'base': base,
             'yours': yours,
             'theirs': theirs,
             'format': 'json',
             'conflict_strategy': 'keep_theirs'
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data['success'] is True
-        
-        # Merged should use 'theirs' value
+
         merged = json.loads(result_data['merged'])
         assert merged['port'] == 5000
-    
+
     def test_3way_yaml_merge(self, tool_registry):
         """Test 3-way merge with YAML format"""
         base = "host: localhost\nport: 8080"
         yours = "host: localhost\nport: 9000"
         theirs = "host: prod.com\nport: 8080"
-        
-        result = tool_registry.execute('pomera_smart_diff_3way', {
+
+        result = tool_registry.execute('pomera_smart_diff', {
+            'action': 'compare_3way',
             'base': base,
             'yours': yours,
             'theirs': theirs,
             'format': 'yaml'
         })
-        
+
         result_data = json.loads(get_text(result))
-        
+
         assert result_data['success'] is True
         assert result_data['format'] == 'yaml'
         assert result_data['conflict_count'] == 0
 
     def test_3way_error_missing_parameter(self, tool_registry):
         """Test error handling for missing required parameters"""
-        result = tool_registry.execute('pomera_smart_diff_3way', {
+        result = tool_registry.execute('pomera_smart_diff', {
+            'action': 'compare_3way',
             'base': '{"key": "value"}',
             'yours': '{"key": "value2"}'
             # Missing 'theirs' parameter
         })
-        
+
         result_data = json.loads(get_text(result))
         assert result_data['success'] is False
         assert 'theirs' in result_data['error'].lower()

@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-def test_engine(engine_name: str, query: str = "Python programming") -> dict:
+def _run_engine_test(engine_name: str, query: str = "Python programming") -> dict:
     """
     Test a single search engine.
     
@@ -104,7 +104,7 @@ def run_all_tests():
                 continue
         
         # Run the actual test
-        result = test_engine(engine)
+        result = _run_engine_test(engine)
         results[engine] = result
         
         if result["success"]:

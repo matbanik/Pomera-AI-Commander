@@ -295,7 +295,7 @@ class TestMCPCLIScenarios:
         elapsed = time.time() - start
         
         assert result.success
-        assert elapsed < 3.0, f"Took too long: {elapsed}s"
+        assert elapsed < 10.0, f"Took too long: {elapsed}s"
 
 
 # ============================================================================

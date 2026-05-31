@@ -143,50 +143,50 @@ class TestExecutionParity:
     """V2 tool execution should produce identical results to V1."""
     
     def test_case_transform_parity(self, v1_registry):
-        """pomera_case_transform should produce identical results."""
+        """pomera_text_tools (case action) should produce results."""
         from core.mcp.tools import ToolRegistryV2
         v2 = ToolRegistryV2()
         
-        args = {"text": "hello world", "mode": "upper"}
-        v1_result = v1_registry.execute("pomera_case_transform", args)
-        v2_result = v2.execute("pomera_case_transform", args)
+        args = {"action": "case", "text": "hello world", "mode": "upper"}
+        v1_result = v1_registry.execute("pomera_text_tools", args)
+        v2_result = v2.execute("pomera_text_tools", args)
         
         v1_text = v1_result.content[0].get("text", "")
         v2_text = v2_result.content[0].get("text", "")
         assert v2_text == v1_text == "HELLO WORLD"
     
     def test_text_stats_parity(self, v1_registry):
-        """pomera_text_stats should produce identical results."""
+        """pomera_analysis (stats action) should produce identical results."""
         from core.mcp.tools import ToolRegistryV2
         v2 = ToolRegistryV2()
         
-        args = {"text": "Hello world. This is a test."}
-        v1_result = v1_registry.execute("pomera_text_stats", args)
-        v2_result = v2.execute("pomera_text_stats", args)
+        args = {"action": "stats", "text": "Hello world. This is a test."}
+        v1_result = v1_registry.execute("pomera_analysis", args)
+        v2_result = v2.execute("pomera_analysis", args)
         
         v1_text = v1_result.content[0].get("text", "")
         v2_text = v2_result.content[0].get("text", "")
         assert v2_text == v1_text
     
     def test_line_tools_parity(self, v1_registry):
-        """pomera_line_tools should produce identical results."""
+        """pomera_text_tools (lines action) should produce identical results."""
         from core.mcp.tools import ToolRegistryV2
         v2 = ToolRegistryV2()
         
-        args = {"text": "c\nb\na", "operation": "reverse"}
-        v1_result = v1_registry.execute("pomera_line_tools", args)
-        v2_result = v2.execute("pomera_line_tools", args)
+        args = {"action": "lines", "text": "c\nb\na", "operation": "reverse"}
+        v1_result = v1_registry.execute("pomera_text_tools", args)
+        v2_result = v2.execute("pomera_text_tools", args)
         
         v1_text = v1_result.content[0].get("text", "")
         v2_text = v2_result.content[0].get("text", "")
         assert v2_text == v1_text
     
     def test_diagnose_parity(self, v1_registry):
-        """pomera_diagnose should execute without errors."""
+        """pomera_system (diagnose action) should execute without errors."""
         from core.mcp.tools import ToolRegistryV2
         v2 = ToolRegistryV2()
         
-        result = v2.execute("pomera_diagnose", {"verbose": False})
+        result = v2.execute("pomera_system", {"action": "diagnose", "verbose": False})
         assert result is not None
         assert result.isError is False
 
@@ -201,7 +201,7 @@ class TestFilteringParity:
     def test_filtered_v2_only_has_enabled(self):
         """Filtered V2 should only contain specified tools."""
         from core.mcp.tools import ToolRegistryV2
-        enabled = {"pomera_diagnose", "pomera_notes"}
+        enabled = {"pomera_system", "pomera_notes"}
         v2 = ToolRegistryV2(enabled_tools=enabled)
         
         tool_names = {t.name for t in v2.list_tools()}
@@ -210,10 +210,10 @@ class TestFilteringParity:
     def test_filtered_v2_executes(self):
         """Enabled tools should execute in filtered V2."""
         from core.mcp.tools import ToolRegistryV2
-        v2 = ToolRegistryV2(enabled_tools={"pomera_case_transform"})
+        v2 = ToolRegistryV2(enabled_tools={"pomera_text_tools"})
         
-        result = v2.execute("pomera_case_transform", {
-            "text": "test", "mode": "upper"
+        result = v2.execute("pomera_text_tools", {
+            "action": "case", "text": "test", "mode": "upper"
         })
         text = result.content[0].get("text", "")
         assert text == "TEST"
@@ -225,17 +225,14 @@ class TestFilteringParity:
 
 EXPECTED_MODULES = {
     "text_tools": {
-        "pomera_case_transform", "pomera_line_tools", "pomera_whitespace",
-        "pomera_string_escape", "pomera_sort", "pomera_text_wrap",
-        "pomera_extract", "pomera_markdown",
+        "pomera_text_tools",
     },
     "data_tools": {
-        "pomera_json_xml", "pomera_column_tools", "pomera_encode",
-        "pomera_generators", "pomera_timestamp",
+        "pomera_data_tools",
     },
     "analysis_tools": {
-        "pomera_text_stats", "pomera_word_frequency", "pomera_list_compare",
-        "pomera_html", "pomera_smart_diff_2way", "pomera_smart_diff_3way",
+        "pomera_analysis",
+        "pomera_smart_diff",
     },
     "search_tools": {
         "pomera_web_search", "pomera_read_url",
@@ -247,12 +244,11 @@ EXPECTED_MODULES = {
         "pomera_notes",
     },
     "system_tools": {
-        "pomera_diagnose", "pomera_safe_update", "pomera_launch_gui",
+        "pomera_system", "pomera_safe_update",
         "pomera_find_replace_diff",
     },
     "utility_tools": {
-        "pomera_url_parse", "pomera_translator", "pomera_cron",
-        "pomera_email_header_analyzer",
+        "pomera_specialist",
     },
 }
 

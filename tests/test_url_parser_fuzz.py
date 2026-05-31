@@ -72,7 +72,7 @@ class TestPathTraversal:
         result = URLParserProcessor.parse_url("http://example.com/../../etc/passwd")
         # Should parse as literal string, not execute traversal
         assert isinstance(result, str)
-        assert '../' in result['path'] or 'etc/passwd' in result['path']
+        assert '../' in result or 'etc/passwd' in result
     
     def test_encoded_path_traversal(self):
         """URL with URL-encoded path traversal."""

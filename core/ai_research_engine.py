@@ -2,9 +2,9 @@
 AI Research Engine - Research and Deep Reasoning implementations
 
 Provides research capabilities with extended reasoning and web search:
-- OpenAI Research: GPT-5.2 with xhigh reasoning + web search
-- Anthropic Research: Claude Opus 4.6 with adaptive thinking + web search
-- Anthropic Deep Reasoning: Claude Opus 4.6 adaptive thinking protocol
+- OpenAI Research: GPT-5.5 with xhigh reasoning + web search
+- Anthropic Research: Claude Opus 4.8 with adaptive thinking + web search
+- Anthropic Deep Reasoning: Claude Opus 4.8 adaptive thinking protocol
 
 This module is MCP-accessible via pomera_ai_tools research/deepreasoning actions.
 """
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Research models
 OPENAI_RESEARCH_MODEL = "gpt-5.5"
-ANTHROPIC_RESEARCH_MODEL = "claude-opus-4-7"
+ANTHROPIC_RESEARCH_MODEL = "claude-opus-4-8"
 OPENROUTER_RESEARCH_MODEL = "perplexity/sonar-deep-research"
 
 # Reasoning levels
@@ -124,8 +124,8 @@ class AIResearchEngine:
     Engine for AI Research and Deep Reasoning.
     
     Provides:
-    - research_openai: GPT-5.2 with reasoning + web search
-    - research_anthropic: Claude Opus 4.5 with thinking + web search
+    - research_openai: GPT-5.5 with reasoning + web search
+    - research_anthropic: Claude Opus 4.8 with adaptive thinking + web search
     - deep_reasoning_anthropic: Claude extended thinking protocol
     """
     
@@ -133,6 +133,57 @@ class AIResearchEngine:
         """Initialize research engine."""
         self.logger = logging.getLogger(__name__)
         self.db_settings_manager = db_settings_manager
+    
+    def _is_anthropic_no_sampling_model(self, model: str) -> bool:
+        """Check if Anthropic model requires adaptive thinking (no budget_tokens).
+        
+        Delegates to centralized core.anthropic_compat module.
+        """
+        from core.anthropic_compat import is_anthropic_no_sampling_model
+        return is_anthropic_no_sampling_model(model)
+    
+    def _get_thinking_config(self, model: str, thinking_budget: int) -> dict:
+        """Get the correct thinking configuration for the model.
+        
+        Delegates to centralized core.anthropic_compat module.
+        """
+        from core.anthropic_compat import get_thinking_config
+        return get_thinking_config(model, thinking_budget)
+    
+    def _get_effort_config(self, model: str, effort: str = "high") -> dict:
+        """Get output_config with effort for adaptive thinking models.
+        
+        Delegates to centralized core.anthropic_compat module.
+        """
+        from core.anthropic_compat import get_effort_config
+        return get_effort_config(model, effort)
+    
+    def _supports_adaptive_thinking(self, model: str) -> bool:
+        """Check if model supports adaptive thinking (Opus 4.6+, Sonnet 4.6+).
+        
+        Delegates to centralized core.anthropic_compat module.
+        """
+        from core.anthropic_compat import supports_adaptive_thinking
+        return supports_adaptive_thinking(model)
+    
+    def _clamp_max_tokens(self, model: str, max_tokens: int) -> int:
+        """Clamp max_tokens to the model's output limit.
+        
+        Prevents sending invalid max_tokens (e.g. 128K to Sonnet 4.6 with 64K limit).
+        Delegates to centralized core.anthropic_compat module.
+        """
+        from core.anthropic_compat import clamp_max_tokens
+        return clamp_max_tokens(model, max_tokens)
+    
+    def _normalize_thinking_params(self, model: str, max_tokens: int,
+                                    thinking_budget: int) -> tuple:
+        """Normalize max_tokens and thinking_budget for the model.
+        
+        Ensures max_tokens <= model limit and budget_tokens < max_tokens.
+        Delegates to centralized core.anthropic_compat module.
+        """
+        from core.anthropic_compat import normalize_thinking_params
+        return normalize_thinking_params(model, max_tokens, thinking_budget)
     
     # ========================================================================
     # Web Search Integration
@@ -191,7 +242,7 @@ class AIResearchEngine:
         prompt: str,
         api_key: str,
         # Model selection
-        model: Optional[str] = None,  # Default: gpt-5.2
+        model: Optional[str] = None,  # Default: gpt-5.5
         # Research options
         research_mode: str = "two-stage",  # "two-stage" | "single"
         reasoning_effort: str = "xhigh",   # none/low/medium/high/xhigh
@@ -203,7 +254,7 @@ class AIResearchEngine:
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> ResearchResult:
         """
-        Execute OpenAI research with GPT-5.2 using native web search.
+        Execute OpenAI research with GPT-5.5 using native web search.
         
         Two-stage mode:
           Stage 1: Force web search (reasoning=none)
@@ -447,7 +498,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
         prompt: str,
         api_key: str,
         # Model selection
-        model: Optional[str] = None,  # Default: claude-opus-4-6
+        model: Optional[str] = None,  # Default: claude-opus-4-8
         # Research options
         research_mode: str = "two-stage",
         thinking_budget: int = 32000,
@@ -462,7 +513,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> ResearchResult:
         """
-        Execute Anthropic research with Claude Opus 4.5 using native Claude web search.
+        Execute Anthropic research with Claude using native Claude web search.
         
         Two-stage mode:
           Stage 1: Force web search (no extended thinking)
@@ -472,6 +523,11 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
         """
         # Use provided model or default
         actual_model = model or ANTHROPIC_RESEARCH_MODEL
+        
+        # Normalize max_tokens and thinking_budget for model's output limit
+        # Ensures budget_tokens < max_tokens for non-adaptive models
+        max_tokens, thinking_budget = self._normalize_thinking_params(
+            actual_model, max_tokens, thinking_budget)
         
         try:
             if progress_callback:
@@ -581,12 +637,15 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                     "model": actual_model,
                     "max_tokens": max_tokens,
                     "system": system_prompt,  # STYLE_PRESETS here
-                    "thinking": {
-                        "type": "adaptive"
-                    },
+                    "thinking": self._get_thinking_config(actual_model, thinking_budget),
                     "messages": [{"role": "user", "content": context_message}]
-                    # NO web search tool - just adaptive thinking
+                    # NO web search tool - just thinking
                 }
+                
+                # Add output_config.effort for adaptive thinking models
+                effort_config = self._get_effort_config(actual_model, "high")
+                if effort_config:
+                    stage2_payload["output_config"] = effort_config
                 
                 if progress_callback:
                     progress_callback(50, 100)
@@ -643,14 +702,16 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
                 "model": actual_model,
                 "max_tokens": max_tokens,
                 "system": full_system,
-                "thinking": {
-                    "type": "enabled",
-                    "budget_tokens": thinking_budget
-                },
+                "thinking": self._get_thinking_config(actual_model, thinking_budget),
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
             }
+            
+            # Add output_config.effort for adaptive thinking models
+            effort_config = self._get_effort_config(actual_model, "high")
+            if effort_config:
+                payload["output_config"] = effort_config
             
             # Add Claude native web search tool for single mode
             if research_mode != "two-stage":
@@ -1024,7 +1085,7 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
         prompt: str,
         api_key: str,
         # Model selection
-        model: Optional[str] = None,  # Default: claude-opus-4-6
+        model: Optional[str] = None,  # Default: claude-opus-4-8
         # Thinking options
         thinking_budget: int = 32000,
         # Search options (not used in DeepReasoning, but accepted for API compatibility)
@@ -1053,16 +1114,12 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
         # Use provided model or default
         actual_model = model or ANTHROPIC_RESEARCH_MODEL
         
+        # Normalize max_tokens and thinking_budget for model's output limit
+        # Ensures budget_tokens < max_tokens for non-adaptive models
+        max_tokens, thinking_budget = self._normalize_thinking_params(
+            actual_model, max_tokens, thinking_budget)
+        
         self.logger.debug(f"[DR-DEBUG-1] deep_reasoning_anthropic entered - model={actual_model}, thinking_budget={thinking_budget}")
-        
-        # Validate: max_tokens must be greater than thinking_budget (Anthropic requirement)
-        # See: https://docs.claude.com/en/docs/build-with-claude/extended-thinking#max-tokens-and-context-window-size
-        if max_tokens <= thinking_budget:
-            # Auto-adjust max_tokens to be thinking_budget + 16000 (for response)
-            adjusted_max = thinking_budget + 16000
-            self.logger.warning(f"[DeepReasoning] max_tokens ({max_tokens}) must be > thinking_budget ({thinking_budget}). Adjusting to {adjusted_max}")
-            max_tokens = adjusted_max
-        
         self.logger.debug(f"[DR-DEBUG-2] max_tokens validated: {max_tokens}")
         
         try:
@@ -1086,13 +1143,16 @@ Cite the sources from the search results. Apply deep reasoning to synthesize fin
             payload = {
                 "model": actual_model,
                 "max_tokens": max_tokens,
-                "thinking": {
-                    "type": "adaptive"
-                },
+                "thinking": self._get_thinking_config(actual_model, thinking_budget),
                 "messages": [
                     {"role": "user", "content": deep_think_prompt}
                 ]
             }
+            
+            # Add output_config.effort for adaptive thinking models (xhigh for deep reasoning)
+            effort_config = self._get_effort_config(actual_model, "xhigh")
+            if effort_config:
+                payload["output_config"] = effort_config
             
             if progress_callback:
                 progress_callback(50, 100)

@@ -30,8 +30,8 @@ The AI Tools Widget is a comprehensive multi-provider AI interface that integrat
 - **Local AI Support**: LM Studio integration for running local models without API keys
 - **AWS Integration**: Full AWS Bedrock support with multiple authentication methods and intelligent model filtering
 - **Security**: Encryption at rest for API keys using cryptography library (optional but recommended)
-- **AI Research Mode**: Deep research with extended reasoning + web search (OpenAI GPT-5.2, Anthropic Claude Opus 4.5, OpenRouter)
-- **Deepreasoning Mode**: 6-step structured reasoning protocol with Claude Opus 4.5 Extended Thinking
+- **AI Research Mode**: Deep research with extended reasoning + web search (OpenAI GPT-5.5, Anthropic Claude Opus 4.8, OpenRouter)
+- **Deepreasoning Mode**: 6-step structured reasoning protocol with Claude Opus 4.8 Adaptive Thinking
 
 #### AI Research Action (New)
 
@@ -39,8 +39,8 @@ The AI Tools Widget now supports advanced research capabilities through the `res
 
 | Provider | Model | Features |
 |----------|-------|----------|
-| OpenAI | GPT-5.2 | `reasoning_effort` (xhigh), deep reasoning |
-| Anthropic AI | Claude Opus 4.5 | `thinking_budget`, `search_count`, web search |
+| OpenAI | GPT-5.5 | `reasoning_effort` (xhigh), deep reasoning |
+| Anthropic AI | Claude Opus 4.8 | `thinking_budget` (adaptive for 4.6+), `search_count`, web search |
 | OpenRouterAI | Various (gemini-3-flash, sonar-deep-research) | `max_results`, web search |
 
 **Research Parameters:**
@@ -53,7 +53,7 @@ The AI Tools Widget now supports advanced research capabilities through the `res
 
 #### Deepreasoning Action (New - Anthropic Only)
 
-6-step structured reasoning protocol using Claude Opus 4.5 Extended Thinking:
+6-step structured reasoning protocol using Claude Opus 4.8 Adaptive Thinking:
 1. **Decompose** - Break down complex queries
 2. **Search** - Optional web search during reasoning
 3. **Decide** - Make key determinations
@@ -246,22 +246,27 @@ The system automatically detects your endpoint type based on the URL:
 - **System Prompt Field**: `system` (Anthropic-specific naming)
 - **Headers**: `x-api-key`, `anthropic-version: 2023-06-01`
 
-**Default Model**: `claude-3-5-sonnet-20241022-v2:0`
+**Default Model**: `claude-opus-4-8`
 
 **Available Models**:
-- `claude-3-5-sonnet-20241022-v2:0` - Latest Sonnet with enhanced capabilities, 200K context
-- `claude-3-5-sonnet-20240620` - Previous Sonnet version, 200K context
-- `claude-3-opus-20240229` - Most capable model for complex tasks, 200K context
-- `claude-3-sonnet-20240229` - Balanced performance and speed, 200K context
-- `claude-3-haiku-20240307` - Fast model for simple tasks, 200K context
-- `claude-3-5-haiku-20241022-v1:0` - Latest fast model, 200K context
+- `claude-opus-4-8` - Latest Opus, adaptive thinking, 1M context, 128K output
+- `claude-opus-4-7` - Opus with adaptive thinking, 1M context, 128K output
+- `claude-opus-4-6` - Opus with adaptive thinking, 200K context, 128K output
+- `claude-sonnet-4-6` - Latest Sonnet, adaptive thinking, 1M context, 64K output
+- `claude-sonnet-4-5-20250929` - Sonnet, balanced performance, 200K context
+- `claude-opus-4-5-20251101` - Opus, budgeted thinking, 200K context
+- `claude-haiku-4-5-20251001` - Fast model for simple tasks, 200K context, 64K output
+- `claude-sonnet-4-20250514` - Sonnet base (deprecated), 200K context
+- `claude-opus-4-20250514` - Opus base (deprecated), 200K context
 
 **Key Parameters**:
-- **max_tokens** (1-4096): Maximum response length (required parameter)
-- **temperature** (0.0-1.0): Controls randomness in responses
-- **top_p** (0.0-1.0): Nucleus sampling threshold
-- **top_k** (1-500): Limits vocabulary to top K tokens
+- **max_tokens** (model-dependent): Maximum response length — Opus 4.8/4.7/4.6: 128K, Sonnet 4.6/Haiku 4.5: 64K, Sonnet 4.5/Opus 4.5: 16K. Pomera auto-clamps to model limit.
+- **temperature** (0.0-1.0): Controls randomness (not supported by Opus 4.7+)
+- **top_p** (0.0-1.0): Nucleus sampling (not supported by Opus 4.7+)
+- **top_k** (1-500): Limits vocabulary to top K tokens (not supported by Opus 4.7+)
 - **stop_sequences**: Array of strings that stop generation
+
+> ⚠️ **Note**: Claude Opus 4.7+ models deprecate `temperature`, `top_p`, and `top_k` parameters. Sending these will cause a 400 error. Use prompt engineering instead. Pomera auto-detects these models and strips sampling parameters automatically.
 
 **Best For**: Creative writing, detailed analysis, instruction following, ethical AI applications
 

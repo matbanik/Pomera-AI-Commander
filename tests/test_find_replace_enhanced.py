@@ -7,11 +7,22 @@ Expands coverage with additional edge cases, regex validation, and integration t
 import pytest
 from core.mcp.tool_registry import get_registry
 
+# The tools.find_replace_tool module was removed; unit tests that import
+# FindReplaceProcessor directly are skipped.  MCP integration tests below
+# exercise the same logic through pomera_find_replace_diff.
+_SKIP_UNIT = True
+try:
+    from tools.find_replace_tool import FindReplaceProcessor  # noqa: F401
+    _SKIP_UNIT = False
+except ModuleNotFoundError:
+    pass
+
 
 # ============================================================================
 # Enhanced Unit Tests
 # ============================================================================
 
+@pytest.mark.skipif(_SKIP_UNIT, reason="tools.find_replace_tool module not available")
 class TestFindReplaceEnhanced:
     """Enhanced unit tests for Find & Replace functionality."""
     
@@ -80,6 +91,7 @@ class TestFindReplaceEnhanced:
 # Edge Case Tests  
 # ============================================================================
 
+@pytest.mark.skipif(_SKIP_UNIT, reason="tools.find_replace_tool module not available")
 class TestFindReplaceEdgeCases:
     """Edge case tests for Find & Replace."""
     

@@ -8,7 +8,7 @@ Usage:
     from core.mcp.toolset_config import get_tools_for_toolsets, DEFAULT_TOOLSETS
     
     # Get tools for specific toolsets
-    tools = get_tools_for_toolsets(["core", "text"])
+    tools = get_tools_for_toolsets(["core", "tools"])
     
     # Get default tool set
     tools = get_tools_for_toolsets(DEFAULT_TOOLSETS)
@@ -25,26 +25,8 @@ TOOLSET_DEFINITIONS = {
     "core": [
         "pomera_notes",
         "pomera_find_replace_diff",
-        "pomera_diagnose",
-        "pomera_launch_gui",
         "pomera_safe_update",
-    ],
-    "text": [
-        "pomera_case_transform",
-        "pomera_line_tools",
-        "pomera_whitespace",
-        "pomera_string_escape",
-        "pomera_sort",
-        "pomera_text_wrap",
-        "pomera_extract",
-        "pomera_markdown",
-    ],
-    "data": [
-        "pomera_json_xml",
-        "pomera_column_tools",
-        "pomera_encode",
-        "pomera_generators",
-        "pomera_timestamp",
+        "pomera_system",
     ],
     "search": [
         "pomera_web_search",
@@ -53,19 +35,12 @@ TOOLSET_DEFINITIONS = {
     "ai": [
         "pomera_ai_tools",
     ],
-    "analysis": [
-        "pomera_text_stats",
-        "pomera_word_frequency",
-        "pomera_list_compare",
-        "pomera_html",
-        "pomera_smart_diff_2way",
-        "pomera_smart_diff_3way",
-    ],
-    "utility": [
-        "pomera_url_parse",
-        "pomera_translator",
-        "pomera_cron",
-        "pomera_email_header_analyzer",
+    "tools": [
+        "pomera_smart_diff",
+        "pomera_text_tools",
+        "pomera_data_tools",
+        "pomera_analysis",
+        "pomera_specialist",
     ],
 }
 
@@ -74,12 +49,9 @@ TOOLSET_DEFINITIONS = {
 # Includes all groups — users opt OUT of groups they don't need.
 DEFAULT_TOOLSETS = [
     "core",
-    "text",
-    "data",
     "search",
     "ai",
-    "analysis",
-    "utility",
+    "tools",
 ]
 
 

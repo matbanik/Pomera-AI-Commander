@@ -272,14 +272,15 @@ class TestToolSearchWidgetMacOSClick:
             "Missing _on_listbox_click_macos method for macOS single-click support"
 
     def test_macos_click_handler_delegates_to_select(self):
-        """_on_listbox_click_macos should delegate to _on_listbox_select."""
+        """_on_listbox_click_macos should trigger tool selection via _select_tool."""
         from core.tool_search_widget import ToolSearchPalette
         
-        # Check the method source references _on_listbox_select
+        # Check the method source references _select_tool (direct call)
+        # or _on_listbox_select (delegation) — either is valid
         import inspect
         source = inspect.getsource(ToolSearchPalette._on_listbox_click_macos)
-        assert "_on_listbox_select" in source, \
-            "_on_listbox_click_macos should delegate to _on_listbox_select"
+        assert "_select_tool" in source or "_on_listbox_select" in source, \
+            "_on_listbox_click_macos should select a tool via _select_tool or _on_listbox_select"
 
     def test_macos_click_handler_checks_listbox(self):
         """_on_listbox_click_macos should check if _popup_listbox exists."""

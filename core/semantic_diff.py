@@ -1198,7 +1198,7 @@ class SemanticDiffEngine:
                 total_before_values = before_stats['total_values']
                 if total_before_values > 0:
                     total_changes = modified_count + added_count + removed_count
-                    change_percentage = round((total_changes / total_before_values) * 100, 2)
+                    change_percentage = round(min(100.0, (total_changes / total_before_values) * 100), 2)
                 else:
                     change_percentage = 0.0
             
@@ -1217,6 +1217,9 @@ class SemanticDiffEngine:
                 text_output=text_output,
                 similarity_score=similarity,
                 warnings=warnings,
+                before_stats=before_stats,
+                after_stats=after_stats,
+                change_percentage=change_percentage,
             )
             
         except ValueError as e:

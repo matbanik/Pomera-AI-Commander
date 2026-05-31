@@ -178,31 +178,15 @@ def tool_registry():
     return get_registry()
 
 
-# Tools that should be read-only (pure text transforms, no side effects)
+# Tools that should be read-only (no file, note, process, or network side effects)
 READ_ONLY_TOOLS = {
-    "pomera_case_transform",
     "pomera_encode",
-    "pomera_line_tools",
-    "pomera_whitespace",
-    "pomera_string_escape",
-    "pomera_sort",
     "pomera_text_stats",
-    "pomera_json_xml",
     "pomera_url_parse",
-    "pomera_text_wrap",
     "pomera_timestamp",
     "pomera_extract",
-    "pomera_markdown",
-    "pomera_translator",
     "pomera_cron",
     "pomera_word_frequency",
-    "pomera_column_tools",
-    "pomera_generators",
-    "pomera_email_header_analyzer",
-    "pomera_html",
-    "pomera_list_compare",
-    "pomera_web_search",
-    "pomera_read_url",
     "pomera_diagnose",
 }
 
@@ -215,9 +199,9 @@ MIXED_TOOLS = {
 
 # Tools that are neither purely read-only nor destructive
 OTHER_TOOLS = {
-    "pomera_ai_tools",          # read-only (generates output only)
-    "pomera_smart_diff_2way",   # read-only (comparison)
-    "pomera_smart_diff_3way",   # read-only (merge comparison)
+    "pomera_ai_tools",          # optional output_to_file writes
+    "pomera_smart_diff_2way",   # optional save_to_notes writes
+    "pomera_smart_diff_3way",   # optional save_to_notes writes
     "pomera_launch_gui",        # side-effect (launches process)
 }
 
@@ -276,6 +260,27 @@ class TestAnnotationConsistency:
         
         assert conflicts == [], (
             f"Tools with conflicting readOnlyHint+destructiveHint: {conflicts}"
+        )
+
+    def test_tools_with_write_options_not_marked_readonly(self, tool_registry):
+        """Tools exposing file/note write options should use conservative annotations."""
+        write_option_names = {"output_to_file", "save_to_notes"}
+        wrong = []
+        for tool in tool_registry.list_tools():
+            tool_dict = tool.to_dict()
+            properties = tool_dict.get("inputSchema", {}).get("properties", {})
+            if not write_option_names.intersection(properties):
+                continue
+
+            annotations = tool_dict.get("annotations", {})
+            if annotations.get("readOnlyHint") is not False:
+                wrong.append(f"{tool.name}: readOnlyHint={annotations.get('readOnlyHint')}")
+            if annotations.get("idempotentHint") is not False:
+                wrong.append(f"{tool.name}: idempotentHint={annotations.get('idempotentHint')}")
+
+        assert wrong == [], (
+            "Tools with write options should not be read-only/idempotent:\n" +
+            "\n".join(f"  - {w}" for w in wrong)
         )
     
     def test_read_only_tools_not_destructive(self, tool_registry):

@@ -1,16 +1,9 @@
-"""Text processing tools: case, line, whitespace, escape, sort, wrap, extract, markdown."""
+"""Text processing tools: case, lines, whitespace, sort, wrap (compound)."""
 
 from .base import register_from_v1
 
 TOOLS = {
-    "pomera_case_transform",
-    "pomera_line_tools",
-    "pomera_whitespace",
-    "pomera_string_escape",
-    "pomera_sort",
-    "pomera_text_wrap",
-    "pomera_extract",
-    "pomera_markdown",
+    "pomera_text_tools",
 }
 
 def register_tools(registry) -> None:

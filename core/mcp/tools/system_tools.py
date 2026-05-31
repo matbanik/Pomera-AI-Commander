@@ -1,11 +1,10 @@
-"""System tools: diagnose, safe_update, launch_gui, find_replace_diff."""
+"""System tools: system (diagnose+launch_gui), safe_update, find_replace_diff."""
 
 from .base import register_from_v1
 
 TOOLS = {
-    "pomera_diagnose",
+    "pomera_system",
     "pomera_safe_update",
-    "pomera_launch_gui",
     "pomera_find_replace_diff",
 }
 

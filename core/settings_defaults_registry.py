@@ -430,22 +430,23 @@ class SettingsDefaultsRegistry:
         ))
         
         # Anthropic AI - Updated May 2026
-        # Latest: Claude 4 series (Opus 4.7, Opus 4.6, Opus 4.5, Sonnet 4.5, Sonnet 4, Opus 4)
+        # Active: Opus 4.8/4.7/4.6, Sonnet 4.6/4.5, Opus 4.5, Haiku 4.5
+        # Deprecated base: sonnet-4-20250514, opus-4-20250514
         self.register_tool(ToolDefaultsSpec(
             tool_name="Anthropic AI",
             defaults={
                 "API_KEY": "putinyourkey",
                 "MODEL": "claude-sonnet-4-5-20250929",
                 "MODELS_LIST": [
+                    "claude-opus-4-8",
                     "claude-opus-4-7",
                     "claude-opus-4-6",
+                    "claude-sonnet-4-6",
                     "claude-sonnet-4-5-20250929",
-                    "claude-opus-4-5-20251124",
-                    "claude-sonnet-4-20250522",
-                    "claude-opus-4-20250522",
-                    "claude-3-5-sonnet-20241022",
-                    "claude-3-5-haiku-20241022",
-                    "claude-3-opus-20240229"
+                    "claude-opus-4-5-20251101",
+                    "claude-haiku-4-5-20251001",
+                    "claude-sonnet-4-20250514",
+                    "claude-opus-4-20250514"
                 ],
                 "system": "You are a helpful assistant.",
                 "max_tokens": 4096,
@@ -455,7 +456,7 @@ class SettingsDefaultsRegistry:
                 "stop_sequences": "",
                 # Research tab defaults
                 "research_mode_enabled": False,
-                "research_model": "claude-opus-4-6",
+                "research_model": "claude-opus-4-8",
                 "research_mode": "two-stage",
                 "research_thinking_budget": 32000,
                 "research_style": "analytical",
@@ -464,7 +465,7 @@ class SettingsDefaultsRegistry:
                 "research_max_tokens": "128000",
                 # DeepReasoning tab defaults
                 "deepreasoning_enabled": False,
-                "deepreasoning_model": "claude-opus-4-6",
+                "deepreasoning_model": "claude-opus-4-8",
                 "deepreasoning_thinking_budget": 32000,
                 "deepreasoning_max_tokens": "128000"
             },
@@ -473,12 +474,12 @@ class SettingsDefaultsRegistry:
         ))
         
         # OpenAI - Updated January 2026
-        # Latest: GPT-5.2 series, GPT-4.1 series, GPT-4o being retired Feb 2026
+        # Latest: GPT-5.x series (5.5, 5.2), GPT-4.1 series
         self.register_tool(ToolDefaultsSpec(
             tool_name="OpenAI",
             defaults={
                 "API_KEY": "putinyourkey",
-                "MODEL": "gpt-5.2",
+                "MODEL": "gpt-5.5",
                 "MODELS_LIST": [
                     "gpt-5.5",
                     "gpt-5.5-pro",
@@ -507,7 +508,7 @@ class SettingsDefaultsRegistry:
                 "stop": "",
                 # Research tab defaults
                 "research_mode_enabled": False,
-                "research_model": "gpt-5.2",
+                "research_model": "gpt-5.5",
                 "research_mode": "two-stage",
                 "reasoning_effort": "xhigh",
                 "research_style": "analytical",

@@ -29,17 +29,17 @@ class TestURLParserMCP:
     # =========================================================================
     
     def test_tool_registration(self, tool_registry):
-        """Verify pomera_url_parse is registered in MCP."""
+        """Verify the public compound tool is registered and legacy alias works."""
         tools = {tool.name for tool in tool_registry.list_tools()}
-        assert 'pomera_url_parse' in tools
+        assert 'pomera_specialist' in tools
+        assert 'pomera_url_parse' in tool_registry
     
     def test_tool_schema(self, tool_registry):
-        """Verify tool has correct input schema."""
-        tools = {tool.name: tool for tool in tool_registry.list_tools()}
-        tool = tools.get('pomera_url_parse')
+        """Verify legacy alias resolves to the compound schema."""
+        tool = tool_registry.get_tool('pomera_url_parse')
         
         assert tool is not None
-        assert 'url' in tool.inputSchema['properties']
+        assert 'url' in tool.input_schema['properties']
     
     # =========================================================================
     # Basic URL Parsing via MCP

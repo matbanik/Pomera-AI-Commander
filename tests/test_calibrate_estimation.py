@@ -3,7 +3,12 @@
 
 from core.semantic_diff import SemanticDiffEngine
 import json
+import sys
 import time
+
+if "pytest" in sys.modules and __name__ != "__main__":
+    import pytest
+    pytest.skip("Manual calibration script.", allow_module_level=True)
 
 engine = SemanticDiffEngine()
 

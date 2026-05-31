@@ -269,7 +269,7 @@ class AIToolsWidget(ttk.Frame):
             },
             "OpenAI": {
                 "url": "https://api.openai.com/v1/chat/completions",
-                "url_responses": "https://api.openai.com/v1/responses",  # For GPT-5.2 models
+                "url_responses": "https://api.openai.com/v1/responses",  # For GPT-5 reasoning models
                 "headers_template": {"Authorization": "Bearer {api_key}", "Content-Type": "application/json"},
                 "api_url": "https://platform.openai.com/settings/organization/api-keys"
             },
@@ -2087,7 +2087,7 @@ class AIToolsWidget(ttk.Frame):
         self.logger.info(f"DeepReasoning Mode - {provider_name} deep reasoning engine")
         
         # Get deepreasoning settings
-        dr_model = settings.get("deepreasoning_model", "claude-opus-4-6")
+        dr_model = settings.get("deepreasoning_model", "claude-opus-4-8")
         dr_thinking_budget = settings.get("deepreasoning_thinking_budget", 32000)
         dr_max_tokens = settings.get("deepreasoning_max_tokens", 128000)
         
@@ -2790,7 +2790,7 @@ class AIToolsWidget(ttk.Frame):
         elif "url_template" in provider_config:
             url = provider_config["url_template"].format(model=settings.get("MODEL"), api_key=api_key)
         else:
-            # Check if using GPT-5.2 (needs Responses API)
+            # Check if using GPT-5 reasoning model (needs Responses API)
             if provider_name == "OpenAI" and self._is_openai_reasoning_model(settings.get("MODEL", "")):
                 url = provider_config["url_responses"]
             else:
@@ -3029,11 +3029,11 @@ class AIToolsWidget(ttk.Frame):
         elif provider_name in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio"]:
             model = settings.get("MODEL", "")
             
-            # GPT-5.2 uses Responses API with different format
+            # GPT-5 reasoning models use Responses API with different format
             if provider_name == "OpenAI" and self._is_openai_reasoning_model(model):
                 payload = {"model": model, "input": prompt}
                 
-                # Reasoning models (GPT-5.2+, GPT-5.5+) do NOT support sampling parameters
+                # Reasoning models (GPT-5.2+, GPT-5.5) do NOT support sampling parameters
                 # Sending temperature causes: 400 "temperature does not support 0 with this model"
                 # Do NOT add temperature, top_p, frequency_penalty, presence_penalty
                 
@@ -3165,7 +3165,7 @@ class AIToolsWidget(ttk.Frame):
     def _is_openai_reasoning_model(self, model: str) -> bool:
         """Check if model is an OpenAI reasoning model requiring Responses API.
         
-        These models (GPT-5.2+, GPT-5.5+) do not support sampling parameters
+        These models (GPT-5.2+, GPT-5.5) do not support sampling parameters
         like temperature, top_p, frequency_penalty, presence_penalty.
         """
         if not model:
@@ -3179,13 +3179,10 @@ class AIToolsWidget(ttk.Frame):
     def _is_anthropic_no_sampling_model(self, model: str) -> bool:
         """Check if Anthropic model deprecates sampling parameters.
         
-        Claude Opus 4.7+ deprecates temperature, top_p, top_k.
-        Sending these parameters will cause a 400 Bad Request error.
+        Delegates to centralized core.anthropic_compat module.
         """
-        if not model:
-            return False
-        model_lower = model.lower()
-        return any(m in model_lower for m in ['claude-opus-4-7', 'claude-mythos'])
+        from core.anthropic_compat import is_anthropic_no_sampling_model
+        return is_anthropic_no_sampling_model(model)
     
     def _add_param_if_valid(self, param_dict, settings, key, param_type):
         """Add parameter to dict if it's valid."""
@@ -3209,7 +3206,7 @@ class AIToolsWidget(ttk.Frame):
         elif provider_name == "Anthropic AI":
             result_text = data.get('content', [{}])[0].get('text', result_text)
         elif provider_name in ["OpenAI", "Groq AI", "OpenRouterAI", "LM Studio", "Azure AI"]:
-            # Check for Responses API format (GPT-5.2)
+            # Check for Responses API format (GPT-5 reasoning models)
             # Format: {"output": [{"content": [{"type": "output_text", "text": "..."}]}]}
             if 'output' in data and isinstance(data.get('output'), list) and len(data['output']) > 0:
                 # Responses API format
@@ -3320,7 +3317,7 @@ class AIToolsWidget(ttk.Frame):
                 return
             
             
-            # Debug logging for GPT-5.2 troubleshooting
+            # Debug logging for GPT-5 reasoning model troubleshooting
             self.logger.info(f"Making API request to: {url}")
             self.logger.info(f"Payload: {json.dumps(payload, indent=2)}")
             
@@ -3409,7 +3406,7 @@ class AIToolsWidget(ttk.Frame):
                     return chunk_data.get("delta", {}).get("text", "")
                 return ""
             else:
-                # Check for Responses API format first (GPT-5.2)
+                # Check for Responses API format first (GPT-5 reasoning models)
                 chunk_type = chunk_data.get("type", "")
                 if chunk_type == "response.output_text.delta":
                     # Responses API format: {"type": "response.output_text.delta", "delta": "..."}
@@ -3558,18 +3555,18 @@ class AIToolsWidget(ttk.Frame):
             },
             "Anthropic AI": {
                 # Research tab (first) - uses Claude native web search only
-                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with Claude Opus 4.6 (overrides other tabs)."},
-                "research_model": {"tab": "research", "type": "entry", "default": "claude-opus-4-6", "label": "model", "tip": "Research model (recommended: claude-opus-4-6)."},
+                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with Claude Opus 4.8 (overrides other tabs)."},
+                "research_model": {"tab": "research", "type": "entry", "default": "claude-opus-4-8", "label": "model", "tip": "Research model (recommended: claude-opus-4-8)."},
                 "research_mode": {"tab": "research", "type": "combo", "values": ["two-stage", "single"], "default": "two-stage", "label": "mode", "tip": "two-stage: search first then reason. single: combined."},
-                "research_thinking_budget": {"tab": "research", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (legacy, ignored by Opus 4.6 adaptive thinking)."},
+                "research_thinking_budget": {"tab": "research", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (ignored by Opus 4.6+ and Sonnet 4.6+ adaptive thinking)."},
                 "research_style": {"tab": "research", "type": "combo", "values": ["analytical", "concise", "creative", "report"], "default": "analytical", "label": "style", "tip": "Output style preset."},
                 "research_search_count": {"tab": "research", "type": "scale", "range": (1, 20), "res": 1, "default": 20, "label": "max_uses", "tip": "Maximum web search uses (Anthropic native)."},
                 "research_force_search": {"tab": "research", "type": "checkbox", "default": False, "label": "force_search", "tip": "Force web search before answering (tool_choice: any)."},
                 "research_max_tokens": {"tab": "research", "type": "entry", "default": "128000", "label": "max_tokens", "tip": "Maximum output tokens."},
                 # DeepReasoning tab (second) - 6-step reasoning protocol
                 "deepreasoning_enabled": {"tab": "deepreasoning", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Deep Reasoning with 6-step protocol (overrides other tabs)."},
-                "deepreasoning_model": {"tab": "deepreasoning", "type": "entry", "default": "claude-opus-4-6", "label": "model", "tip": "DeepReasoning model (recommended: claude-opus-4-6)."},
-                "deepreasoning_thinking_budget": {"tab": "deepreasoning", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (legacy, ignored by Opus 4.6 adaptive thinking)."},
+                "deepreasoning_model": {"tab": "deepreasoning", "type": "entry", "default": "claude-opus-4-8", "label": "model", "tip": "DeepReasoning model (recommended: claude-opus-4-8)."},
+                "deepreasoning_thinking_budget": {"tab": "deepreasoning", "type": "scale", "range": (1000, 128000), "res": 1000, "default": 32000, "label": "thinking_budget", "tip": "Extended thinking token budget (ignored by Opus 4.6+ and Sonnet 4.6+ adaptive thinking)."},
                 "deepreasoning_max_tokens": {"tab": "deepreasoning", "type": "entry", "default": "128000", "label": "max_tokens", "tip": "Maximum output tokens."},
                 # Content tab
                 "max_tokens": {"tab": "content", "type": "entry", "tip": "Maximum number of tokens to generate."},
@@ -3581,8 +3578,8 @@ class AIToolsWidget(ttk.Frame):
             },
             "OpenAI": {
                 # Research tab (first tab) - uses OpenAI native web search only
-                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with GPT-5.2 (overrides other tabs)."},
-                "research_model": {"tab": "research", "type": "entry", "default": "gpt-5.2", "label": "model", "tip": "Research model (recommended: gpt-5.2)."},
+                "research_mode_enabled": {"tab": "research", "type": "checkbox", "default": False, "label": "enabled", "tip": "Enable Research mode with GPT-5.5 (overrides other tabs)."},
+                "research_model": {"tab": "research", "type": "entry", "default": "gpt-5.5", "label": "model", "tip": "Research model (recommended: gpt-5.5)."},
                 "research_mode": {"tab": "research", "type": "combo", "values": ["two-stage", "single"], "default": "two-stage", "label": "mode", "tip": "two-stage: search first then reason. single: combined."},
                 "reasoning_effort": {"tab": "research", "type": "combo", "values": ["none", "low", "medium", "high", "xhigh"], "default": "xhigh", "label": "reasoning_effort", "tip": "Reasoning effort level."},
                 "research_style": {"tab": "research", "type": "combo", "values": ["analytical", "concise", "creative", "report"], "default": "analytical", "label": "style", "tip": "Output style preset."},

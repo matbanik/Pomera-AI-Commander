@@ -9,6 +9,10 @@ import json
 import sys
 import time
 
+if "pytest" in sys.modules and __name__ != "__main__":
+    import pytest
+    pytest.skip("Manual long-running similarity script.", allow_module_level=True)
+
 engine = SemanticDiffEngine()
 
 print("=" * 80)

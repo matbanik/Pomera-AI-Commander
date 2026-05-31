@@ -74,11 +74,11 @@
 - **Use Cases**: Enterprise deployments, production workloads, same as Google AI but with enterprise security
 
 ##### Anthropic AI (Claude)
-- **Models**: claude-3-5-sonnet-20240620, claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307
+- **Models**: claude-opus-4-8, claude-opus-4-7, claude-opus-4-6, claude-sonnet-4-6, claude-sonnet-4-5-20250929, claude-opus-4-5-20251101, claude-haiku-4-5-20251001
 - **API Endpoint**: https://api.anthropic.com/v1/messages
-- **Key Parameters**: max_tokens, temperature, top_p, top_k
-- **Strengths**: Safety, reasoning, long-form content
-- **Use Cases**: Writing, analysis, research, safety-critical applications
+- **Key Parameters**: max_tokens, temperature, top_p, top_k (⚠️ temperature/top_p/top_k deprecated for Opus 4.7+)
+- **Strengths**: Safety, reasoning, long-form content, adaptive thinking
+- **Use Cases**: Writing, analysis, research, deep reasoning, safety-critical applications
 
 ##### OpenAI (GPT)
 - **Models**: gpt-4o, gpt-4-turbo, gpt-3.5-turbo, gpt-4o-mini

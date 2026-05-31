@@ -14,7 +14,7 @@ def get_text(result):
     return result.content[0]['text']
 
 
-def test_search_engine(registry, engine_name, test_num):
+def _run_search_engine_test(registry, engine_name, test_num):
     """Test a specific search engine."""
     print(f'\n[TEST {test_num}] pomera_web_search - {engine_name} search')
     try:
@@ -72,7 +72,7 @@ def run_tests():
     # Test 2-7: Test all search engines
     engines = ['duckduckgo', 'tavily', 'google', 'brave', 'serpapi', 'serper']
     for i, engine in enumerate(engines, start=2):
-        result = test_search_engine(registry, engine, i)
+        result = _run_search_engine_test(registry, engine, i)
         if result is True:
             tests_passed += 1
         elif result is False:

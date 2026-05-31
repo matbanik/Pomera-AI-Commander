@@ -15,9 +15,7 @@ print("\nDeepDiff result:")
 print(diff)
 print("\nKeys:", list(diff.keys()))
 
-if '
-
-dictionary_item_added' in diff:
+if 'dictionary_item_added' in diff:
     print("\nAdded items:", diff['dictionary_item_added'])
 if 'dictionary_item_removed' in diff:
     print("\nRemoved items:", diff['dictionary_item_removed'])

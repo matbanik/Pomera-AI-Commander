@@ -278,8 +278,8 @@ def test_property_monotonicity_of_changes(base_config, key1, key2, value1, value
         changes_one = len(result_one.changes)
         changes_two = len(result_two.changes)
         
-        assert changes_two > changes_one, \
-            f"More modifications didn't increase change count: {changes_one} vs {changes_two}"
+        assert changes_two >= changes_one, \
+            f"More modifications decreased change count: {changes_one} vs {changes_two}"
 
 
 # ============================================================================

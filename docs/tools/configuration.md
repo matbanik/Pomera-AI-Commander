@@ -2063,7 +2063,7 @@ Each AI provider requires proper API key configuration:
 - **Google AI**: temperature, topK, topP, candidateCount, maxOutputTokens
 - **Vertex AI**: temperature, topK, topP, candidateCount, maxOutputTokens (same as Google AI)
 - **Azure AI**: temperature, max_tokens, top_p, frequency_penalty, presence_penalty, seed, stop
-- **Anthropic AI**: max_tokens, temperature, top_p, top_k
+- **Anthropic AI**: max_tokens, temperature, top_p, top_k (⚠️ temperature/top_p/top_k deprecated for Opus 4.7+ — auto-stripped by Pomera)
 - **OpenAI**: temperature, max_tokens, top_p, frequency_penalty, presence_penalty
 - **Cohere AI**: temperature, max_tokens, k, p, frequency_penalty
 - **HuggingFace AI**: max_tokens, temperature, top_p

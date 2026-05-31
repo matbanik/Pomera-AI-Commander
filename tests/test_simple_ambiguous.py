@@ -3,7 +3,7 @@
 import pytest
 from core.semantic_diff import SemanticDiffEngine, FormatParser
 
-def test_ambigu Barabous_detection():
+def test_ambiguous_detection():
     """Test that ambiguous format raises ValueError"""
     confused = '{"name": "value"\nkey: value}'
     

@@ -1,8 +1,8 @@
 """
-MCP integration tests for pomera_diagnose tool.
+MCP integration tests for pomera_system tool (diagnose action).
 
-Tests the enhanced pomera_diagnose tool registration, schema, and output structure.
-Verifies all 6 new diagnostic categories: version, encryption, api_keys,
+Tests the enhanced diagnostic output structure via pomera_system action=diagnose.
+Verifies all 6 diagnostic categories: version, encryption, api_keys,
 tool_registry, runtime, and dependencies (verbose only).
 """
 
@@ -29,15 +29,15 @@ def tool_registry():
 
 @pytest.fixture(scope="module")
 def basic_result(tool_registry):
-    """Run pomera_diagnose with verbose=False and parse result."""
-    result = tool_registry.execute('pomera_diagnose', {"verbose": False})
+    """Run pomera_system diagnose with verbose=False and parse result."""
+    result = tool_registry.execute('pomera_system', {"action": "diagnose", "verbose": False})
     return get_result(result)
 
 
 @pytest.fixture(scope="module")
 def verbose_result(tool_registry):
-    """Run pomera_diagnose with verbose=True and parse result."""
-    result = tool_registry.execute('pomera_diagnose', {"verbose": True})
+    """Run pomera_system diagnose with verbose=True and parse result."""
+    result = tool_registry.execute('pomera_system', {"action": "diagnose", "verbose": True})
     return get_result(result)
 
 
@@ -45,31 +45,25 @@ class TestDiagnoseRegistration:
     """Registration and schema tests."""
 
     def test_tool_registration(self, tool_registry):
-        """Verify pomera_diagnose is registered in MCP."""
+        """Verify pomera_system is registered in MCP."""
         tools = {tool.name for tool in tool_registry.list_tools()}
-        assert 'pomera_diagnose' in tools
+        assert 'pomera_system' in tools
 
     def test_tool_schema(self, tool_registry):
-        """Verify tool has correct input schema with verbose param."""
+        """Verify tool has action in input schema."""
         tools = {tool.name: tool for tool in tool_registry.list_tools()}
-        tool = tools.get('pomera_diagnose')
+        tool = tools.get('pomera_system')
 
         assert tool is not None
-        assert 'verbose' in tool.inputSchema['properties']
-        verbose_prop = tool.inputSchema['properties']['verbose']
-        assert verbose_prop['type'] == 'boolean'
-        assert verbose_prop['default'] is False
+        assert 'action' in tool.inputSchema['properties']
 
-    def test_tool_description_mentions_new_categories(self, tool_registry):
-        """Verify tool description mentions enhanced diagnostic categories."""
+    def test_tool_description_mentions_diagnose(self, tool_registry):
+        """Verify tool description mentions diagnose."""
         tools = {tool.name: tool for tool in tool_registry.list_tools()}
-        tool = tools.get('pomera_diagnose')
+        tool = tools.get('pomera_system')
         desc = tool.description.lower()
 
-        assert 'encryption' in desc
-        assert 'api key' in desc
-        assert 'version' in desc
-        assert 'runtime' in desc or 'tool' in desc
+        assert 'diagnose' in desc
 
 
 class TestDiagnoseBasicOutput:
@@ -244,10 +238,10 @@ class TestToolRegistrySection:
         # Check sorted
         assert reg["tool_names"] == sorted(reg["tool_names"])
 
-    def test_pomera_diagnose_in_tool_names(self, basic_result):
-        """pomera_diagnose itself should appear in tool_names."""
+    def test_pomera_system_in_tool_names(self, basic_result):
+        """pomera_system should appear in tool_names."""
         reg = basic_result["tool_registry"]
-        assert "pomera_diagnose" in reg["tool_names"]
+        assert "pomera_system" in reg["tool_names"]
 
     def test_healthy_flag(self, basic_result):
         """Registry should report healthy=True."""

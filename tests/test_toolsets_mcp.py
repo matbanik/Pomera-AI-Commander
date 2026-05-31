@@ -57,10 +57,10 @@ class TestToolsetDefinitions:
         from core.mcp.toolset_config import TOOLSET_DEFINITIONS
         assert 'core' in TOOLSET_DEFINITIONS
     
-    def test_core_group_has_diagnose(self):
-        """Core toolset must include pomera_diagnose."""
+    def test_core_group_has_system(self):
+        """Core toolset must include pomera_system (replaces pomera_diagnose)."""
         from core.mcp.toolset_config import TOOLSET_DEFINITIONS
-        assert 'pomera_diagnose' in TOOLSET_DEFINITIONS['core']
+        assert 'pomera_system' in TOOLSET_DEFINITIONS['core']
     
     def test_core_group_has_notes(self):
         """Core toolset must include pomera_notes."""
@@ -134,7 +134,7 @@ class TestRegistryToolsetFiltering:
         """Registry with no filter should load all tools."""
         registry = get_registry()
         tools = registry.list_tools()
-        assert len(tools) >= 19  # Known minimum tool count
+        assert len(tools) >= 12  # 12 consolidated tools
     
     def test_registry_accepts_enabled_tools(self):
         """ToolRegistry should accept enabled_tools parameter."""
@@ -146,7 +146,7 @@ class TestRegistryToolsetFiltering:
     def test_filtered_registry_only_has_enabled_tools(self):
         """Filtered registry should only contain specified tools."""
         from core.mcp.tool_registry import ToolRegistry
-        enabled = {"pomera_diagnose", "pomera_notes"}
+        enabled = {"pomera_system", "pomera_notes"}
         registry = ToolRegistry(enabled_tools=enabled)
         
         tool_names = {t.name for t in registry.list_tools()}
@@ -157,9 +157,10 @@ class TestRegistryToolsetFiltering:
     def test_filtered_registry_executes_enabled_tool(self):
         """Enabled tools should execute normally."""
         from core.mcp.tool_registry import ToolRegistry
-        registry = ToolRegistry(enabled_tools={"pomera_case_transform"})
+        registry = ToolRegistry(enabled_tools={"pomera_text_tools"})
         
-        result = registry.execute('pomera_case_transform', {
+        result = registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "hello",
             "mode": "upper"
         })

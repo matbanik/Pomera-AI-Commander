@@ -1,7 +1,7 @@
 """
-MCP integration tests for Case Tool (pomera_case_transform)
+MCP integration tests for Case Tool (pomera_text_tools with action=case)
 
-Tests the pomera_case_transform MCP tool registration and execution.
+Tests the pomera_text_tools compound MCP tool for case transformation.
 """
 
 import pytest
@@ -22,30 +22,25 @@ def tool_registry():
 
 
 class TestCaseToolMCP:
-    """MCP integration tests for pomera_case_transform."""
+    """MCP integration tests for pomera_text_tools (case action)."""
     
     # =========================================================================
     # Registration Tests
     # =========================================================================
     
     def test_tool_registration(self, tool_registry):
-        """Verify pomera_case_transform is registered in MCP."""
+        """Verify pomera_text_tools is registered in MCP."""
         tools = {tool.name for tool in tool_registry.list_tools()}
-        assert 'pomera_case_transform' in tools
+        assert 'pomera_text_tools' in tools
     
     def test_tool_schema(self, tool_registry):
         """Verify tool has correct input schema."""
         tools = {tool.name: tool for tool in tool_registry.list_tools()}
-        tool = tools.get('pomera_case_transform')
+        tool = tools.get('pomera_text_tools')
         
         assert tool is not None
+        assert 'action' in tool.inputSchema['properties']
         assert 'text' in tool.inputSchema['properties']
-        assert 'mode' in tool.inputSchema['properties']
-        
-        # Verify mode enum
-        mode_schema = tool.inputSchema['properties']['mode']
-        assert 'enum' in mode_schema
-        assert set(mode_schema['enum']) == {'sentence', 'lower', 'upper', 'capitalized', 'title'}
     
     # =========================================================================
     # Sentence Case Tests
@@ -53,7 +48,8 @@ class TestCaseToolMCP:
     
     def test_sentence_case_via_mcp(self, tool_registry):
         """Test sentence case transformation via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "hello world. this is a test.",
             "mode": "sentence"
         })
@@ -63,7 +59,8 @@ class TestCaseToolMCP:
     
     def test_sentence_case_with_newlines(self, tool_registry):
         """Test sentence case with newlines via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "line one\nline two",
             "mode": "sentence"
         })
@@ -77,7 +74,8 @@ class TestCaseToolMCP:
     
     def test_lower_case_via_mcp(self, tool_registry):
         """Test lower case transformation via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "HELLO WORLD",
             "mode": "lower"
         })
@@ -91,7 +89,8 @@ class TestCaseToolMCP:
     
     def test_upper_case_via_mcp(self, tool_registry):
         """Test upper case transformation via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "hello world",
             "mode": "upper"
         })
@@ -105,7 +104,8 @@ class TestCaseToolMCP:
     
     def test_capitalized_case_via_mcp(self, tool_registry):
         """Test capitalized case transformation via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "hello world test",
             "mode": "capitalized"
         })
@@ -119,25 +119,25 @@ class TestCaseToolMCP:
     
     def test_title_case_no_exclusions(self, tool_registry):
         """Test title case without exclusions via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "the quick brown fox",
             "mode": "title"
         })
         
         output = get_text(result)
-        # Without exclusions, all words should be capitalized
         assert output == "The Quick Brown Fox"
     
     def test_title_case_with_exclusions(self, tool_registry):
         """Test title case with exclusions via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "the quick and the brown",
             "mode": "title",
             "exclusions": "the\nand"
         })
         
         output = get_text(result)
-        # First "the" capitalized, others excluded
         assert output == "The Quick and the Brown"
     
     # =========================================================================
@@ -146,7 +146,8 @@ class TestCaseToolMCP:
     
     def test_empty_text(self, tool_registry):
         """Test with empty text input via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "",
             "mode": "upper"
         })
@@ -156,20 +157,21 @@ class TestCaseToolMCP:
     
     def test_unicode_text(self, tool_registry):
         """Test with Unicode characters via MCP."""
-        result = tool_registry.execute('pomera_case_transform', {
-            "text": "café résumé",
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
+            "text": "caf\u00e9 r\u00e9sum\u00e9",
             "mode": "upper"
         })
         
         output = get_text(result)
-        # Platform dependent, but should contain uppercase letters
         assert len(output) > 0
-        assert output != "café résumé"  # Should be different
+        assert output != "caf\u00e9 r\u00e9sum\u00e9"
     
     def test_long_text(self, tool_registry):
         """Test with long text (performance check) via MCP."""
         long_text = "hello world. " * 100
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": long_text,
             "mode": "sentence"
         })
@@ -184,21 +186,19 @@ class TestCaseToolMCP:
     
     def test_missing_text_parameter(self, tool_registry):
         """Test error handling when text parameter is missing."""
-        # MCP should handle missing required parameters gracefully
-        # Either returns error or uses default value
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "mode": "upper"
         })
-        # Test passes if execution doesn't crash
         assert result is not None
     
     def test_invalid_mode(self, tool_registry):
         """Test with invalid mode value."""
-        result = tool_registry.execute('pomera_case_transform', {
+        result = tool_registry.execute('pomera_text_tools', {
+            "action": "case",
             "text": "hello world",
             "mode": "invalid_mode"
         })
         
         output = get_text(result)
-        # Invalid mode should return original text unchanged
         assert "hello" in output.lower()

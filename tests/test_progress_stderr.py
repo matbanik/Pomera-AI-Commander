@@ -5,6 +5,10 @@ from core.semantic_diff import SemanticDiffEngine
 import json
 import sys
 
+if "pytest" in sys.modules and __name__ != "__main__":
+    import pytest
+    pytest.skip("Manual progress stderr script.", allow_module_level=True)
+
 engine = SemanticDiffEngine()
 
 # Create a medium-large config (should trigger progress at >2s estimate)

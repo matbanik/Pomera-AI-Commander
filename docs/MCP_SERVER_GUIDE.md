@@ -256,7 +256,7 @@ When security is enabled and you encounter a locked error:
 
 ---
 
-## Available MCP Tools (29 Total)
+## Available MCP Tools (12 Public)
 
 ### AI Tools (1)
 
@@ -292,8 +292,8 @@ pomera_ai_tools action=generate \
 
 | Provider | Model | Features |
 |----------|-------|----------|
-| OpenAI | GPT-5.2 | `reasoning_effort` (xhigh), deep reasoning |
-| Anthropic AI | Claude Opus 4.5 | `thinking_budget`, `search_count`, web search |
+| OpenAI | GPT-5.5 | `reasoning_effort` (xhigh), deep reasoning |
+| Anthropic AI | Claude Opus 4.8 | `thinking_budget` (adaptive for 4.6+), `search_count`, web search |
 | OpenRouterAI | Various (gemini-3-flash, sonar-deep-research) | `max_results`, web search |
 
 ```bash
@@ -325,7 +325,7 @@ pomera_ai_tools action=research \
 |-----------|------|-------------|---------|  
 | `research_mode` | string | `two-stage` (search→reason) or `single` (combined) | two-stage |
 | `reasoning_effort` | string | OpenAI: `none`, `low`, `medium`, `high`, `xhigh` | xhigh |
-| `thinking_budget` | integer | Anthropic thinking tokens (1000-128000) | 32000 |
+| `thinking_budget` | integer | Anthropic thinking tokens (1000-128000). For Opus 4.6+ and Sonnet 4.6+, adaptive thinking is used automatically | 32000 |
 | `search_count` | integer | Anthropic web search uses | 10 |
 | `max_results` | integer | OpenRouter web search results (1-20) | 10 |
 | `style` | string | Output format: `analytical`, `concise`, `creative`, `report` | analytical |
@@ -333,7 +333,7 @@ pomera_ai_tools action=research \
 
 #### Deepreasoning Action (Anthropic Only)
 
-Uses Claude Opus 4.5 Extended Thinking with 6-step protocol:
+Uses Claude Opus 4.8 Adaptive Thinking with 6-step protocol:
 1. **Decompose** - Break down complex queries
 2. **Search** - Optional web search during reasoning
 3. **Decide** - Make key determinations
@@ -370,31 +370,18 @@ pomera_ai_tools action=deepreasoning \
 
 > **Security Note**: API keys are loaded from Pomera UI settings (encrypted at rest). Never pass API keys as MCP parameters.
 
-### Text Processing Tools (21)
+### Consolidated Tools (6)
 
 | Tool Name | Description |
 |-----------|-------------|
-| `pomera_case_transform` | Transform text case (sentence, title, upper, lower) |
-| `pomera_encode` | Base64, hash (MD5/SHA/CRC32), number_base conversion |
-| `pomera_line_tools` | Remove duplicates, empty lines, add/remove numbers, reverse, shuffle |
-| `pomera_whitespace` | Trim, remove extra spaces, tabs/spaces, line endings |
-| `pomera_string_escape` | JSON, HTML, URL, XML escape/unescape |
-| `pomera_sort` | Sort numbers or text, ascending/descending |
-| `pomera_text_stats` | Character, word, line, sentence counts, reading time |
-| `pomera_json_xml` | Prettify, minify, validate, convert JSON/XML |
-| `pomera_url_parse` | Parse URL components (scheme, host, path, query) |
-| `pomera_text_wrap` | Wrap text to specified width |
-| `pomera_timestamp` | Convert Unix timestamps to/from dates |
-| `pomera_extract` | Regex, emails, URLs extraction |
-| `pomera_markdown` | Strip formatting, extract links/headers, tables |
-| `pomera_translator` | Morse code/Binary translation |
-| `pomera_cron` | Parse, explain, validate cron expressions |
-| `pomera_word_frequency` | Count word frequencies with percentages |
-| `pomera_column_tools` | CSV/column extract, reorder, transpose |
-| `pomera_generators` | UUID, Lorem Ipsum, Password, Email, Slug generation |
-| `pomera_email_header_analyzer` | Parse and analyze email headers |
-| `pomera_html` | Strip HTML tags, extract content |
-| `pomera_list_compare` | Compare two lists, find differences |
+| `pomera_text_tools` | Text case, line tools, whitespace, sorting, wrapping |
+| `pomera_data_tools` | JSON/XML, CSV columns, encoding/hash/base conversion, generators, timestamps |
+| `pomera_analysis` | Text stats, word frequency, list comparison, HTML extraction |
+| `pomera_specialist` | Regex/email/URL/IP/phone/date extraction, escaping, Markdown, URL parse, translation, cron, email headers |
+| `pomera_smart_diff` | 2-way semantic diff and 3-way merge for JSON/YAML/TOML/ENV configs |
+| `pomera_system` | Diagnostics and GUI launch |
+
+Legacy names such as `pomera_json_xml`, `pomera_case_transform`, and `pomera_smart_diff_2way` remain hidden execution aliases for older clients. They are not returned by `list_tools()`.
 
 ### Web Tools (2)
 
@@ -595,12 +582,11 @@ pomera_notes action=update \
 | `pomera_safe_update` | Backup → update → verify workflow for AI-initiated changes |
 | `pomera_find_replace_diff` | Regex find/replace with diff preview and auto-backup to Notes |
 
-### Smart Diff Tools (2)
+### Smart Diff Tool
 
 | Tool Name | Description |
 |-----------|-------------|
-| `pomera_smart_diff_2way` | Semantic 2-way diff for JSON, YAML, TOML, ENV configs with progress tracking |
-| `pomera_smart_diff_3way` | 3-way merge for configs (base/yours/theirs) with conflict detection |
+| `pomera_smart_diff` | Use `action="compare_2way"` for semantic diffs or `action="compare_3way"` for 3-way merges |
 
 #### Smart Diff Progress Monitoring (AI Agent Guidance)
 
@@ -678,7 +664,7 @@ Result: {"original_text": "Item 123", "modified_text": "Item NUM"}
 ```
 User: Convert this text to title case: "hello world from pomera"
 
-AI uses: pomera_case_transform(text="hello world from pomera", operation="title")
+AI uses: pomera_text_tools(action="case", text="hello world from pomera", mode="title")
 
 Result: "Hello World From Pomera"
 ```
@@ -688,7 +674,7 @@ Result: "Hello World From Pomera"
 ```
 User: Extract all email addresses from this document
 
-AI uses: pomera_extract(text="...", type="emails")
+AI uses: pomera_specialist(action="extract", text="...", type="emails")
 
 Result: List of extracted emails
 ```
@@ -698,7 +684,7 @@ Result: List of extracted emails
 ```
 User: Generate a new UUID for my config
 
-AI uses: pomera_generators(type="uuid")
+AI uses: pomera_data_tools(action="generate", generator="uuid")
 
 Result: "550e8400-e29b-41d4-a716-446655440000"
 ```
@@ -751,7 +737,7 @@ AI uses: pomera_ai_tools(
 Result: {
   "success": true,
   "provider": "OpenAI",
-  "model": "gpt-5.2",
+  "model": "gpt-5.5",
   "response": "Based on my research..."
 }
 ```
@@ -828,14 +814,14 @@ When using Pomera MCP from multiple IDEs (Claude Desktop, Cursor, Cline, Antigra
 
 **Option 3: Diagnose path resolution**
 
-Call the `pomera_diagnose` MCP tool to see exactly where each IDE is looking:
+Call the `pomera_system` MCP tool with `action="diagnose"` to see exactly where each IDE is looking:
 
 ```bash
 # Via CLI
-pomera-ai-commander --call pomera_diagnose --args '{}'
+pomera-ai-commander --call pomera_system --args '{"action":"diagnose"}'
 
 # Via MCP (in your AI assistant)
-pomera_diagnose(verbose=true)
+pomera_system(action="diagnose", verbose=true)
 ```
 
 **Output includes:**

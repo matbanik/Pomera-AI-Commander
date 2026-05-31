@@ -1,13 +1,9 @@
-"""Data processing tools: json_xml, column, encode, generators, timestamp."""
+"""Data conversion and encoding tools: json_xml, columns, encode, generate, timestamp (compound)."""
 
 from .base import register_from_v1
 
 TOOLS = {
-    "pomera_json_xml",
-    "pomera_column_tools",
-    "pomera_encode",
-    "pomera_generators",
-    "pomera_timestamp",
+    "pomera_data_tools",
 }
 
 def register_tools(registry) -> None:

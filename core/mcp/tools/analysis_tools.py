@@ -1,14 +1,10 @@
-"""Analysis tools: text_stats, word_frequency, list_compare, html, smart_diff_2way, smart_diff_3way."""
+"""Analysis tools: stats, frequency, list_compare, html (compound) + smart_diff."""
 
 from .base import register_from_v1
 
 TOOLS = {
-    "pomera_text_stats",
-    "pomera_word_frequency",
-    "pomera_list_compare",
-    "pomera_html",
-    "pomera_smart_diff_2way",
-    "pomera_smart_diff_3way",
+    "pomera_analysis",
+    "pomera_smart_diff",
 }
 
 def register_tools(registry) -> None:
