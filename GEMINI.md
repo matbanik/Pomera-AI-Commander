@@ -53,14 +53,18 @@ AI guidance for maximizing **work efficiency**. Detailed workflows via `/workflo
 | Command | Purpose |
 |---------|---------|
 | `/ai-model-update-workflow` | Update AI model defaults in releases |
-| `/mcp-workflows` | MCP servers, mcpick, backup tools |
+| `/dependency-workflow` | Manage dependencies, check updates, security |
+| `/documentation-workflow` | Post-implementation documentation |
+| `/mcp-workflow` | MCP server/tool development |
 | `/meta-review` | Workflow document review |
 | `/pomera-notes-workflow` | Pomera notes for backup/memory |
+| `/test-workflow` | Testing: tools, widgets, MCP, advanced methods |
+| `/token-renewal` | Rotate CI/CD tokens (npm, MCP Registry) |
 | `/tool-workflow` | Develop Tools (BaseTool V2) |
 | `/version-bump-workflow` | Version management, GitHub releases |
 | `/widget-workflow` | Develop Widgets (standalone components) |
 
-**Note**: 7 workflows currently available in `.agent/workflows/`
+**Note**: 11 workflows currently available in `.agent/workflows/`
 
 ---
 
@@ -335,7 +339,7 @@ mcp_pomera_pomera_notes action=save \
 
 ```
 .agent/
-  workflows/        # 7 workflow definitions (use `/workflow-name`)
+  workflows/        # 11 workflow definitions (use `/workflow-name`)
   context/          # Task lists, plans, session summaries
   docs/             # Reference docs for meta-reviews
 
