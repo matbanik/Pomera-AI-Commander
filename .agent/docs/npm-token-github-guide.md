@@ -116,5 +116,10 @@ env:
 
 | Date | Expiry | Notes |
 |------|--------|-------|
+| 2026-05-31 | **2026-08-29** | Rotated after E404 publish failure; 90-day granular token |
 | 2026-04-15 | 2026-07-14 | Rotated; 90-day granular token |
 | 2025-01-19 | 2026-04-16 | Original `github-actions-publish` token |
+
+> [!IMPORTANT]
+> **Next rotation due: 2026-08-22** (7 days before 2026-08-29 expiry).
+> Use `/token-renewal` workflow or follow Steps 1-4 above.
